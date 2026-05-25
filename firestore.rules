@@ -1,0 +1,181 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Master Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function emailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function hasUserDoc() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function hasRole(role) {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == role && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isApproved', false) == true && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isSuspended', false) == false;
+    }
+
+    function isApprovedUser() {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'CHURCH_GROUP') in ['CHURCH_GROUP', 'APPROVER_L1', 'APPROVER_L2', 'FINANCE', 'ADMIN'] && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isApproved', false) == true && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isSuspended', false) == false;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 
+             (('email' in request.auth.token && request.auth.token.email == 'gichaumburu@gmail.com') ||
+              (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN'));
+    }
+
+    function isOwner(ownerId) {
+      return isSignedIn() && request.auth.uid == ownerId;
+    }
+
+    // --- Entity Specific Helpers ---
+    
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['id', 'name', 'email', 'role', 'isActive', 'isApproved', 'isSuspended']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 128 &&
+             data.role in ['CHURCH_GROUP', 'APPROVER_L1', 'APPROVER_L2', 'FINANCE', 'ADMIN'] &&
+             data.isActive is bool &&
+             data.isApproved is bool &&
+             data.isSuspended is bool &&
+             (!data.keys().contains('group') || (data.group is string && data.group.size() <= 100)) &&
+             (!data.keys().contains('approverCode') || (data.approverCode is string && data.approverCode.size() <= 20));
+    }
+
+    function isValidRequisition(data) {
+      return data.keys().hasAll(['id', 'title', 'description', 'amount', 'groupId', 'groupName', 'requesterId', 'requesterName', 'status', 'submittedAt', 'updatedAt', 'approvalHistory']) &&
+             data.id is string && data.title is string && data.title.size() <= 200 &&
+             data.description is string && data.description.size() <= 1500 &&
+             (data.amount is int || data.amount is float) && data.amount > 0 &&
+             data.status in ['DRAFT', 'SUBMITTED', 'APPROVED_L1', 'APPROVED_L2', 'ESCALATED', 'DISBURSED', 'REJECTED', 'CANCELLED'] &&
+             data.approvalHistory is list && data.approvalHistory.size() <= 20 &&
+             (!data.keys().contains('amountWords') || (data.amountWords is string)) &&
+             (!data.keys().contains('receipts') || (data.receipts is list && data.receipts.size() <= 50)) &&
+             (!data.keys().contains('attachments') || (data.attachments is list && data.attachments.size() <= 20)) &&
+             (!data.keys().contains('projectId') || (data.projectId is string && data.projectId.size() <= 128)) &&
+             (!data.keys().contains('approvedAtL1') || (data.approvedAtL1 is string)) &&
+             (!data.keys().contains('approvedAtL2') || (data.approvedAtL2 is string)) &&
+             (!data.keys().contains('disbursedAt') || (data.disbursedAt is string)) &&
+             (!data.keys().contains('rejectReason') || (data.rejectReason is string)) &&
+             (!data.keys().contains('additionalInfo') || (data.additionalInfo is string));
+    }
+
+    function isValidProject(data) {
+      return data.keys().hasAll(['id', 'name', 'groupId', 'allocatedBudget', 'spentAmount', 'status']) &&
+             data.name is string && data.name.size() <= 100 &&
+             (data.allocatedBudget is int || data.allocatedBudget is float) && 
+             (data.spentAmount is int || data.spentAmount is float) &&
+             (!data.keys().contains('color') || data.color is string);
+    }
+
+    function isValidSystemLog(data) {
+      return data.keys().hasAll(['id', 'action', 'details', 'performedBy', 'timestamp']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.action is string && data.action.size() <= 100 &&
+             data.details is string && data.details.size() <= 1000 &&
+             data.performedBy is string && data.performedBy.size() <= 200 &&
+             data.timestamp is string && data.timestamp.size() <= 100;
+    }
+
+    function isValidSavedReport(data) {
+      return data.keys().hasAll(['id', 'title', 'description', 'generatedBy', 'generatedById', 'timestamp', 'period', 'stats', 'filters', 'itemCount']) &&
+             data.title is string && data.title.size() <= 200 &&
+             data.generatedById == request.auth.uid;
+    }
+
+    // --- match Blocks ---
+
+    match /test/{testId} {
+      allow read: if true;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (isOwner(userId) || (isValidId(userId) && isAdmin()));
+      allow list: if isAdmin();
+      allow create: if isValidId(userId) && (isAdmin() || (isSignedIn() && isOwner(userId)));
+      allow update: if isValidId(userId) && (isAdmin() || (isSignedIn() && isOwner(userId)));
+    }
+
+    match /requisitions/{requisitionId} {
+      allow get: if isValidId(requisitionId) && (isApprovedUser() || isAdmin());
+      allow list: if isApprovedUser() || isAdmin();
+      
+      allow create: if isValidId(requisitionId) && (isApprovedUser() || isAdmin());
+      
+      allow update: if isValidId(requisitionId) && (isApprovedUser() || isAdmin());
+      
+      allow delete: if isValidId(requisitionId) && (isAdmin() || (isOwner(existing().requesterId) && existing().status == 'DRAFT'));
+    }
+
+    match /projects/{projectId} {
+      allow get: if isValidId(projectId) && (isApprovedUser() || isAdmin());
+      allow list: if isApprovedUser() || isAdmin();
+      allow write: if isValidId(projectId) && (isAdmin() || (isApprovedUser() && isValidProject(incoming())));
+      allow update: if isValidId(projectId) && (isAdmin() || hasRole('APPROVER_L1') || hasRole('APPROVER_L2') || hasRole('FINANCE')) && 
+                      incoming().diff(existing()).affectedKeys().hasOnly(['spentAmount']);
+    }
+
+    match /alerts/{alertId} {
+      allow get: if isValidId(alertId) && (isApprovedUser() || isAdmin());
+      allow list: if isApprovedUser() || isAdmin();
+      allow write: if isValidId(alertId) && isAdmin();
+      allow update: if isValidId(alertId) && (isApprovedUser() || isAdmin()) && incoming().diff(existing()).affectedKeys().hasOnly(['isRead']);
+    }
+
+    match /thresholds/{thresholdId} {
+      allow get: if isValidId(thresholdId) && (isApprovedUser() || isAdmin());
+      allow list: if isApprovedUser() || isAdmin();
+      allow write: if isValidId(thresholdId) && isAdmin();
+    }
+
+    match /forecast/{monthId} {
+      allow get: if isValidId(monthId) && (isApprovedUser() || isAdmin());
+      allow list: if isApprovedUser() || isAdmin();
+      allow write: if isValidId(monthId) && isAdmin();
+    }
+
+    match /system_logs/{logId} {
+      allow get: if isValidId(logId) && (isAdmin() || isSignedIn());
+      allow list: if isAdmin();
+      allow create: if isValidId(logId) && isSignedIn() && isValidSystemLog(incoming());
+      allow update, delete: if false;
+    }
+
+    match /reports/{reportId} {
+      allow read: if isApprovedUser() || isAdmin();
+      allow create: if isValidId(reportId) && (isAdmin() || hasRole('FINANCE')) && isValidSavedReport(incoming());
+      allow delete: if isAdmin();
+    }
+  }
+}
