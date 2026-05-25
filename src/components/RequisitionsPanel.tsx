@@ -24,13 +24,14 @@ import {
   MoreVertical,
   Loader2,
   Repeat,
-  FileText
+  FileText,
+  ChevronDown
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
 import { formatCurrency, formatDate, cn } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
-import { printRequisitions, downloadRequisitionsHtml } from "../utils/exportUtils";
+import { printRequisitions, downloadRequisitionsHtml, downloadRequisitionsCsv, downloadRequisitionsPdf } from "../utils/exportUtils";
 import { NewRequisitionForm } from "./NewRequisitionForm";
 import { ReceiptTemplateGenerator } from "./ReceiptTemplateGenerator";
 import { ReceiptGallery } from "./ReceiptGallery";
@@ -41,6 +42,7 @@ export const RequisitionsPanel: React.FC = () => {
   const [viewingReq, setViewingReq] = useState<Requisition | null>(null);
   const [isGeneratingReceipt, setIsGeneratingReceipt] = useState<Requisition | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
 
   const filtered = requisitions.filter(req => {
     const matchesSearch = req.title.toLowerCase().includes(globalSearchTerm.toLowerCase()) || 
@@ -77,21 +79,63 @@ export const RequisitionsPanel: React.FC = () => {
           <p className="text-sm text-slate-500">Master ledger for all ministry group funding requests.</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="relative flex bg-white border border-slate-200 rounded-xl shadow-sm">
              <button 
               onClick={() => printRequisitions(filtered, "Requisition Ledger", currentUser)}
-              className="p-2.5 hover:bg-slate-50 border-r border-slate-100 text-slate-600 transition-colors"
+              className="p-2.5 hover:bg-slate-50 border-r border-slate-100 text-slate-600 transition-colors cursor-pointer"
               title="Print Ledger"
             >
               <Printer size={16} />
             </button>
             <button 
-              onClick={() => downloadRequisitionsHtml(filtered, "Requisition Ledger", currentUser)}
-              className="p-2.5 hover:bg-slate-50 text-slate-600 transition-colors"
-              title="Export CSV"
+              onClick={() => setShowExportDropdown(!showExportDropdown)}
+              className="p-2.5 hover:bg-slate-50 text-slate-600 transition-colors flex items-center gap-1 cursor-pointer"
+              title="Download Data"
             >
               <Download size={16} />
+              <ChevronDown size={12} className="text-slate-400" />
             </button>
+
+            {showExportDropdown && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowExportDropdown(false)} />
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden divide-y divide-slate-100 text-left">
+                  <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-400 bg-slate-50">
+                    Export Filtered Table ({filtered.length} nodes)
+                  </div>
+                  <button
+                    onClick={() => {
+                      downloadRequisitionsPdf(filtered, "Requisitions List Ledger", currentUser);
+                      setShowExportDropdown(false);
+                    }}
+                    className="w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 font-bold transition-colors cursor-pointer flex items-center gap-2"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-rose-500" />
+                    Download PDF Document
+                  </button>
+                  <button
+                    onClick={() => {
+                      downloadRequisitionsCsv(filtered, "Requisitions List Ledger");
+                      setShowExportDropdown(false);
+                    }}
+                    className="w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 font-bold transition-colors cursor-pointer flex items-center gap-2"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    Download CSV Sheet
+                  </button>
+                  <button
+                    onClick={() => {
+                      downloadRequisitionsHtml(filtered, "Requisitions List Ledger", currentUser);
+                      setShowExportDropdown(false);
+                    }}
+                    className="w-full px-4 py-2 text-left text-xs text-slate-500 hover:bg-slate-50 transition-colors cursor-pointer flex items-center gap-2"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-blue-500" />
+                    Download Classic HTML
+                  </button>
+                </div>
+              </>
+            )}
           </div>
           
           <button 
@@ -151,6 +195,8 @@ export const RequisitionsPanel: React.FC = () => {
               <AnimatePresence mode="popLayout">
                 {filtered.map((req, i) => {
                   const isExpired = req.expiresAt && new Date(req.expiresAt) < new Date();
+                  const hoursRemaining = req.expiresAt ? (new Date(req.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60) : null;
+                  const isNearingExpiry = !isExpired && hoursRemaining !== null && hoursRemaining <= 24 && hoursRemaining > 0;
                   return (
                     <motion.tr 
                       key={req.id} 
@@ -158,7 +204,12 @@ export const RequisitionsPanel: React.FC = () => {
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
                       onClick={() => setViewingReq(req)}
-                      className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                      className={cn(
+                        "transition-colors group cursor-pointer border-l-2",
+                        isNearingExpiry 
+                          ? "bg-amber-50/60 hover:bg-amber-100/60 border-l-amber-500" 
+                          : "hover:bg-slate-50/80 border-l-transparent"
+                      )}
                     >
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
@@ -192,12 +243,12 @@ export const RequisitionsPanel: React.FC = () => {
                       <td className="px-6 py-4">
                         {req.expiresAt ? (
                           <div className="flex items-center gap-1.5">
-                            <Clock size={12} className={isExpired ? "text-rose-500" : "text-slate-400"} />
+                            <Clock size={12} className={isExpired ? "text-rose-500" : isNearingExpiry ? "text-amber-600 animate-pulse" : "text-slate-400"} />
                             <span className={cn(
                               "text-[10px] font-mono font-bold uppercase tracking-tighter",
-                              isExpired ? "text-rose-500" : "text-slate-500"
+                              isExpired ? "text-rose-500" : isNearingExpiry ? "text-amber-650 font-extrabold" : "text-slate-500"
                             )}>
-                              {isExpired ? "EXPIRED" : `${Math.ceil((new Date(req.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60))}H REM`}
+                              {isExpired ? "EXPIRED" : `${Math.ceil(hoursRemaining)}H REM`}
                             </span>
                           </div>
                         ) : (
@@ -227,6 +278,21 @@ export const RequisitionsPanel: React.FC = () => {
                 })}
               </AnimatePresence>
             </tbody>
+            {filtered.length > 0 && (
+              <tfoot>
+                <tr className="bg-slate-100/50 border-t border-slate-200 font-bold text-slate-800">
+                  <td className="px-6 py-4 text-xs font-black uppercase tracking-wider" colSpan={2}>
+                    Sum Total of Filtered Requisitions
+                  </td>
+                  <td className="px-6 py-4 text-right font-mono text-xs text-rose-600 font-extrabold whitespace-nowrap">
+                    {formatCurrency(filtered.reduce((sum, r) => sum + r.amount, 0))}
+                  </td>
+                  <td colSpan={3} className="px-6 py-4 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    ({filtered.length} requests in view)
+                  </td>
+                </tr>
+              </tfoot>
+            )}
           </table>
           {filtered.length === 0 && (
             <div className="py-24 text-center">
@@ -275,14 +341,14 @@ export const RequisitionsPanel: React.FC = () => {
   );
 };
 
-interface DetailModalProps {
+export interface DetailModalProps {
   req: Requisition;
   onClose: () => void;
   onDelete: () => void;
   onGenerateReceipt: () => void;
 }
 
-const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClose, onDelete, onGenerateReceipt }) => {
+export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClose, onDelete, onGenerateReceipt }) => {
   const { currentUser, updateRequisitionStatus } = useRequisitions();
   const [decisionNote, setDecisionNote] = useState("");
   const [approvalCode, setApprovalCode] = useState("");
@@ -334,22 +400,22 @@ const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClose, onDe
         exit={{ scale: 0.95, opacity: 0 }}
         className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]"
       >
-        <div className="px-8 py-5 border-b border-slate-200 bg-white flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="px-4 md:px-8 py-4 md:py-5 border-b border-slate-200 bg-white flex items-center justify-between">
+          <div className="flex items-center gap-2 md:gap-3">
             <span className={cn(
-              "p-2 rounded-xl border",
+              "p-1.5 md:p-2 rounded-xl border",
               req.status === RequisitionStatus.APPROVED_L2 ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-primary/5 text-primary border-primary/10"
             )}>
-              <ShieldCheck size={20} />
+              <ShieldCheck size={18} className="md:w-5 md:h-5" />
             </span>
-            <div>
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-[0.1em]">{req.title}</h3>
-              <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">{req.id}</p>
+            <div className="min-w-0">
+              <h3 className="text-[12px] md:text-sm font-black text-slate-900 uppercase tracking-[0.1em] truncate">{req.title}</h3>
+              <p className="text-[8px] md:text-[10px] font-mono text-slate-400 uppercase tracking-widest">{req.id}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-              <XCircle size={20} className="text-slate-500" />
+            <button onClick={onClose} className="p-1.5 md:p-2 hover:bg-slate-100 rounded-full transition-colors">
+              <XCircle size={18} className="text-slate-500 md:w-5 md:h-5" />
             </button>
           </div>
         </div>
@@ -357,33 +423,33 @@ const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClose, onDe
         <div className="flex-1 overflow-y-auto">
           <div className="grid grid-cols-1 lg:grid-cols-3">
             {/* Left Content */}
-            <div className="lg:col-span-2 p-8 space-y-8 border-r border-slate-100">
+            <div className="lg:col-span-2 p-4 md:p-8 space-y-6 md:space-y-8 border-b lg:border-b-0 lg:border-r border-slate-100">
               <section className="space-y-4">
                 <div className="flex items-center gap-2">
                   <h4 className="text-[10px] font-black text-primary uppercase tracking-[0.2em]">Contextual Data</h4>
                 </div>
-                <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100 space-y-4 text-slate-600 text-sm font-medium leading-relaxed whitespace-pre-wrap">
+                <div className="bg-slate-50 rounded-2xl p-4 md:p-6 border border-slate-100 space-y-4 text-slate-600 text-xs md:text-sm font-medium leading-relaxed whitespace-pre-wrap">
                   {req.description}
                 </div>
               </section>
 
-              <div className="grid grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                 <section className="space-y-2">
                   <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Financial Breakdown</h4>
                   <div className="space-y-1">
-                    <p className="text-2xl font-bold text-slate-900 font-mono">{formatCurrency(req.amount)}</p>
-                    <p className="text-[11px] text-slate-500 italic font-medium">{req.amountWords}</p>
+                    <p className="text-xl md:text-2xl font-bold text-slate-900 font-mono">{formatCurrency(req.amount)}</p>
+                    <p className="text-[10px] md:text-[11px] text-slate-500 italic font-medium">{req.amountWords}</p>
                   </div>
                 </section>
                 <section className="space-y-2">
                   <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Node Ownership</h4>
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                    <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm md:text-base shrink-0">
                       {req.requesterName.charAt(0)}
                     </div>
-                    <div>
-                      <p className="text-sm font-bold text-slate-900">{req.requesterName}</p>
-                      <p className="text-[10px] text-slate-500 uppercase tracking-wider">{req.groupName}</p>
+                    <div className="min-w-0">
+                      <p className="text-xs md:text-sm font-bold text-slate-900 truncate">{req.requesterName}</p>
+                      <p className="text-[9px] md:text-[10px] text-slate-500 uppercase tracking-wider truncate">{req.groupName}</p>
                     </div>
                   </div>
                 </section>
@@ -459,7 +525,7 @@ const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClose, onDe
                         CANCEL
                       </button>
                       <button 
-                        disabled={loading || (showDecisionForm === "APPROVE" && !approvalCode) || (showDecisionForm === "REJECT" && !decisionNote)}
+                        disabled={loading || (showDecisionForm === "APPROVE" && !approvalCode) || (showDecisionForm === "REJECT" && !decisionNote.trim())}
                         onClick={() => handleDecision(showDecisionForm)}
                         className={cn(
                           "btn-primary px-8 flex items-center gap-2",
@@ -541,65 +607,75 @@ const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClose, onDe
           </div>
         </div>
 
-        <div className="px-8 py-6 border-t border-slate-100 bg-white flex justify-between items-center">
-          <div className="flex items-center gap-2">
+        <div className="px-4 md:px-8 py-4 md:py-6 border-t border-slate-100 bg-white flex flex-col md:flex-row gap-4 justify-between items-center">
+          <div className="flex items-center gap-3 md:gap-2 w-full md:w-auto justify-center md:justify-start">
             <button 
               onClick={() => {
                 onDelete();
                 onClose();
               }}
-              className="p-2.5 hover:bg-rose-50 text-slate-400 hover:text-rose-500 rounded-xl transition-all"
+              className="p-3 md:p-2.5 hover:bg-rose-50 text-slate-400 hover:text-rose-500 rounded-xl transition-all border border-slate-100 md:border-0"
               title="Delete Document"
             >
               <Trash2 size={18} />
             </button>
             <button 
               onClick={onGenerateReceipt}
-              className="p-2.5 hover:bg-slate-100 text-slate-400 hover:text-primary rounded-xl transition-all" 
+              className="p-3 md:p-2.5 hover:bg-slate-100 text-slate-400 hover:text-primary rounded-xl transition-all border border-slate-100 md:border-0" 
               title="Generate Receipt Template"
             >
               <FileText size={18} />
             </button>
-            <button className="p-2.5 hover:bg-slate-100 text-slate-400 rounded-xl transition-all" title="Print Details">
+            <button className="p-3 md:p-2.5 hover:bg-slate-100 text-slate-400 rounded-xl transition-all border border-slate-100 md:border-0" title="Print Details">
               <Printer size={18} />
             </button>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 w-full md:w-auto">
              <button 
               onClick={onClose}
-              className="px-8 py-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-xl text-xs font-bold hover:bg-slate-100 transition-all cursor-pointer"
+              className="flex-1 md:flex-none px-6 md:px-8 py-3 md:py-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-xl text-[10px] md:text-xs font-bold hover:bg-slate-100 transition-all cursor-pointer uppercase tracking-widest"
             >
-              EXIT VIEW
+              EXIT
             </button>
             
             {!showDecisionForm && canAct() && (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-1 md:flex-none items-center gap-2">
                 <button 
                   onClick={() => setShowDecisionForm("REJECT")}
-                  className="px-6 py-2.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl text-xs font-bold hover:bg-rose-100 transition-all cursor-pointer"
+                  className="flex-1 md:flex-none px-4 md:px-6 py-3 md:py-2.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl text-[10px] md:text-xs font-bold hover:bg-rose-100 transition-all cursor-pointer uppercase tracking-widest"
                 >
                   REJECT
                 </button>
                 {req.status === RequisitionStatus.SUBMITTED && (
-                   <button 
-                    onClick={() => setShowDecisionForm("ESCALATE")}
-                    className="px-6 py-2.5 bg-amber-50 text-amber-600 border border-amber-100 rounded-xl text-xs font-bold hover:bg-amber-100 transition-all cursor-pointer"
-                  >
-                    ESCALATE
-                  </button>
+                  <>
+                    <button 
+                      onClick={() => setShowDecisionForm("ESCALATE")}
+                      className="flex-1 md:flex-none px-4 md:px-6 py-3 md:py-2.5 bg-amber-50 text-amber-600 border border-amber-100 rounded-xl text-[10px] md:text-xs font-bold hover:bg-amber-100 transition-all cursor-pointer uppercase tracking-widest"
+                    >
+                      ESCALATE
+                    </button>
+                    <button 
+                      onClick={() => setShowDecisionForm("APPROVE")}
+                      className="flex-1 md:flex-none px-4 md:px-6 py-3 md:py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100"
+                    >
+                      APPROVE
+                    </button>
+                  </>
                 )}
-                <button 
-                  onClick={() => setShowDecisionForm("APPROVE")}
-                  className="btn-primary"
-                >
-                  AUTHORIZE APPROVAL
-                </button>
+                {(req.status === RequisitionStatus.APPROVED_L1 || req.status === RequisitionStatus.ESCALATED) && (
+                   <button 
+                     onClick={() => setShowDecisionForm("APPROVE")}
+                     className="flex-1 md:flex-none px-4 md:px-6 py-3 md:py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100"
+                   >
+                     APPROVE L2
+                   </button>
+                )}
               </div>
             )}
 
             {req.status === RequisitionStatus.APPROVED_L2 && (
-               <button className="btn-primary bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200">
-                PROCEED TO DISBURSEMENT
+               <button className="flex-1 md:flex-none px-6 py-3 md:py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100">
+                DISBURSE FUNDS
               </button>
             )}
           </div>

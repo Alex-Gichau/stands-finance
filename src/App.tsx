@@ -8,12 +8,15 @@ import { RequisitionProvider, useRequisitions } from "./contexts/RequisitionCont
 import { cn } from "./lib/utils";
 import { Sidebar } from "./components/Sidebar";
 import Dashboard from "./components/Dashboard";
-import { RequisitionsPanel } from "./components/RequisitionsPanel";
+import { RequisitionsPanel, RequisitionDetailModal } from "./components/RequisitionsPanel";
+import { NotificationHub } from "./components/NotificationHub";
+import { ReceiptTemplateGenerator } from "./components/ReceiptTemplateGenerator";
 import { ApprovalsPanel } from "./components/ApprovalsPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { UsersPanel } from "./components/UsersPanel";
 import { WaitingRoom } from "./components/WaitingRoom";
 import { ReportsPanel } from "./components/ReportsPanel";
+import { FinanceLedgerPanel } from "./components/FinanceLedgerPanel";
 import { UserRole } from "./types";
 import { 
   Bell, 
@@ -40,6 +43,8 @@ function AppContent() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [showReportReminder, setShowReportReminder] = useState(true);
   const [reportState, setReportState] = useState<"IDLE" | "GENERATING" | "SUCCESS">("IDLE");
+  const [selectedReqForNoticeDetail, setSelectedReqForNoticeDetail] = useState<any | null>(null);
+  const [isGeneratingReceiptFromHub, setIsGeneratingReceiptFromHub] = useState<any | null>(null);
   
   const { 
     currentUser, 
@@ -51,10 +56,13 @@ function AppContent() {
     users,
     requisitions,
     approveUser,
+    deleteRequisition,
     globalSearchTerm,
     setGlobalSearchTerm,
     activeToasts,
-    removeToast
+    removeToast,
+    readNoticeIds,
+    toggleNoticeRead
   } = useRequisitions();
 
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
@@ -126,8 +134,8 @@ function AppContent() {
     e.preventDefault();
     setError("");
     
-    if (authMode === "EMAIL_SIGNUP" && password.length < 8) {
-      setError("Password must be at least 8 characters long.");
+    if (authMode === "EMAIL_SIGNUP" && (password.length < 8 || password.length > 15)) {
+      setError("Password must be between 8 and 15 characters long.");
       return;
     }
 
@@ -272,15 +280,16 @@ function AppContent() {
 
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">
-                  {authMode === "EMAIL_SIGNUP" ? "SECURE_CREDENTIAL" : "AUTH_SECURITY_CODE"}
+                  {authMode === "EMAIL_SIGNUP" ? "SECURE_CREDENTIAL (8-15 chars)" : "AUTH_SECURITY_CODE"}
                 </label>
                 <input 
                   type="password"
                   required
+                  maxLength={15}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-6 py-4 text-white text-sm font-bold focus:border-primary/50 outline-none transition-all placeholder:text-slate-700 font-mono"
-                  placeholder="••••••••"
+                  placeholder={authMode === "EMAIL_SIGNUP" ? "8 to 15 characters" : "••••••••"}
                 />
               </div>
 
@@ -343,7 +352,7 @@ function AppContent() {
 
   // Report compilation state
 
-  // Compile notifications listing
+  // Compiler notifications listing
   const notificationItems: Array<{
     id: string;
     type: string;
@@ -351,6 +360,7 @@ function AppContent() {
     message: string;
     actionLabel: string;
     action: () => void | Promise<void>;
+    requisition?: any;
   }> = [];
 
   // 1. Members awaiting approval (only for ADMIN)
@@ -376,6 +386,7 @@ function AppContent() {
         title: "New Requisition Received",
         message: `"${r.title}" (${r.groupName}) for KES ${r.amount.toLocaleString()} is pending decision.`,
         actionLabel: "Review Requisitions",
+        requisition: r,
         action: () => {
           setCurrentView("approvals");
           setIsNotificationsOpen(false);
@@ -392,12 +403,31 @@ function AppContent() {
       title: "Requisition Approved",
       message: `"${r.title}" has been authorized to ${r.status.replace("_", " ")} for KES ${r.amount.toLocaleString()}.`,
       actionLabel: "View Ledger",
+      requisition: r,
       action: () => {
         setCurrentView("requisitions");
         setIsNotificationsOpen(false);
       }
     });
   });
+
+  // 3.5. Disbursements needed (specifically for FINANCE and ADMIN roles)
+  if (currentUser?.role === UserRole.FINANCE || currentUser?.role === UserRole.ADMIN) {
+    requisitions.filter(r => r.status === "APPROVED_L2").forEach(r => {
+      notificationItems.push({
+        id: `finance-disb-req-${r.id}`,
+        type: "FINANCE_DISBURSEMENT_REQUIRED",
+        title: "Disbursement Action Required",
+        message: `Requisition "${r.title}" (${r.groupName}) is L2 APPROVED and ready for immediate payout of KES ${r.amount.toLocaleString()}.`,
+        actionLabel: "Disburse Ledger",
+        requisition: r,
+        action: () => {
+          setCurrentView("finance");
+          setIsNotificationsOpen(false);
+        }
+      });
+    });
+  }
 
   // 4. Report generation reminder
   if (showReportReminder) {
@@ -423,27 +453,31 @@ function AppContent() {
   const renderView = () => {
     switch (currentView) {
       case "dashboard": return <Dashboard />;
+      case "notifications": return <NotificationHub onSelectRequisition={(req) => setSelectedReqForNoticeDetail(req)} />;
       case "requisitions": return <RequisitionsPanel />;
       case "approvals": return <ApprovalsPanel />;
       case "settings": return <SettingsPanel />;
       case "users": return <UsersPanel />;
       case "reports": return <ReportsPanel />;
+      case "finance": return <FinanceLedgerPanel />;
       default: return <Dashboard />;
     }
   };
 
+  const unreadNotificationsCount = notificationItems.filter(item => !readNoticeIds.includes(item.id)).length;
+
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden font-sans">
-      <Sidebar currentView={currentView} onViewChange={setCurrentView} />
+      <Sidebar currentView={currentView} onViewChange={setCurrentView} notificationsCount={unreadNotificationsCount} />
       
       <main className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0">
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 select-none">
           <div>
-            <h1 className="text-lg font-bold text-slate-900 leading-tight">
-              {currentView.charAt(0).toUpperCase() + currentView.slice(1)} View: {currentUser.group}
+            <h1 className="text-xs md:text-lg font-bold text-slate-900 leading-tight truncate max-w-[150px] md:max-w-none">
+              {currentView.charAt(0).toUpperCase() + currentView.slice(1)}: {currentUser.group}
             </h1>
-            <p className="text-xs text-slate-500">System synchronized • {new Date().toLocaleTimeString()}</p>
+            <p className="text-[10px] text-slate-500 hidden sm:block">System synchronized • {new Date().toLocaleTimeString()}</p>
           </div>
 
           <div className="flex-1 max-w-md mx-8 hidden md:block" ref={searchRef}>
@@ -584,7 +618,19 @@ function AppContent() {
                         </div>
                       ) : (
                         notificationItems.map(item => (
-                          <div key={item.id} className="p-3.5 hover:bg-slate-50 transition-colors space-y-2 text-xs">
+                          <div 
+                            key={item.id} 
+                            onClick={() => {
+                              if (item.requisition) {
+                                setSelectedReqForNoticeDetail(item.requisition);
+                                setIsNotificationsOpen(false);
+                              }
+                            }}
+                            className={cn(
+                              "p-3.5 hover:bg-slate-50 transition-all space-y-2 text-xs select-none",
+                              item.requisition ? "cursor-pointer border-l-2 border-indigo-500 hover:bg-slate-50/80" : ""
+                            )}
+                          >
                             <div className="flex items-start justify-between">
                               <span className={cn(
                                 "font-bold text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded",
@@ -595,10 +641,16 @@ function AppContent() {
                               )}>
                                 {item.title}
                               </span>
+                              {item.requisition && (
+                                <span className="text-[8px] font-black text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded">
+                                  OPEN DETAIL
+                                </span>
+                              )}
                             </div>
                             <p className="text-slate-600 leading-snug font-medium text-[11px]">{item.message}</p>
                             <button 
-                              onClick={async () => {
+                              onClick={async (e) => {
+                                e.stopPropagation();
                                 await item.action();
                               }}
                               className="w-full mt-1 py-1.5 text-center bg-slate-100 hover:bg-indigo-600 hover:text-white rounded text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer"
@@ -624,7 +676,7 @@ function AppContent() {
         </header>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-6 relative">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 relative">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentView}
@@ -633,13 +685,13 @@ function AppContent() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.15 }}
             >
-              {renderView()}
+               {renderView()}
             </motion.div>
           </AnimatePresence>
         </div>
 
         {/* Footer Context Bar */}
-        <footer className="h-10 bg-white border-t border-slate-100 px-6 flex items-center justify-between text-[10px] font-medium text-slate-500 shrink-0">
+        <footer className="h-10 bg-white border-t border-slate-100 px-6 hidden md:flex items-center justify-between text-[10px] font-medium text-slate-500 shrink-0">
           <div className="flex gap-4">
             <span className="flex items-center gap-1 uppercase tracking-tighter"><span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span> STABILITY: 100%</span>
             <span className="flex items-center gap-1 uppercase tracking-tighter font-mono italic"><span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> ID: #{currentUser.id.toUpperCase()}</span>
@@ -704,6 +756,27 @@ function AppContent() {
           ))}
         </AnimatePresence>
       </div>
+
+      {selectedReqForNoticeDetail && (
+        <RequisitionDetailModal 
+          req={selectedReqForNoticeDetail}
+          onClose={() => setSelectedReqForNoticeDetail(null)}
+          onDelete={async () => {
+            if (selectedReqForNoticeDetail) {
+              await deleteRequisition(selectedReqForNoticeDetail.id);
+              setSelectedReqForNoticeDetail(null);
+            }
+          }}
+          onGenerateReceipt={() => setIsGeneratingReceiptFromHub(selectedReqForNoticeDetail)}
+        />
+      )}
+
+      {isGeneratingReceiptFromHub && (
+        <ReceiptTemplateGenerator 
+          req={isGeneratingReceiptFromHub}
+          onClose={() => setIsGeneratingReceiptFromHub(null)}
+        />
+      )}
     </div>
   );
 }

@@ -16,7 +16,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
-  Zap
+  Zap,
+  Bell
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { UserRole } from "../types";
@@ -26,9 +27,10 @@ import { motion, AnimatePresence } from "motion/react";
 interface SidebarProps {
   currentView: string;
   onViewChange: (view: string) => void;
+  notificationsCount?: number;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, notificationsCount = 0 }) => {
   const { currentUser, logout } = useRequisitions();
   
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
@@ -53,6 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
 
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, roles: [UserRole.CHURCH_GROUP, UserRole.APPROVER_L1, UserRole.APPROVER_L2, UserRole.FINANCE, UserRole.ADMIN] },
+    { id: "notifications", label: "Notification", icon: Bell, roles: [UserRole.CHURCH_GROUP, UserRole.APPROVER_L1, UserRole.APPROVER_L2, UserRole.FINANCE, UserRole.ADMIN] },
     { id: "requisitions", label: "Requisitions", icon: FileText, roles: [UserRole.CHURCH_GROUP, UserRole.ADMIN] },
     { id: "approvals", label: "Authorization Hub", icon: CheckCircle, roles: [UserRole.APPROVER_L1, UserRole.APPROVER_L2, UserRole.ADMIN] },
     { id: "finance", label: "Finance Ledger", icon: Banknote, roles: [UserRole.FINANCE, UserRole.ADMIN] },
@@ -66,10 +69,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
   );
 
   return (
-    <div className={cn(
-      "flex flex-col h-full bg-slate-900 border-r border-slate-800 transition-all duration-500 relative z-30 shadow-2xl",
-      isCollapsed ? "w-20" : "w-64"
-    )}>
+    <>
+      <div className={cn(
+        "hidden md:flex flex-col h-full bg-slate-900 border-r border-slate-800 transition-all duration-500 relative z-30 shadow-2xl shrink-0",
+        isCollapsed ? "w-20" : "w-64"
+      )}>
       {/* Brand Header */}
       <div className="h-20 flex items-center px-6 border-b border-white/5 relative overflow-hidden">
         <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
@@ -137,6 +141,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
             >
               <Icon size={18} className={cn("shrink-0", isActive ? "text-white" : "text-slate-500 group-hover:text-slate-300")} />
               {!isCollapsed && <span>{item.label}</span>}
+              {!isCollapsed && item.id === "notifications" && notificationsCount > 0 && (
+                <span className="ml-auto bg-rose-500 text-white font-black text-[9px] px-2 py-0.5 rounded-full ring-2 ring-slate-900 leading-none">
+                  {notificationsCount}
+                </span>
+              )}
+              {isCollapsed && item.id === "notifications" && notificationsCount > 0 && (
+                <span className="absolute top-1 right-1 bg-rose-500 text-white font-black text-[8px] w-4.5 h-4.5 rounded-full flex items-center justify-center ring-2 ring-slate-900">
+                  {notificationsCount}
+                </span>
+              )}
               
               {isActive && !isCollapsed && (
                 <motion.div 
@@ -192,6 +206,42 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
         )}
       </div>
     </div>
+
+    {/* Mobile Bottom Navigation Bar */}
+    <div className="fixed bottom-0 left-0 right-0 h-16 bg-slate-950 border-t border-slate-800 flex md:hidden items-center justify-between px-2 z-40 shadow-2xl">
+      <div className="flex items-center gap-1 overflow-x-auto no-scrollbar w-full py-1">
+        {filteredItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = currentView === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onViewChange(item.id)}
+              className={cn(
+                "flex flex-col items-center justify-center min-w-[64px] flex-1 h-12 rounded-xl transition-all relative shrink-0 select-none",
+                isActive 
+                  ? "bg-primary text-white font-black scale-105" 
+                  : "text-slate-400 hover:text-slate-200 font-bold"
+              )}
+            >
+              <div className="relative">
+                <Icon size={15} />
+                {item.id === "notifications" && notificationsCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white font-black text-[8px] w-4 h-4 rounded-full flex items-center justify-center ring-2 ring-slate-950 leading-none">
+                    {notificationsCount}
+                  </span>
+                )}
+              </div>
+              <span className="text-[7.5px] uppercase tracking-wider mt-1 truncate max-w-[58px] font-sans">
+                {item.label.split(" ")[0]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  </>
   );
 };
 

@@ -3,21 +3,95 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useRequisitions } from "../contexts/RequisitionContext";
-import { RequisitionStatus, UserRole } from "../types";
+import { RequisitionStatus, UserRole, Requisition } from "../types";
 import { formatCurrency, cn } from "../lib/utils";
-import { AlertTriangle, TrendingUp, Layout, Activity, ClipboardList, CheckCircle, Wallet, Users } from "lucide-react";
-import { motion } from "motion/react";
+import { AlertTriangle, TrendingUp, Layout, Activity, ClipboardList, CheckCircle, Wallet, Users, X, Eye, Repeat, Clock, ArrowUpRight, Search, Trash2, Printer, FileText, ShieldCheck, CalendarRange } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { RequisitionDetailModal } from "./RequisitionsPanel";
+import { ReceiptTemplateGenerator } from "./ReceiptTemplateGenerator";
 
 const Dashboard: React.FC = () => {
-  const { requisitions, projects, alerts, currentUser, seedAllEcosystemData } = useRequisitions();
+  const { requisitions, projects, alerts, currentUser, seedAllEcosystemData, deleteRequisition, systemLogs } = useRequisitions();
 
-  const [seeding, setSeeding] = React.useState(false);
+  const [seeding, setSeeding] = useState(false);
+  const [selectedRequisition, setSelectedRequisition] = useState<Requisition | null>(null);
+  const [isGeneratingReceipt, setIsGeneratingReceipt] = useState<Requisition | null>(null);
+  const [selectedGroupDetails, setSelectedGroupDetails] = useState<any | null>(null);
 
   const recentRequisitions = requisitions.slice(0, 5);
-  const activeAlerts = alerts.filter(a => !a.isRead);
+  const activeAlerts = alerts.filter(a => {
+    if (a.isRead) return false;
+    if (a.targetRole && currentUser?.role !== a.targetRole && currentUser?.role !== UserRole.ADMIN) return false;
+    return true;
+  });
+
+  // Unified timeline derived from unread alerts and system logs
+  const combinedTimeline = useMemo(() => {
+    const items: Array<{
+      id: string;
+      message: string;
+      timestamp: string;
+      type: "ALERT" | "LOG";
+      severity?: "LOW" | "MEDIUM" | "HIGH";
+      action?: string;
+    }> = [];
+
+    // Filter active alerts
+    activeAlerts.forEach(a => {
+      items.push({
+        id: a.id,
+        message: a.message,
+        timestamp: a.timestamp,
+        type: "ALERT",
+        severity: a.severity
+      });
+    });
+
+    // Share system logs
+    systemLogs.forEach(l => {
+      items.push({
+        id: l.id,
+        message: `${l.details}`,
+        timestamp: l.timestamp,
+        type: "LOG",
+        action: l.action
+      });
+    });
+
+    // Sort descending by timestamp, take top 15
+    return items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 15);
+  }, [alerts, systemLogs]);
+
+  const findRequisitionForLog = (text: string) => {
+    if (!text) return null;
+    const cleanText = text.toLowerCase();
+
+    // 1. Try matching by ID directly
+    const idMatch = requisitions.find(r => r.id && cleanText.includes(r.id.toLowerCase()));
+    if (idMatch) return idMatch;
+
+    // 2. Try quoted matches to avoid false positives
+    const quoted = text.match(/['"`]([^'"`]+)['"`]/);
+    if (quoted && quoted[1]) {
+      const cleanQuote = quoted[1].trim().toLowerCase();
+      const match = requisitions.find(r => r.title && r.title.toLowerCase() === cleanQuote);
+      if (match) return match;
+    }
+
+    // 3. Substring match
+    const sortedReqs = [...requisitions].sort((a, b) => b.title.length - a.title.length);
+    return sortedReqs.find(r => r.title && r.title.length > 3 && cleanText.includes(r.title.toLowerCase())) || null;
+  };
+
+  const handleTimelineItemClick = (text: string) => {
+    const matched = findRequisitionForLog(text);
+    if (matched) {
+      setSelectedRequisition(matched);
+    }
+  };
 
   const stats = useMemo(() => {
     const totalValue = requisitions.reduce((acc, r) => acc + r.amount, 0);
@@ -34,6 +108,40 @@ const Dashboard: React.FC = () => {
   }, [requisitions]);
 
   const userGroupProject = projects.find(p => p.groupId === currentUser?.group);
+
+  const requestedPerGroup = useMemo(() => {
+    const groupTotals: Record<string, { groupId: string, groupName: string, count: number, totalAmount: number, pendingCount: number, disbursedAmount: number, requisitions: Requisition[] }> = {};
+    
+    requisitions.forEach(req => {
+      const gid = req.groupId || "OTHER";
+      const gname = req.groupName || "Other / Non-affine";
+      
+      if (!groupTotals[gid]) {
+        groupTotals[gid] = {
+          groupId: gid,
+          groupName: gname,
+          count: 0,
+          totalAmount: 0,
+          pendingCount: 0,
+          disbursedAmount: 0,
+          requisitions: []
+        };
+      }
+      
+      groupTotals[gid].count += 1;
+      groupTotals[gid].totalAmount += req.amount;
+      groupTotals[gid].requisitions.push(req);
+      
+      if (req.status === RequisitionStatus.SUBMITTED || req.status === RequisitionStatus.APPROVED_L1) {
+        groupTotals[gid].pendingCount += 1;
+      }
+      if (req.status === RequisitionStatus.DISBURSED) {
+        groupTotals[gid].disbursedAmount += req.amount;
+      }
+    });
+
+    return Object.values(groupTotals).sort((a, b) => b.totalAmount - a.totalAmount);
+  }, [requisitions]);
 
   if (requisitions.length === 0 && currentUser?.role === UserRole.ADMIN) {
     return (
@@ -100,22 +208,22 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* Top Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         {stats.map((stat, i) => (
           <motion.div
             key={i}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group"
+            className="bg-white p-3 md:p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group"
           >
             <div className={cn("absolute right-[-10px] top-[-10px] opacity-10 group-hover:scale-125 transition-transform duration-500", stat.color)}>
-              <stat.icon size={80} />
+              <stat.icon size={60} className="md:w-[80px] md:h-[80px]" />
             </div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{stat.label}</div>
-            <div className="text-2xl font-bold text-slate-900 mb-1">{stat.value}</div>
-            <div className={cn("text-[9px] font-bold px-2 py-0.5 rounded-full inline-block", stat.bg, stat.color)}>
-              Real-time Sync
+            <div className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 md:mb-2">{stat.label}</div>
+            <div className="text-sm md:text-2xl font-bold text-slate-900 mb-1">{stat.value}</div>
+            <div className={cn("text-[7px] md:text-[9px] font-bold px-2 py-0.5 rounded-full inline-block", stat.bg, stat.color)}>
+              Live Sync
             </div>
           </motion.div>
         ))}
@@ -126,23 +234,23 @@ const Dashboard: React.FC = () => {
         <motion.div 
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-primary text-white rounded-2xl p-8 shadow-xl shadow-primary/20 relative overflow-hidden"
+          className="bg-primary text-white rounded-2xl p-4 md:p-8 shadow-xl shadow-primary/20 relative overflow-hidden"
         >
           <div className="absolute right-0 top-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl" />
-          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6 md:gap-8">
             <div className="space-y-2">
-              <h2 className="text-xs font-black uppercase tracking-[0.2em] opacity-70">Your Ministry Group Ledger</h2>
-              <h3 className="text-3xl font-bold">{userGroupProject.name}</h3>
-              <p className="opacity-80 text-sm max-w-md">Live fiscal monitoring for your specific project allocation and spend patterns.</p>
+              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] opacity-70">Your Ministry Group Ledger</h2>
+              <h3 className="text-xl md:text-3xl font-bold">{userGroupProject.name}</h3>
+              <p className="opacity-80 text-xs md:text-sm max-w-md">Live fiscal monitoring for your specific project allocation and spend patterns.</p>
             </div>
-            <div className="flex-1 max-w-lg space-y-4">
+            <div className="flex-1 w-full md:max-w-lg space-y-4">
               <div className="flex justify-between items-end mb-1">
-                <span className="text-sm font-bold opacity-80 uppercase tracking-wider">Budget Utilization</span>
-                <span className="text-2xl font-bold">
+                <span className="text-[10px] md:text-sm font-bold opacity-80 uppercase tracking-wider">Utilization</span>
+                <span className="text-lg md:text-2xl font-bold">
                   {((userGroupProject.spentAmount / userGroupProject.allocatedBudget) * 100).toFixed(1)}%
                 </span>
               </div>
-              <div className="h-4 bg-white/20 rounded-full overflow-hidden border border-white/10">
+              <div className="h-3 md:h-4 bg-white/20 rounded-full overflow-hidden border border-white/10">
                 <motion.div 
                   initial={{ width: 0 }}
                   animate={{ width: `${(userGroupProject.spentAmount / userGroupProject.allocatedBudget) * 100}%` }}
@@ -153,9 +261,9 @@ const Dashboard: React.FC = () => {
                   )}
                 />
               </div>
-              <div className="flex justify-between text-xs font-mono opacity-80">
+              <div className="flex justify-between text-[8px] md:text-xs font-mono opacity-80">
                 <span>{formatCurrency(userGroupProject.spentAmount)} SPENT</span>
-                <span>{formatCurrency(userGroupProject.allocatedBudget)} ALLOCATED</span>
+                <span>{formatCurrency(userGroupProject.allocatedBudget)} TOTAL</span>
               </div>
             </div>
           </div>
@@ -166,13 +274,13 @@ const Dashboard: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Weekly Volume Chart */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col shadow-sm">
-          <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
+          <div className="px-4 md:px-6 py-4 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
             <div className="flex items-center gap-2">
               <TrendingUp size={16} className="text-primary" />
-              <h2 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Financial Node Velocity</h2>
+              <h2 className="text-[10px] md:text-xs font-bold text-slate-800 uppercase tracking-widest">Node Velocity</h2>
             </div>
           </div>
-          <div className="p-6 h-[300px]">
+          <div className="p-2 md:p-6 h-[250px] md:h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={[
                 { name: 'Mon', value: 40000 },
@@ -224,22 +332,58 @@ const Dashboard: React.FC = () => {
 
         {/* Activity Feed */}
         <div className="bg-white rounded-2xl border border-slate-200 flex flex-col shadow-sm">
-          <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50 flex items-center gap-2">
-            <Activity size={16} className="text-primary" />
-            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Digital Audit Log</h2>
+          <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Activity size={16} className="text-indigo-600" />
+              <h2 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Digital Audit Trail</h2>
+            </div>
+            <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest">SYSTEM_LIVE</span>
           </div>
           <div className="p-4 space-y-4 flex-1 overflow-y-auto max-h-[300px] scrollbar-hide">
-            {activeAlerts.length > 0 ? (
-              activeAlerts.map((alert) => (
-                <div key={alert.id} className="relative pl-6 pb-4 border-l-2 border-slate-100 last:pb-0">
-                  <div className={cn(
-                    "absolute left-[-9px] top-0 w-4 h-4 rounded-full border-2 border-white",
-                    alert.severity === "HIGH" ? "bg-rose-500" : "bg-primary"
-                  )} />
-                  <p className="text-[11px] font-bold text-slate-800 leading-snug">{alert.message}</p>
-                  <p className="text-[9px] text-slate-400 mt-1 uppercase font-mono">{new Date(alert.timestamp).toLocaleTimeString()}</p>
-                </div>
-              ))
+            {combinedTimeline.length > 0 ? (
+              combinedTimeline.map((item, idx) => {
+                const associatedRequisition = findRequisitionForLog(item.message);
+                
+                return (
+                  <div 
+                    key={item.id || idx} 
+                    onClick={() => {
+                      if (associatedRequisition) {
+                        setSelectedRequisition(associatedRequisition);
+                      }
+                    }}
+                    className={cn(
+                      "relative pl-6 pb-4 border-l-2 border-slate-100 last:pb-0 group transition-colors",
+                      associatedRequisition ? "hover:bg-slate-50 cursor-pointer p-1.5 -ml-1.5 rounded-r-xl" : ""
+                    )}
+                  >
+                    <div className={cn(
+                      "absolute left-[-5px] top-2 w-2 h-2 rounded-full border border-white ring-4 ring-white",
+                      item.type === "ALERT" 
+                        ? (item.severity === "HIGH" ? "bg-rose-500" : "bg-amber-500")
+                        : (item.action?.includes("CREATE") ? "bg-blue-500" : item.action?.includes("APPROVE") ? "bg-emerald-500" : "bg-slate-400")
+                    )} />
+                    
+                    <p className="text-[11px] font-bold text-slate-800 leading-snug group-hover:text-indigo-950 transition-colors">
+                      {item.message}
+                    </p>
+                    
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[9px] text-slate-400 font-mono uppercase">
+                        {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <span className={cn(
+                        "px-1 py-0.5 rounded text-[8px] font-black tracking-widest uppercase border",
+                        item.type === "ALERT" ? "bg-rose-50/50 text-rose-600 border-rose-100" : "bg-slate-50 text-slate-500 border-slate-200"
+                      )}>
+                        {item.type === "ALERT" ? `System Alert (${item.severity})` : item.action?.replace(/_/g, " ") || "AUDIT"}
+                      </span>
+                      
+                      {/* Inspect Items badge removed as requested */}
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-slate-300 py-10 opacity-50">
                 <Activity size={32} />
@@ -247,6 +391,91 @@ const Dashboard: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Group Request Totals Ledger Table */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
+          <div>
+            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
+              <Users size={16} className="text-indigo-600" />
+              Cumulative Ministry Group Requests
+            </h2>
+            <p className="text-[10px] text-slate-400 mt-1 uppercase font-mono">Consolidated Financial Exposure Per Affiliated Body</p>
+          </div>
+          <span className="text-[10px] font-mono text-slate-400">GROUPS: {requestedPerGroup.length} AFFILIATES</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-slate-50/30">
+                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Affiliated Ministry Group</th>
+                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Requests Count</th>
+                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Pending Approvals</th>
+                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Disbursed (KES)</th>
+                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Total Requested (KES)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {requestedPerGroup.map((val, i) => (
+                <tr 
+                  key={i} 
+                  onClick={() => setSelectedGroupDetails(val)}
+                  className="hover:bg-indigo-50/20 transition-all cursor-pointer group"
+                >
+                  <td className="px-6 py-4">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800 text-sm uppercase group-hover:text-indigo-600 transition-colors">{val.groupName}</span>
+                      <span className="text-[9px] text-indigo-600 bg-indigo-50 opacity-0 group-hover:opacity-100 px-2 py-0.5 rounded font-black tracking-widest uppercase transition-all flex items-center gap-1 font-sans">
+                        <Search size={10} /> DRILL DOWN ({val.count})
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-mono font-bold bg-slate-100 text-slate-700">
+                      {val.count} requests
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <span className={cn(
+                      "inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-mono font-bold",
+                      val.pendingCount > 0 ? "bg-amber-50 text-amber-600" : "bg-slate-50 text-slate-400"
+                    )}>
+                      {val.pendingCount} pending
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right font-mono text-slate-600 text-sm">
+                    {formatCurrency(val.disbursedAmount)}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <span className="font-mono font-black text-slate-900 text-sm">
+                      {formatCurrency(val.totalAmount)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {requestedPerGroup.length > 0 && (
+                <tr className="bg-slate-50 border-t border-slate-200 font-bold">
+                  <td className="px-6 py-4 text-xs font-black uppercase text-slate-800">
+                    Grand Total
+                  </td>
+                  <td className="px-6 py-4 text-center font-mono text-xs text-slate-500">
+                    {requestedPerGroup.reduce((acc, x) => acc + x.count, 0)} nodes
+                  </td>
+                  <td className="px-6 py-4 text-center font-mono text-xs text-slate-500">
+                    {requestedPerGroup.reduce((acc, x) => acc + x.pendingCount, 0)} pending
+                  </td>
+                  <td className="px-6 py-4 text-right font-mono text-xs text-slate-600 font-bold">
+                    {formatCurrency(requestedPerGroup.reduce((acc, x) => acc + x.disbursedAmount, 0))}
+                  </td>
+                  <td className="px-6 py-4 text-right font-mono text-xs text-rose-600 font-extrabold">
+                    {formatCurrency(requestedPerGroup.reduce((acc, x) => acc + x.totalAmount, 0))}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -273,11 +502,19 @@ const Dashboard: React.FC = () => {
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.05 }}
-                  className="hover:bg-slate-50 transition-colors"
+                  onClick={() => setSelectedRequisition(req)}
+                  className="hover:bg-indigo-50/20 active:bg-indigo-50/40 transition-all cursor-pointer group"
                 >
                   <td className="px-6 py-4">
-                    <div className="font-bold text-slate-800 text-sm">{req.title}</div>
-                    <div className="text-[10px] text-slate-400 font-mono">#{req.id.slice(-8).toUpperCase()}</div>
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <div className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors">{req.title}</div>
+                        <div className="text-[10px] text-slate-400 font-mono">#{req.id.slice(-8).toUpperCase()}</div>
+                      </div>
+                      <span className="text-[9px] text-indigo-600 bg-indigo-50 opacity-0 group-hover:opacity-100 px-2 py-0.5 rounded font-black tracking-widest uppercase transition-all">
+                        INSPECT
+                      </span>
+                    </div>
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-[10px] font-bold px-2 py-1 bg-slate-100 text-slate-600 rounded uppercase tracking-wider">
@@ -302,6 +539,158 @@ const Dashboard: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Requisition Detail View Modal */}
+      <AnimatePresence>
+        {selectedRequisition && (
+          <RequisitionDetailModal 
+            req={selectedRequisition} 
+            onClose={() => setSelectedRequisition(null)} 
+            onDelete={() => {
+              deleteRequisition(selectedRequisition.id);
+              setSelectedRequisition(null);
+            }}
+            onGenerateReceipt={() => {
+              setIsGeneratingReceipt(selectedRequisition);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Receipt Generator Modal */}
+      <AnimatePresence>
+        {isGeneratingReceipt && (
+          <ReceiptTemplateGenerator 
+            req={isGeneratingReceipt} 
+            onClose={() => setIsGeneratingReceipt(null)} 
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Ministry Group requests detailed list Modal */}
+      <AnimatePresence>
+        {selectedGroupDetails && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl w-full max-w-5xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[85vh]"
+            >
+              <div className="px-8 py-6 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-600/10 flex items-center justify-center text-indigo-600 shadow-sm">
+                    <Users size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 uppercase tracking-wider">{selectedGroupDetails.groupName}</h3>
+                    <p className="text-xs font-mono text-slate-400 uppercase tracking-widest mt-0.5">Consolidated Group Account Nodes Ledger</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setSelectedGroupDetails(null)} 
+                  className="p-2 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
+                >
+                  <X size={20} className="text-slate-500" />
+                </button>
+              </div>
+
+              <div className="p-8 overflow-y-auto space-y-6 flex-1">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-slate-50 p-3 md:p-4 rounded-2xl border border-slate-100">
+                    <span className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total requests</span>
+                    <p className="text-lg md:text-2xl font-bold text-slate-950 font-mono mt-1">{selectedGroupDetails.count}</p>
+                  </div>
+                  <div className="bg-slate-50 p-3 md:p-4 rounded-2xl border border-slate-100">
+                    <span className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pending</span>
+                    <p className="text-lg md:text-2xl font-bold text-amber-600 font-mono mt-1">{selectedGroupDetails.pendingCount}</p>
+                  </div>
+                  <div className="bg-slate-50 p-3 md:p-4 rounded-2xl border border-slate-100">
+                    <span className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest">Disbursed</span>
+                    <p className="text-lg md:text-2xl font-bold text-emerald-600 font-mono mt-1">{formatCurrency(selectedGroupDetails.disbursedAmount)}</p>
+                  </div>
+                  <div className="bg-slate-50 p-3 md:p-4 rounded-2xl border border-slate-100">
+                    <span className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest">Exposure</span>
+                    <p className="text-lg md:text-2xl font-bold text-indigo-600 font-mono mt-1">{formatCurrency(selectedGroupDetails.totalAmount)}</p>
+                  </div>
+                </div>
+
+                <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+                  <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Individual Requisition List</span>
+                    <span className="text-[10px] font-mono text-slate-400">COUNT: {selectedGroupDetails.requisitions.length} ENTRIES</span>
+                  </div>
+                  <div className="overflow-x-auto max-h-[40vh]">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-slate-50/55 border-b border-slate-100">
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">ID</th>
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Title / Narratives</th>
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Submitted Date</th>
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Digital Status</th>
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Fund Value (KES)</th>
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Inspect</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {selectedGroupDetails.requisitions.map((req: Requisition, idx: number) => (
+                          <tr 
+                            key={req.id} 
+                            onClick={(e) => {
+                              setSelectedRequisition(req);
+                            }}
+                            className="hover:bg-indigo-50/20 transition-colors cursor-pointer group"
+                          >
+                            <td className="px-6 py-4 font-mono text-xs text-slate-500 font-bold uppercase">
+                              #{req.id.substr(0, 8).toUpperCase()}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors">{req.title}</div>
+                              <div className="text-[10px] text-slate-400 truncate max-w-sm mt-0.5">{req.description}</div>
+                            </td>
+                            <td className="px-6 py-4 text-xs text-slate-500 font-medium font-mono">
+                              {new Date(req.submittedAt).toLocaleDateString()}
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <span className={cn(
+                                "inline-flex px-2 py-0.5 rounded-full text-[9px] font-black tracking-widest uppercase",
+                                req.status === RequisitionStatus.APPROVED_L2 ? "bg-emerald-50 text-emerald-600 border border-emerald-100" :
+                                req.status === RequisitionStatus.SUBMITTED ? "bg-amber-50 text-amber-600 border border-amber-100" :
+                                req.status === RequisitionStatus.REJECTED ? "bg-rose-50 text-rose-600 border border-rose-100" :
+                                "bg-slate-100 text-slate-500 border border-slate-200"
+                              )}>
+                                {req.status}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-right font-mono font-black text-slate-900 text-xs">
+                              {formatCurrency(req.amount)}
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <span className="inline-flex px-2.5 py-1.5 bg-slate-50 text-slate-500 border border-slate-200 group-hover:border-indigo-500 group-hover:text-indigo-600 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all items-center gap-1 mx-auto font-sans">
+                                <Eye size={11} strokeWidth={2.5} />
+                                VIEW
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-8 py-5 border-t border-slate-100 bg-white flex justify-end">
+                <button 
+                  onClick={() => setSelectedGroupDetails(null)}
+                  className="px-8 py-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-xl text-xs font-bold hover:bg-slate-100 transition-all cursor-pointer font-sans"
+                >
+                  DISMISS VIEW
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

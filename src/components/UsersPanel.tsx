@@ -74,7 +74,7 @@ export const UsersPanel: React.FC = () => {
 
     if (!name.trim()) return setError("Name is required");
     if (!email.trim() || !email.includes("@")) return setError("Valid email required");
-    if (password.length < 8) return setError("Password must be 8+ chars");
+    if (password.length < 8 || password.length > 15) return setError("Password must be between 8 and 15 characters");
 
     setIsSubmitting(true);
     try {
@@ -161,20 +161,20 @@ export const UsersPanel: React.FC = () => {
       {/* Header section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+          <h2 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <Users size={24} className="text-primary" />
             User Access Management
           </h2>
-          <p className="text-sm text-slate-500">Maintain directory nodes and security protocols for the organization.</p>
+          <p className="text-xs md:text-sm text-slate-500">Maintain directory nodes and security protocols.</p>
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center w-full md:w-auto">
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="btn-primary flex items-center gap-2"
+            className="w-full md:w-auto btn-primary flex items-center justify-center gap-2 px-6 py-3 md:py-2.5 rounded-xl"
           >
             <UserPlus size={18} />
-            REGISTER NEW MEMBER
+            <span className="text-[10px] md:text-xs uppercase tracking-widest font-black">REGISTER NEW MEMBER</span>
           </button>
         </div>
       </div>
@@ -213,12 +213,12 @@ export const UsersPanel: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-slate-50/50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                <th className="px-8 py-4">Identification Node</th>
-                <th className="px-8 py-4">Security Level</th>
-                <th className="px-8 py-4">Affiliation / Key</th>
-                <th className="px-8 py-4">Access Status</th>
-                <th className="px-8 py-4 text-right">Actions</th>
+              <tr className="bg-slate-50/50 border-b border-slate-200 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                <th className="px-4 md:px-8 py-4">Identification Node</th>
+                <th className="px-4 md:px-8 py-4 hidden sm:table-cell">Security Level</th>
+                <th className="px-4 md:px-8 py-4 hidden md:table-cell">Affiliation / Key</th>
+                <th className="px-4 md:px-8 py-4">Status</th>
+                <th className="px-4 md:px-8 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -234,29 +234,29 @@ export const UsersPanel: React.FC = () => {
                       user.isSuspended && "bg-rose-50/10"
                     )}
                   >
-                    <td className="px-8 py-5">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-sm border border-primary/5 group-hover:scale-110 transition-transform">
+                    <td className="px-4 md:px-8 py-5">
+                      <div className="flex items-center gap-3 md:gap-4">
+                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-xs md:text-sm border border-primary/5 shrink-0">
                           {user.name.charAt(0)}
                         </div>
-                        <div>
-                          <p className="text-sm font-bold text-slate-900 leading-tight">{user.name}</p>
-                          <div className="flex items-center gap-1.5 mt-1">
-                            <Mail size={10} className="text-slate-300" />
-                            <p className="text-[10px] text-slate-400 font-medium">{user.email}</p>
+                        <div className="min-w-0">
+                          <p className="text-xs md:text-sm font-bold text-slate-900 leading-tight truncate">{user.name}</p>
+                          <div className="flex items-center gap-1 mt-1 truncate">
+                            <Mail size={9} className="text-slate-300 md:w-2.5 md:h-2.5" />
+                            <p className="text-[8px] md:text-[10px] text-slate-400 font-medium truncate">{user.email}</p>
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-8 py-5">
+                    <td className="px-4 md:px-8 py-5 hidden sm:table-cell">
                       <span className={cn(
-                        "px-2.5 py-1 rounded-full border text-[9px] font-black uppercase tracking-[0.15em]",
+                        "px-2 py-0.5 md:px-2.5 md:py-1 rounded-full border text-[8px] md:text-[9px] font-black uppercase tracking-[0.15em]",
                         getRoleBadge(user.role)
                       )}>
                         {user.role}
                       </span>
                     </td>
-                    <td className="px-8 py-5">
+                    <td className="px-4 md:px-8 py-5 hidden md:table-cell">
                       {user.role === UserRole.CHURCH_GROUP ? (
                         <div className="flex items-center gap-1.5 text-slate-600">
                           <Building2 size={12} className="text-slate-300" />
@@ -275,56 +275,35 @@ export const UsersPanel: React.FC = () => {
                         <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">SYSTEM_CORE</span>
                       )}
                     </td>
-                    <td className="px-8 py-5">
+                    <td className="px-4 md:px-8 py-5">
                       <div className="flex items-center gap-2">
                         {!user.isApproved ? (
-                          <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-lg border border-amber-100 animate-pulse">
-                            <AlertCircle size={12} />
-                            <span className="text-[9px] font-black uppercase tracking-widest">PENDING_REVIEW</span>
+                          <div className="flex items-center gap-1 px-2 md:px-3 py-1 bg-amber-50 text-amber-600 rounded-lg border border-amber-100 animate-pulse">
+                            <AlertCircle size={10} className="md:w-3 md:h-3" />
+                            <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest">PENDING</span>
                           </div>
                         ) : user.isSuspended ? (
-                          <div className="flex items-center gap-1.5 px-3 py-1 bg-rose-50 text-rose-600 rounded-lg border border-rose-100">
-                            <UserX size={12} />
-                            <span className="text-[9px] font-black uppercase tracking-widest">SUSPENDED</span>
+                          <div className="flex items-center gap-1 px-2 md:px-3 py-1 bg-rose-50 text-rose-600 rounded-lg border border-rose-100">
+                            <UserX size={10} className="md:w-3 md:h-3" />
+                            <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest">SUSPENDED</span>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100">
-                            <CheckCircle2 size={12} />
-                            <span className="text-[9px] font-black uppercase tracking-widest">ACTIVE_NODE</span>
+                          <div className="flex items-center gap-1 px-2 md:px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100">
+                            <CheckCircle2 size={10} className="md:w-3 md:h-3" />
+                            <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest">ACTIVE</span>
                           </div>
                         )}
                       </div>
                     </td>
-                    <td className="px-8 py-5 text-right">
-                      <div className="flex justify-end items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <td className="px-4 md:px-8 py-5 text-right">
+                      <div className="flex justify-end items-center gap-1 md:gap-2">
                         <button 
                           onClick={() => startEditing(user)}
-                          className="p-2.5 bg-white border border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 rounded-xl transition-all"
+                          className="p-2 md:p-2.5 bg-white border border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 rounded-lg md:rounded-xl transition-all"
                           title="Detailed Configuration"
                         >
-                          <Edit size={16} />
+                          <Edit size={14} className="md:w-4 md:h-4" />
                         </button>
-
-                        {!user.isApproved ? (
-                          <button 
-                            onClick={() => approveUser(user.id)}
-                            className="px-4 py-2 bg-primary text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 shadow-sm transition-all"
-                          >
-                            AUTHORIZE
-                          </button>
-                        ) : (
-                          <button 
-                            onClick={() => suspendUser(user.id, !user.isSuspended)}
-                            className={cn(
-                              "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                              user.isSuspended 
-                                ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-100" 
-                                : "bg-white border border-slate-200 text-slate-400 hover:text-rose-500 hover:border-rose-100"
-                            )}
-                          >
-                            {user.isSuspended ? "RESTORE" : "SUSPEND"}
-                          </button>
-                        )}
                       </div>
                     </td>
                   </motion.tr>
@@ -362,56 +341,56 @@ export const UsersPanel: React.FC = () => {
               exit={{ scale: 0.95, opacity: 0, y: 20 }}
               className="bg-white rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col"
             >
-              <div className="px-8 py-6 border-b border-slate-100 bg-white flex items-center justify-between">
+              <div className="px-4 md:px-8 py-4 md:py-6 border-b border-slate-100 bg-white flex items-center justify-between">
                 <div>
-                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-[0.2em]">
+                  <h3 className="text-[10px] md:text-xs font-black text-slate-900 uppercase tracking-[0.2em]">
                     {isModalOpen ? "New Member Credentials" : "Update Member Node"}
                   </h3>
-                  <p className="text-[10px] text-slate-400 font-mono tracking-widest mt-1">SYS_ACCESS_CONTROL_V4</p>
+                  <p className="text-[8px] md:text-[10px] text-slate-400 font-mono tracking-widest mt-1">SYS_ACCESS_CONTROL_V4</p>
                 </div>
                 <button 
                   onClick={() => { setIsModalOpen(false); setEditingUser(null); setError(null); setSuccess(null); }}
                   className="p-2 hover:bg-slate-100 rounded-full transition-colors"
                 >
-                  <XCircle size={20} className="text-slate-400" />
+                  <XCircle size={18} className="text-slate-400 md:w-5 md:h-5" />
                 </button>
               </div>
 
-              <form onSubmit={isModalOpen ? handleRegister : handleEditSave} className="p-8 space-y-6">
+              <form onSubmit={isModalOpen ? handleRegister : handleEditSave} className="p-4 md:p-8 space-y-4 md:space-y-6">
                  {(error || editError) && (
-                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex gap-3 items-center text-xs text-rose-600 font-bold">
-                    <AlertCircle size={16} />
+                  <div className="p-3 md:p-4 bg-rose-50 border border-rose-100 rounded-2xl flex gap-3 items-center text-[10px] md:text-xs text-rose-600 font-bold">
+                    <AlertCircle size={14} className="md:w-4 md:h-4" />
                     <span>{error || editError}</span>
                   </div>
                 )}
                 {(success || editSuccess) && (
-                  <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex gap-3 items-center text-xs text-emerald-600 font-bold">
-                    <CheckCircle2 size={16} />
+                  <div className="p-3 md:p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex gap-3 items-center text-[10px] md:text-xs text-emerald-600 font-bold">
+                    <CheckCircle2 size={14} className="md:w-4 md:h-4" />
                     <span>{success || editSuccess}</span>
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
+                    <label className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
                     <input 
                       type="text"
                       required
                       value={isModalOpen ? name : editName}
                       onChange={(e) => isModalOpen ? setName(e.target.value) : setEditName(e.target.value)}
-                      className="input-field"
+                      className="input-field text-xs md:text-sm"
                       placeholder="Enter legal name"
                     />
                   </div>
                   <div className="space-y-1.5 text-xs text-slate-400">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Identity Node (Email)</label>
+                    <label className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Identity Node (Email)</label>
                     <input 
                       type="email"
                       required
                       disabled={!isModalOpen}
                       value={isModalOpen ? email : editingUser?.email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className={cn("input-field", !isModalOpen && "bg-slate-50 cursor-not-allowed")}
+                      className={cn("input-field text-xs md:text-sm", !isModalOpen && "bg-slate-50 cursor-not-allowed")}
                       placeholder="email@church.com"
                     />
                   </div>
@@ -419,15 +398,17 @@ export const UsersPanel: React.FC = () => {
 
                 {isModalOpen && (
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password Credentials</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password Credentials (8-15 characters)</label>
                     <div className="relative">
                       <input 
                         type={showPassword ? "text" : "password"}
                         required
+                        minLength={8}
+                        maxLength={15}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className="input-field pr-12 font-mono"
-                        placeholder="••••••••••••"
+                        placeholder="Min 8, max 15 characters"
                       />
                       <button
                         type="button"
@@ -492,21 +473,23 @@ export const UsersPanel: React.FC = () => {
                     )}
                 </div>
 
-                <div className="pt-4 flex items-center justify-end gap-3">
+                <div className="pt-2 md:pt-4 flex flex-col md:flex-row items-stretch md:items-center justify-end gap-3">
                   <button
                     type="button"
                     onClick={() => { setIsModalOpen(false); setEditingUser(null); }}
-                    className="px-8 py-3 bg-slate-50 text-slate-500 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-100 transition-all"
+                    className="w-full md:w-auto px-8 py-3 bg-slate-50 text-slate-500 rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest hover:bg-slate-100 transition-all text-center"
                   >
                     CANCEL
                   </button>
                   <button
                     type="submit"
                     disabled={isSubmitting || isSaving}
-                    className="btn-primary px-10 flex items-center gap-2"
+                    className="w-full md:w-auto btn-primary px-10 py-3 md:py-2.5 flex items-center justify-center gap-2 rounded-xl"
                   >
                     {(isSubmitting || isSaving) ? <Loader2 size={16} className="animate-spin" /> : <Shield size={16} />}
-                    {isModalOpen ? "AUTHORIZE NODE" : "CONSOLIDATE UPDATE"}
+                    <span className="text-[10px] md:text-xs uppercase tracking-widest font-black">
+                      {isModalOpen ? "AUTHORIZE NODE" : "CONSOLIDATE UPDATE"}
+                    </span>
                   </button>
                 </div>
               </form>

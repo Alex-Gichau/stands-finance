@@ -90,14 +90,14 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="overflow-y-auto p-8 space-y-8 flex-1">
+        <form onSubmit={handleSubmit} className="overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 flex-1">
           {/* Section 1: Requisition Information */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                 <FileText size={16} className="text-primary" />
               </div>
-              <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest">General Information</h4>
+              <h4 className="text-[10px] md:text-xs font-black text-slate-700 uppercase tracking-widest">General Information</h4>
             </div>
             
             <div className="space-y-1.5">
@@ -105,7 +105,7 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
               <input 
                 name="title" 
                 required 
-                className="input-field"
+                className="input-field text-xs md:text-sm"
                 placeholder="Briefly describe the request (e.g. Youth Camp Catering)"
               />
             </div>
@@ -139,33 +139,33 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
           </div>
 
           {/* Section 2: Financial Information */}
-          <div className="space-y-4 p-6 bg-slate-50 rounded-2xl border border-slate-100">
+          <div className="space-y-4 p-4 md:p-6 bg-slate-50 rounded-2xl border border-slate-100">
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0">
                 <DollarSign size={16} className="text-secondary" />
               </div>
-              <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest">Financial breakdown</h4>
+              <h4 className="text-[10px] md:text-xs font-black text-slate-700 uppercase tracking-widest">Financial breakdown</h4>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Amount (KES)</label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs uppercase">Ksh</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px] md:text-xs uppercase">Ksh</span>
                   <input 
                     name="amount" 
                     type="number" 
                     required 
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="input-field pl-12 font-mono font-bold text-primary"
+                    className="input-field pl-12 font-mono font-bold text-primary text-xs md:text-sm"
                     placeholder="0.00"
                   />
                 </div>
               </div>
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Amount in Words</label>
-                <div className="h-10 bg-white border border-slate-200 rounded-xl px-4 flex items-center text-[11px] text-slate-500 font-medium italic overflow-hidden">
+                <div className="min-h-10 bg-white border border-slate-200 rounded-xl px-4 py-2 flex items-center text-[10px] md:text-[11px] text-slate-500 font-medium italic overflow-hidden leading-snug">
                   {amountWords || "Auto-calculated on input..."}
                 </div>
               </div>
@@ -242,27 +242,28 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
           </div>
         </form>
 
-        <div className="px-8 py-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
+        <div className="px-4 md:px-8 py-4 md:py-6 border-t border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-end gap-3">
           <button 
             type="button"
             onClick={onClose}
-            className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all cursor-pointer"
+            className="w-full md:w-auto px-6 py-3 md:py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-[10px] md:text-xs font-bold hover:bg-slate-50 transition-all cursor-pointer"
           >
             DISCARD DRAFT
           </button>
           <button 
             disabled={loading || !amount || !attachments.length}
             type="submit"
-            form="new-req-form" // Need to add id to form
-            className="btn-primary disabled:opacity-50 disabled:scale-100 flex items-center gap-2"
+            form="new-req-form" 
+            className="w-full md:w-auto btn-primary disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2 px-6 py-3 md:py-2.5 rounded-xl"
             onClick={() => {
-              // Trigger form submit since button is outside form
               const form = document.getElementById('new-req-form') as HTMLFormElement;
               if (form) form.requestSubmit();
             }}
           >
             {loading ? <Loader2 size={16} className="animate-spin" /> : null}
-            {loading ? "INITIALIZING LEDGER..." : "SUBMIT FOR L1 APPROVAL"}
+            <span className="uppercase tracking-widest text-[10px] md:text-xs">
+              {loading ? "INITIALIZING LEDGER..." : "SUBMIT FOR L1 APPROVAL"}
+            </span>
           </button>
         </div>
         

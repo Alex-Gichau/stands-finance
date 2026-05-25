@@ -149,8 +149,9 @@ service cloud.firestore {
     match /alerts/{alertId} {
       allow get: if isValidId(alertId) && (isApprovedUser() || isAdmin());
       allow list: if isApprovedUser() || isAdmin();
-      allow write: if isValidId(alertId) && isAdmin();
+      allow create: if isValidId(alertId) && (isApprovedUser() || isAdmin());
       allow update: if isValidId(alertId) && (isApprovedUser() || isAdmin()) && incoming().diff(existing()).affectedKeys().hasOnly(['isRead']);
+      allow delete: if isValidId(alertId) && isAdmin();
     }
 
     match /thresholds/{thresholdId} {

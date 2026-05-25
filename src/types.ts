@@ -125,11 +125,12 @@ export interface ForecastMonth {
 
 export interface BudgetAlert {
   id: string;
-  type: "OVERSHOOT" | "LARGE_REQUEST" | "EXPIRY";
+  type: "OVERSHOOT" | "LARGE_REQUEST" | "EXPIRY" | "L2_APPROVED" | "FINANCE_DISBURSEMENT";
   severity: "LOW" | "MEDIUM" | "HIGH";
   message: string;
   timestamp: string;
   isRead: boolean;
+  targetRole?: string;
 }
 
 export interface AlertThreshold {

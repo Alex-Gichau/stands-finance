@@ -258,7 +258,7 @@ export const ApprovalsPanel: React.FC = () => {
                   <div className="px-8 py-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
                     <button 
                       onClick={handleReject}
-                      disabled={loading || !decisionNote}
+                      disabled={loading || !decisionNote.trim()}
                       className="px-6 py-3 bg-white border border-rose-200 text-rose-600 rounded-xl text-xs font-black uppercase hover:bg-rose-50 transition-all cursor-pointer shadow-sm shadow-rose-100 disabled:opacity-50"
                     >
                       Reject Entity

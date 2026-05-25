@@ -23,13 +23,14 @@ import {
   ArrowRight,
   ShieldCheck,
   PieChart,
-  LayoutGrid
+  LayoutGrid,
+  ChevronDown
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition, SavedReport } from "../types";
 import { formatCurrency, formatDate, cn } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
-import { printRequisitions, downloadRequisitionsHtml } from "../utils/exportUtils";
+import { printRequisitions, downloadRequisitionsHtml, downloadRequisitionsCsv, downloadRequisitionsPdf } from "../utils/exportUtils";
 
 export const ReportsPanel: React.FC = () => {
   const { requisitions, currentUser, saveReport, reports } = useRequisitions();
@@ -40,6 +41,7 @@ export const ReportsPanel: React.FC = () => {
   const [selectedGroup, setSelectedGroup] = useState<string>("ALL");
   const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
   const [isSaving, setIsSaving] = useState(false);
+  const [showDownloadType, setShowDownloadType] = useState(false);
 
   // Get unique group names for group filter
   const groups = useMemo(() => {
@@ -260,14 +262,58 @@ export const ReportsPanel: React.FC = () => {
             >
               <Printer size={20} />
             </button>
-            <button
-              onClick={handleDownloadReport}
-              disabled={filteredRequisitions.length === 0}
-              className="p-3 bg-slate-50 text-slate-600 hover:text-primary hover:bg-primary/5 border border-slate-200 rounded-2xl transition-all disabled:opacity-30"
-              title="Export HTML Asset"
-            >
-              <Download size={20} />
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowDownloadType(!showDownloadType)}
+                disabled={filteredRequisitions.length === 0}
+                className="p-3 bg-slate-50 text-slate-600 hover:text-primary hover:bg-primary/5 border border-slate-200 rounded-2xl transition-all disabled:opacity-30 flex items-center gap-1 cursor-pointer text-xs font-bold uppercase"
+                title="Download Report Documents"
+              >
+                <Download size={20} />
+                <ChevronDown size={14} className="text-slate-400" />
+              </button>
+
+              {showDownloadType && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowDownloadType(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden divide-y divide-slate-100 text-left">
+                    <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-400 bg-slate-50">
+                      Export Report Options
+                    </div>
+                    <button
+                      onClick={() => {
+                        downloadRequisitionsPdf(filteredRequisitions, "Audit Periodic Summary", currentUser, filterDescription);
+                        setShowDownloadType(false);
+                      }}
+                      className="w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 font-bold transition-colors cursor-pointer flex items-center gap-2"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-rose-500" />
+                      Download PDF Document
+                    </button>
+                    <button
+                      onClick={() => {
+                        downloadRequisitionsCsv(filteredRequisitions, "Audit Periodic Summary");
+                        setShowDownloadType(false);
+                      }}
+                      className="w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 font-bold transition-colors cursor-pointer flex items-center gap-2"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      Download CSV Sheet
+                    </button>
+                    <button
+                      onClick={() => {
+                        downloadRequisitionsHtml(filteredRequisitions, "Audit Periodic Summary", currentUser, filterDescription);
+                        setShowDownloadType(false);
+                      }}
+                      className="w-full px-4 py-2 text-left text-xs text-slate-500 hover:bg-slate-50 transition-colors cursor-pointer flex items-center gap-2"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-blue-500" />
+                      Download Classic HTML
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
         

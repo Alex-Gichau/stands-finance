@@ -87,6 +87,8 @@ interface RequisitionContextType {
   setGlobalSearchTerm: (term: string) => void;
   activeToasts: BudgetAlert[];
   removeToast: (id: string) => void;
+  readNoticeIds: string[];
+  toggleNoticeRead: (id: string, forceRead?: boolean) => void;
 }
 
 const RequisitionContext = createContext<RequisitionContextType | undefined>(undefined);
@@ -105,6 +107,40 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [biometricEnrolled, setBiometricEnrolled] = useState(false);
   const [globalSearchTerm, setGlobalSearchTerm] = useState("");
   const [activeToasts, setActiveToasts] = useState<BudgetAlert[]>([]);
+  const [readNoticeIds, setReadNoticeIds] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("read_notification_ids");
+        return saved ? JSON.parse(saved) : [];
+      } catch (err) {
+        console.error("Failed to parse read notices", err);
+      }
+    }
+    return [];
+  });
+
+  const toggleNoticeRead = useCallback((id: string, forceRead?: boolean) => {
+    setReadNoticeIds(prev => {
+      let next;
+      if (forceRead !== undefined) {
+        if (forceRead) {
+          next = prev.includes(id) ? prev : [...prev, id];
+        } else {
+          next = prev.filter(item => item !== id);
+        }
+      } else {
+        next = prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id];
+      }
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("read_notification_ids", JSON.stringify(next));
+        } catch (err) {
+          console.error("Failed to save read notices", err);
+        }
+      }
+      return next;
+    });
+  }, []);
 
   const removeToast = useCallback((id: string) => {
     setActiveToasts(prev => prev.filter(t => t.id !== id));
@@ -516,6 +552,41 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     checkExpiryAlerts();
   }, [requisitions, alerts, thresholds, currentUser, db, addSystemLog]);
 
+  // Automated background trigger for FINANCE alerts on L2 Approved status
+  useEffect(() => {
+    if (!currentUser || requisitions.length === 0) return;
+
+    const checkL2ApprovedAlerts = async () => {
+      const now = new Date();
+      for (const req of requisitions) {
+        if (req.status === RequisitionStatus.APPROVED_L2) {
+          const alertId = `finance-l2-ready-${req.id}`;
+          const alertExists = alerts.some(a => a.id === alertId);
+
+          if (!alertExists) {
+            const newAlert: BudgetAlert = {
+              id: alertId,
+              type: "L2_APPROVED",
+              severity: "HIGH",
+              message: `ATTENTION FINANCE: Requisition '${req.title}' from ${req.groupName} has reached APPROVED L2 status. Please verify entries and initiate disbursement of KES ${req.amount.toLocaleString()}.`,
+              timestamp: now.toISOString(),
+              isRead: false,
+              targetRole: UserRole.FINANCE
+            };
+            try {
+              await setDoc(doc(db, "alerts", alertId), newAlert);
+              await addSystemLog("FINANCE_ALERT_TRIGGERED", `Automated alert dispatched to FINANCE team for L2 Approved requisition: '${req.title}'`);
+            } catch (e) {
+              console.error("Failed to write Finance L2 Approved alert", e);
+            }
+          }
+        }
+      }
+    };
+
+    checkL2ApprovedAlerts();
+  }, [requisitions, alerts, currentUser, db, addSystemLog]);
+
   // Recurring Requisitions Watcher
   useEffect(() => {
     if (!currentUser || requisitions.length === 0) return;
@@ -780,7 +851,25 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       };
 
       if (status === RequisitionStatus.APPROVED_L1) updates.approvedAtL1 = new Date().toISOString();
-      if (status === RequisitionStatus.APPROVED_L2) updates.approvedAtL2 = new Date().toISOString();
+      if (status === RequisitionStatus.APPROVED_L2) {
+        updates.approvedAtL2 = new Date().toISOString();
+        const alertId = `finance-l2-ready-${id}`;
+        const newAlert = {
+          id: alertId,
+          type: "L2_APPROVED",
+          severity: "HIGH",
+          message: `ATTENTION FINANCE: Requisition '${req.title}' from ${req.groupName} has reached APPROVED L2 status. Please verify entries and initiate disbursement of KES ${req.amount.toLocaleString()}.`,
+          timestamp: new Date().toISOString(),
+          isRead: false,
+          targetRole: UserRole.FINANCE
+        };
+        try {
+          await setDoc(doc(db, "alerts", alertId), newAlert);
+          await addSystemLog("FINANCE_ALERT_TRIGGERED", `Automated alert dispatched to FINANCE team for L2 Approved requisition: '${req.title}'`);
+        } catch (e) {
+          console.error("Failed to write immediate Finance L2 Approved alert", e);
+        }
+      }
       if (status === RequisitionStatus.DISBURSED) updates.disbursedAt = new Date().toISOString();
 
       await updateDoc(reqRef, updates);
@@ -903,7 +992,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       globalSearchTerm,
       setGlobalSearchTerm,
       activeToasts,
-      removeToast
+      removeToast,
+      readNoticeIds,
+      toggleNoticeRead
     }}>
       {children}
     </RequisitionContext.Provider>
