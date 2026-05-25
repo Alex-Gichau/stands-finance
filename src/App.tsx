@@ -28,7 +28,9 @@ import {
   ShieldCheck,
   Lock,
   Clock,
-  Trash2
+  Trash2,
+  Settings,
+  UserCircle
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -85,10 +87,16 @@ function AppContent() {
     }
   }, []);
 
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setIsSearchFocused(false);
+      }
+      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
+        setIsProfileOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -170,7 +178,7 @@ function AppContent() {
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="space-y-4 text-center">
           <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Synchronizing Nodes...</p>
+          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Synchronizing Transactions...</p>
         </div>
       </div>
     );
@@ -201,7 +209,7 @@ function AppContent() {
 
             <div className="space-y-2">
               <h1 className="text-3xl font-black text-white tracking-tight uppercase">St Andrews</h1>
-              <p className="text-primary text-[11px] font-black uppercase tracking-[0.3em]">Requisition Control Node</p>
+              <p className="text-primary text-[11px] font-black uppercase tracking-[0.3em]">Requisition Control Transaction</p>
             </div>
           </div>
           
@@ -306,7 +314,7 @@ function AppContent() {
                 onClick={() => setAuthMode("SELECT")}
                 className="w-full py-2 text-slate-500 hover:text-slate-400 font-black text-[10px] uppercase tracking-widest transition-colors"
                >
-                ← Back to Control Node
+                ← Back to Control Transaction
               </button>
             </form>
           )}
@@ -326,27 +334,9 @@ function AppContent() {
     );
   }
 
-  // Waiting Room Logic
-  if (!currentUser.isApproved) {
+  // Waiting Room or Suspension Logic
+  if (!currentUser.isApproved || currentUser.isSuspended) {
     return <WaitingRoom user={currentUser} onLogout={logout} />;
-  }
-
-  // Suspension Check
-  if (currentUser.isSuspended) {
-    return (
-      <div className="min-h-screen bg-rose-50 flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white rounded-2xl border border-rose-200 shadow-xl p-10 text-center space-y-6">
-          <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto text-rose-600 font-black text-3xl">!</div>
-          <div className="space-y-2">
-            <h1 className="text-xl font-bold text-slate-900 uppercase">Connectivity Severed</h1>
-            <p className="text-xs text-slate-500 leading-relaxed italic">"Access to the central ledger has been revoked by a security override."</p>
-          </div>
-          <button onClick={logout} className="w-full flex items-center justify-center gap-2 py-3 bg-slate-900 text-white rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-slate-800 transition-colors">
-            <LogOut size={14} /> Close Session
-          </button>
-        </div>
-      </div>
-    );
   }
 
 
@@ -564,22 +554,20 @@ function AppContent() {
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span className="text-xs font-semibold text-slate-600 uppercase tracking-tighter">Operational</span>
+          <div className="flex items-center gap-2 md:gap-4">
+            <div className="hidden sm:flex items-center gap-1.5 border-r border-slate-100 pr-4 mr-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Operational</span>
             </div>
-            
-            <div className="h-4 w-[1px] bg-slate-200" />
             
             <div className="relative">
               <button 
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
                 className="relative p-2 text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
               >
-                <Bell size={18} />
+                <Bell size={16} />
                 {notificationItems.length > 0 && (
-                  <div className="absolute top-1 right-1 bg-rose-500 text-white font-black text-[8px] w-4.5 h-4.5 rounded-full flex items-center justify-center border-2 border-white transform translate-x-1.5 -translate-y-1.5">
+                  <div className="absolute top-1 right-1 bg-rose-500 text-white font-black text-[7px] w-3.5 h-3.5 rounded-full flex items-center justify-center border-2 border-white transform translate-x-1 -translate-y-1">
                     {notificationItems.length}
                   </div>
                 )}
@@ -609,74 +597,191 @@ function AppContent() {
                       )}
                     </div>
 
-                    <div className="max-h-96 overflow-y-auto divide-y divide-slate-100">
+                    <div className="max-h-96 overflow-y-auto divide-y divide-slate-100 scrollbar-hide">
                       {notificationItems.length === 0 ? (
                         <div className="py-8 text-center text-slate-400 space-y-2 px-4">
                           <Bell size={24} className="mx-auto opacity-20" />
                           <p className="text-[10px] font-bold uppercase tracking-widest">ledger cleared</p>
                           <p className="text-[10px] text-slate-400 leading-relaxed">All member feeds and approvals are synchronized.</p>
                         </div>
-                      ) : (
-                        notificationItems.map(item => (
-                          <div 
-                            key={item.id} 
-                            onClick={() => {
-                              if (item.requisition) {
-                                setSelectedReqForNoticeDetail(item.requisition);
-                                setIsNotificationsOpen(false);
-                              }
-                            }}
-                            className={cn(
-                              "p-3.5 hover:bg-slate-50 transition-all space-y-2 text-xs select-none",
-                              item.requisition ? "cursor-pointer border-l-2 border-indigo-500 hover:bg-slate-50/80" : ""
+                      ) : (() => {
+                        const unread = notificationItems.filter(item => !readNoticeIds.includes(item.id));
+                        const read = notificationItems.filter(item => readNoticeIds.includes(item.id));
+
+                        return (
+                          <>
+                            {unread.map(item => (
+                              <div 
+                                key={item.id} 
+                                onClick={() => {
+                                  if (item.requisition) {
+                                    setSelectedReqForNoticeDetail(item.requisition);
+                                    setIsNotificationsOpen(false);
+                                  }
+                                  toggleNoticeRead(item.id, true);
+                                }}
+                                className={cn(
+                                  "p-3 md:p-3.5 hover:bg-slate-50 transition-all space-y-1.5 md:space-y-2 text-[10px] md:text-xs select-none",
+                                  "border-l-2 border-indigo-500 bg-white"
+                                )}
+                              >
+                                <div className="flex items-start justify-between">
+                                  <span className={cn(
+                                    "font-bold text-[8px] md:text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded",
+                                    item.type === "MEMBER_APPROVAL" ? "bg-amber-100 text-amber-700" :
+                                    item.type === "REQ_RECEIVED" ? "bg-indigo-100 text-indigo-700" :
+                                    item.type === "REQ_APPROVED" ? "bg-emerald-100 text-emerald-700" :
+                                    "bg-rose-100 text-rose-700"
+                                  )}>
+                                    {item.title}
+                                  </span>
+                                  <span className="text-[8px] font-black text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded">
+                                    NEW
+                                  </span>
+                                </div>
+                                <p className="text-slate-600 leading-snug font-medium text-[10px] md:text-[11px]">{item.message}</p>
+                                <button 
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    await item.action();
+                                    toggleNoticeRead(item.id, true);
+                                  }}
+                                  className="w-full mt-1 py-1.5 text-center bg-slate-100 hover:bg-indigo-600 hover:text-white rounded text-[8px] md:text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer"
+                                >
+                                  {item.actionLabel}
+                                </button>
+                              </div>
+                            ))}
+
+                            {unread.length > 0 && read.length > 0 && (
+                              <div className="px-4 py-2 bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                <div className="flex-1 h-px bg-slate-200"></div>
+                                <span>History</span>
+                                <div className="flex-1 h-px bg-slate-200"></div>
+                              </div>
                             )}
-                          >
-                            <div className="flex items-start justify-between">
-                              <span className={cn(
-                                "font-bold text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded",
-                                item.type === "MEMBER_APPROVAL" ? "bg-amber-100 text-amber-700" :
-                                item.type === "REQ_RECEIVED" ? "bg-indigo-100 text-indigo-700" :
-                                item.type === "REQ_APPROVED" ? "bg-emerald-100 text-emerald-700" :
-                                "bg-rose-100 text-rose-700"
-                              )}>
-                                {item.title}
-                              </span>
-                              {item.requisition && (
-                                <span className="text-[8px] font-black text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded">
-                                  OPEN DETAIL
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-slate-600 leading-snug font-medium text-[11px]">{item.message}</p>
-                            <button 
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                await item.action();
-                              }}
-                              className="w-full mt-1 py-1.5 text-center bg-slate-100 hover:bg-indigo-600 hover:text-white rounded text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer"
-                            >
-                              {item.actionLabel}
-                            </button>
-                          </div>
-                        ))
-                      )}
+
+                            {read.map(item => (
+                              <div 
+                                key={item.id} 
+                                onClick={() => {
+                                  if (item.requisition) {
+                                    setSelectedReqForNoticeDetail(item.requisition);
+                                    setIsNotificationsOpen(false);
+                                  }
+                                }}
+                                className={cn(
+                                  "p-3 md:p-3.5 hover:bg-slate-50 transition-all space-y-1.5 md:space-y-2 text-[10px] md:text-xs select-none opacity-60 grayscale-[40%]",
+                                  item.requisition ? "cursor-pointer" : ""
+                                )}
+                              >
+                                <div className="flex items-start justify-between">
+                                  <span className="font-bold text-[8px] md:text-[9px] uppercase tracking-wider text-slate-400">
+                                    {item.title}
+                                  </span>
+                                </div>
+                                <p className="text-slate-500 leading-snug font-medium text-[10px] md:text-[11px]">{item.message}</p>
+                                <div className="flex gap-2">
+                                  <button 
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      await item.action();
+                                    }}
+                                    className="flex-1 mt-1 py-1 text-center bg-slate-50 text-slate-400 rounded text-[8px] font-bold uppercase tracking-widest transition-all"
+                                  >
+                                    RE-ACTION
+                                  </button>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleNoticeRead(item.id, false);
+                                    }}
+                                    className="px-2 mt-1 py-1 text-center bg-slate-50 text-slate-300 hover:text-slate-500 rounded text-[8px] font-bold uppercase tracking-widest transition-all"
+                                  >
+                                    RESTORE
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </>
+                        );
+                      })()}
                     </div>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
-            
-            <button 
-              onClick={logout}
-              className="flex items-center gap-2 px-4 py-1.5 bg-slate-100 text-slate-600 text-[10px] font-bold rounded uppercase hover:bg-slate-200 transition-colors"
-            >
-              <LogOut size={14} /> Exit
-            </button>
+
+            <div className="relative h-10 flex items-center" ref={profileRef}>
+              <button 
+                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                className="flex items-center gap-2 pr-1 py-1 hover:bg-slate-50 rounded-full transition-all cursor-pointer group border border-transparent hover:border-slate-100"
+              >
+                <div className="flex flex-col items-end hidden sm:flex">
+                  <span className="text-[10px] font-black text-slate-900 uppercase tracking-tight">{currentUser.name.split(' ')[0]}</span>
+                  <span className="text-[8px] text-primary font-bold uppercase tracking-widest leading-none">{currentUser.role.split('_')[0]}</span>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-black text-[10px] shadow-sm group-hover:scale-105 transition-transform">
+                  {currentUser.name.charAt(0)}
+                </div>
+              </button>
+
+              <AnimatePresence>
+                {isProfileOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden z-[60]"
+                  >
+                    <div className="p-3 border-b border-slate-50">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Authenticated Transaction</p>
+                      <p className="text-xs font-bold text-slate-900 truncate">{currentUser.email}</p>
+                    </div>
+                    <div className="p-1">
+                      {currentUser.role === UserRole.ADMIN && (
+                        <>
+                          <button
+                            onClick={() => {
+                              setCurrentView("users");
+                              setIsProfileOpen(false);
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-left"
+                          >
+                            <UserCircle size={14} className="text-slate-400" />
+                            USERS
+                          </button>
+                          <div className="h-[1px] bg-slate-50 my-1" />
+                        </>
+                      )}
+                      <button
+                        onClick={() => {
+                          setCurrentView("settings");
+                          setIsProfileOpen(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-left"
+                      >
+                        <Settings size={14} className="text-slate-400" />
+                        SYSTEM
+                      </button>
+                      <div className="h-[1px] bg-slate-50 my-1" />
+                      <button
+                        onClick={logout}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-xs font-bold text-rose-500 hover:bg-rose-50 rounded-lg transition-colors text-left"
+                      >
+                        <LogOut size={14} />
+                        EXIT SESSION
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </header>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 relative">
+        <div className="flex-1 overflow-y-auto p-3 md:p-6 pb-24 md:pb-6 relative">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentView}

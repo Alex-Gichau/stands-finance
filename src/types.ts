@@ -147,6 +147,7 @@ export interface SystemLog {
   details: string;
   performedBy: string;
   timestamp: string;
+  metadata?: any;
 }
 
 export interface SavedReport {

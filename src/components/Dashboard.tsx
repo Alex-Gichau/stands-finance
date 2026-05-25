@@ -101,8 +101,8 @@ const Dashboard: React.FC = () => {
 
     return [
       { label: "Gross Ledger Value", value: formatCurrency(totalValue), icon: Wallet, color: "text-primary", bg: "bg-primary/5" },
-      { label: "Pending Approvals", value: `${pending} Nodes`, icon: ClipboardList, color: "text-amber-600", bg: "bg-amber-50" },
-      { label: "Status Approved", value: `${approved} Nodes`, icon: CheckCircle, color: "text-emerald-600", bg: "bg-emerald-50" },
+      { label: "Pending Approvals", value: `${pending} Transactions`, icon: ClipboardList, color: "text-amber-600", bg: "bg-amber-50" },
+      { label: "Status Approved", value: `${approved} Transactions`, icon: CheckCircle, color: "text-emerald-600", bg: "bg-emerald-50" },
       { label: "Total Fund Disbursed", value: formatCurrency(disbursed), icon: Users, color: "text-indigo-600", bg: "bg-indigo-50" },
     ];
   }, [requisitions]);
@@ -196,19 +196,19 @@ const Dashboard: React.FC = () => {
   return (
     <div className="space-y-6 animate-in fade-in transition-all duration-700">
       {/* Role-aware Greeting */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">System Terminal</h1>
-          <p className="text-slate-500 text-sm">Welcome, {currentUser?.name} • <span className="font-mono text-[10px] uppercase tracking-widest">{currentUser?.role} Mode</span></p>
+          <h1 className="text-lg md:text-2xl font-bold text-slate-900 tracking-tight">System Terminal</h1>
+          <p className="text-slate-500 text-[9px] md:text-sm">Welcome, {currentUser?.name} • <span className="font-mono text-[8px] md:text-[10px] uppercase tracking-widest">{currentUser?.role} Mode</span></p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg shadow-sm">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">Ledger Active</span>
+        <div className="flex items-center gap-2 px-2.5 py-1 md:px-3 md:py-1.5 bg-white border border-slate-200 rounded-lg shadow-sm w-fit">
+          <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-slate-600">Ledger Active</span>
         </div>
       </div>
 
       {/* Top Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-4">
         {stats.map((stat, i) => (
           <motion.div
             key={i}
@@ -218,11 +218,11 @@ const Dashboard: React.FC = () => {
             className="bg-white p-3 md:p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group"
           >
             <div className={cn("absolute right-[-10px] top-[-10px] opacity-10 group-hover:scale-125 transition-transform duration-500", stat.color)}>
-              <stat.icon size={60} className="md:w-[80px] md:h-[80px]" />
+              <stat.icon size={50} className="md:w-[80px] md:h-[80px]" />
             </div>
-            <div className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 md:mb-2">{stat.label}</div>
-            <div className="text-sm md:text-2xl font-bold text-slate-900 mb-1">{stat.value}</div>
-            <div className={cn("text-[7px] md:text-[9px] font-bold px-2 py-0.5 rounded-full inline-block", stat.bg, stat.color)}>
+            <div className="text-[7px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5 md:mb-2">{stat.label}</div>
+            <div className="text-base md:text-2xl font-bold text-slate-900 mb-0.5 md:mb-1">{stat.value}</div>
+            <div className={cn("text-[7px] md:text-[9px] font-bold px-1.5 py-0.5 rounded-full inline-block", stat.bg, stat.color)}>
               Live Sync
             </div>
           </motion.div>
@@ -277,7 +277,7 @@ const Dashboard: React.FC = () => {
           <div className="px-4 md:px-6 py-4 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
             <div className="flex items-center gap-2">
               <TrendingUp size={16} className="text-primary" />
-              <h2 className="text-[10px] md:text-xs font-bold text-slate-800 uppercase tracking-widest">Node Velocity</h2>
+              <h2 className="text-[8px] md:text-xs font-bold text-slate-800 uppercase tracking-widest text-center">Transaction Velocity</h2>
             </div>
           </div>
           <div className="p-2 md:p-6 h-[250px] md:h-[300px]">
@@ -332,14 +332,19 @@ const Dashboard: React.FC = () => {
 
         {/* Activity Feed */}
         <div className="bg-white rounded-2xl border border-slate-200 flex flex-col shadow-sm">
-          <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
+          <div className="px-4 md:px-6 py-3 md:py-4 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Activity size={16} className="text-indigo-600" />
-              <h2 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Digital Audit Trail</h2>
+              <h2 className="text-[10px] md:text-xs font-bold text-slate-800 uppercase tracking-widest">Audit Trail</h2>
             </div>
-            <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest">SYSTEM_LIVE</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[8px] md:text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest">LIVE</span>
+              <button className="text-[8px] md:text-[10px] text-primary font-black uppercase tracking-widest hover:underline transition-all">
+                View All
+              </button>
+            </div>
           </div>
-          <div className="p-4 space-y-4 flex-1 overflow-y-auto max-h-[300px] scrollbar-hide">
+          <div className="p-2 md:p-4 space-y-2 md:space-y-4 flex-1 overflow-y-auto max-h-[280px] scrollbar-hide">
             {combinedTimeline.length > 0 ? (
               combinedTimeline.map((item, idx) => {
                 const associatedRequisition = findRequisitionForLog(item.message);
@@ -353,41 +358,39 @@ const Dashboard: React.FC = () => {
                       }
                     }}
                     className={cn(
-                      "relative pl-6 pb-4 border-l-2 border-slate-100 last:pb-0 group transition-colors",
+                      "relative pl-6 pb-3 md:pb-4 border-l-2 border-slate-100 last:pb-0 group transition-colors",
                       associatedRequisition ? "hover:bg-slate-50 cursor-pointer p-1.5 -ml-1.5 rounded-r-xl" : ""
                     )}
                   >
                     <div className={cn(
-                      "absolute left-[-5px] top-2 w-2 h-2 rounded-full border border-white ring-4 ring-white",
+                      "absolute left-[-5px] top-1.5 md:top-2 w-2 h-2 rounded-full border border-white ring-4 ring-white",
                       item.type === "ALERT" 
                         ? (item.severity === "HIGH" ? "bg-rose-500" : "bg-amber-500")
                         : (item.action?.includes("CREATE") ? "bg-blue-500" : item.action?.includes("APPROVE") ? "bg-emerald-500" : "bg-slate-400")
                     )} />
                     
-                    <p className="text-[11px] font-bold text-slate-800 leading-snug group-hover:text-indigo-950 transition-colors">
+                    <p className="text-[10px] md:text-[11px] font-bold text-slate-800 leading-snug group-hover:text-indigo-950 transition-colors">
                       {item.message}
                     </p>
                     
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[9px] text-slate-400 font-mono uppercase">
+                    <div className="flex items-center gap-2 mt-0.5 md:mt-1">
+                      <span className="text-[8px] md:text-[9px] text-slate-400 font-mono uppercase">
                         {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                       <span className={cn(
-                        "px-1 py-0.5 rounded text-[8px] font-black tracking-widest uppercase border",
+                        "px-1 py-0.5 rounded text-[7px] md:text-[8px] font-black tracking-widest uppercase border",
                         item.type === "ALERT" ? "bg-rose-50/50 text-rose-600 border-rose-100" : "bg-slate-50 text-slate-500 border-slate-200"
                       )}>
-                        {item.type === "ALERT" ? `System Alert (${item.severity})` : item.action?.replace(/_/g, " ") || "AUDIT"}
+                        {item.type === "ALERT" ? `Alert (${item.severity})` : item.action?.replace(/_/g, " ") || "AUDIT"}
                       </span>
-                      
-                      {/* Inspect Items badge removed as requested */}
                     </div>
                   </div>
                 );
               })
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-slate-300 py-10 opacity-50">
-                <Activity size={32} />
-                <p className="text-[10px] font-bold uppercase tracking-widest mt-2">Audit Chamber Silent</p>
+                <Activity size={24} />
+                <p className="text-[8px] font-bold uppercase tracking-widest mt-2">No activity logs</p>
               </div>
             )}
           </div>
@@ -396,25 +399,24 @@ const Dashboard: React.FC = () => {
 
       {/* Group Request Totals Ledger Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
+        <div className="px-4 md:px-6 py-3 md:py-4 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
           <div>
-            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
+            <h2 className="text-[10px] md:text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
               <Users size={16} className="text-indigo-600" />
-              Cumulative Ministry Group Requests
+              Ministry Group Requests
             </h2>
-            <p className="text-[10px] text-slate-400 mt-1 uppercase font-mono">Consolidated Financial Exposure Per Affiliated Body</p>
+            <p className="text-[8px] md:text-[10px] text-slate-400 mt-0.5 uppercase font-mono">Consolidated Financial Exposure</p>
           </div>
-          <span className="text-[10px] font-mono text-slate-400">GROUPS: {requestedPerGroup.length} AFFILIATES</span>
+          <span className="text-[8px] md:text-[10px] font-mono text-slate-400">TOTAL: {requestedPerGroup.length}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50/30">
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Affiliated Ministry Group</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Requests Count</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Pending Approvals</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Disbursed (KES)</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Total Requested (KES)</th>
+                <th className="px-4 md:px-6 py-2 md:py-3 text-[7px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Ministry Group</th>
+                <th className="px-4 md:px-6 py-2 md:py-3 text-[7px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Transactions</th>
+                <th className="hidden sm:table-cell px-4 md:px-6 py-2 md:py-3 text-[7px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Pend</th>
+                <th className="px-4 md:px-6 py-2 md:py-3 text-[7px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Sum (Ksh)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -424,32 +426,26 @@ const Dashboard: React.FC = () => {
                   onClick={() => setSelectedGroupDetails(val)}
                   className="hover:bg-indigo-50/20 transition-all cursor-pointer group"
                 >
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-800 text-sm uppercase group-hover:text-indigo-600 transition-colors">{val.groupName}</span>
-                      <span className="text-[9px] text-indigo-600 bg-indigo-50 opacity-0 group-hover:opacity-100 px-2 py-0.5 rounded font-black tracking-widest uppercase transition-all flex items-center gap-1 font-sans">
-                        <Search size={10} /> DRILL DOWN ({val.count})
-                      </span>
+                  <td className="px-3 md:px-6 py-2.5 md:py-4">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-slate-800 text-[11px] md:text-sm uppercase group-hover:text-indigo-600 transition-colors truncate max-w-[100px] md:max-w-none">{val.groupName}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-mono font-bold bg-slate-100 text-slate-700">
-                      {val.count} requests
+                  <td className="px-3 md:px-6 py-2.5 md:py-4 text-center">
+                    <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] md:text-[11px] font-mono font-bold bg-slate-100 text-slate-700">
+                      {val.count}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-center">
+                  <td className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4 text-center">
                     <span className={cn(
-                      "inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-mono font-bold",
+                      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] md:text-[11px] font-mono font-bold",
                       val.pendingCount > 0 ? "bg-amber-50 text-amber-600" : "bg-slate-50 text-slate-400"
                     )}>
-                      {val.pendingCount} pending
+                      {val.pendingCount}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-right font-mono text-slate-600 text-sm">
-                    {formatCurrency(val.disbursedAmount)}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="font-mono font-black text-slate-900 text-sm">
+                  <td className="px-3 md:px-6 py-2.5 md:py-4 text-right">
+                    <span className="font-mono font-black text-slate-900 text-[11px] md:text-sm">
                       {formatCurrency(val.totalAmount)}
                     </span>
                   </td>
@@ -457,19 +453,16 @@ const Dashboard: React.FC = () => {
               ))}
               {requestedPerGroup.length > 0 && (
                 <tr className="bg-slate-50 border-t border-slate-200 font-bold">
-                  <td className="px-6 py-4 text-xs font-black uppercase text-slate-800">
+                  <td className="px-4 md:px-6 py-3 md:py-4 text-[10px] md:text-xs font-black uppercase text-slate-800">
                     Grand Total
                   </td>
-                  <td className="px-6 py-4 text-center font-mono text-xs text-slate-500">
-                    {requestedPerGroup.reduce((acc, x) => acc + x.count, 0)} nodes
+                  <td className="px-4 md:px-6 py-3 md:py-4 text-center font-mono text-[10px] md:text-xs text-slate-500">
+                    {requestedPerGroup.reduce((acc, x) => acc + x.count, 0)}
                   </td>
-                  <td className="px-6 py-4 text-center font-mono text-xs text-slate-500">
-                    {requestedPerGroup.reduce((acc, x) => acc + x.pendingCount, 0)} pending
+                  <td className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4 text-center font-mono text-[10px] md:text-xs text-slate-500">
+                    {requestedPerGroup.reduce((acc, x) => acc + x.pendingCount, 0)}
                   </td>
-                  <td className="px-6 py-4 text-right font-mono text-xs text-slate-600 font-bold">
-                    {formatCurrency(requestedPerGroup.reduce((acc, x) => acc + x.disbursedAmount, 0))}
-                  </td>
-                  <td className="px-6 py-4 text-right font-mono text-xs text-rose-600 font-extrabold">
+                  <td className="px-4 md:px-6 py-3 md:py-4 text-right font-mono text-xs md:text-sm text-primary">
                     {formatCurrency(requestedPerGroup.reduce((acc, x) => acc + x.totalAmount, 0))}
                   </td>
                 </tr>
@@ -489,7 +482,7 @@ const Dashboard: React.FC = () => {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50/30">
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Node Entity</th>
+                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Transaction Entity</th>
                 <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Affiliation</th>
                 <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Allocated Value</th>
                 <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Digital Status</th>
@@ -584,7 +577,7 @@ const Dashboard: React.FC = () => {
                   </div>
                   <div>
                     <h3 className="text-lg font-black text-slate-900 uppercase tracking-wider">{selectedGroupDetails.groupName}</h3>
-                    <p className="text-xs font-mono text-slate-400 uppercase tracking-widest mt-0.5">Consolidated Group Account Nodes Ledger</p>
+                    <p className="text-xs font-mono text-slate-400 uppercase tracking-widest mt-0.5">Consolidated Group Account Transactions Ledger</p>
                   </div>
                 </div>
                 <button 

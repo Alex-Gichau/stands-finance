@@ -114,6 +114,17 @@ service cloud.firestore {
              data.generatedById == request.auth.uid;
     }
 
+    function isValidAlert(data) {
+      return data.keys().hasAll(['id', 'type', 'severity', 'message', 'timestamp', 'isRead']) &&
+             data.id is string &&
+             data.type in ['OVERSHOOT', 'LARGE_REQUEST', 'EXPIRY', 'L2_APPROVED', 'FINANCE_DISBURSEMENT'] &&
+             data.severity in ['LOW', 'MEDIUM', 'HIGH'] &&
+             data.message is string && data.message.size() <= 1000 &&
+             data.timestamp is string &&
+             data.isRead is bool &&
+             (!data.keys().contains('targetRole') || data.targetRole is string);
+    }
+
     // --- match Blocks ---
 
     match /test/{testId} {
@@ -123,7 +134,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isSignedIn() && (isOwner(userId) || (isValidId(userId) && isAdmin()));
       allow list: if isAdmin();
-      allow create: if isValidId(userId) && (isAdmin() || (isSignedIn() && isOwner(userId)));
+      allow create: if isValidId(userId) && (isAdmin() || (isSignedIn() && isOwner(userId))) && isValidUserProfile(incoming());
       allow update: if isValidId(userId) && (isAdmin() || (isSignedIn() && isOwner(userId)));
     }
 
@@ -131,7 +142,7 @@ service cloud.firestore {
       allow get: if isValidId(requisitionId) && (isApprovedUser() || isAdmin());
       allow list: if isApprovedUser() || isAdmin();
       
-      allow create: if isValidId(requisitionId) && (isApprovedUser() || isAdmin());
+      allow create: if isValidId(requisitionId) && (isApprovedUser() || isAdmin()) && isValidRequisition(incoming());
       
       allow update: if isValidId(requisitionId) && (isApprovedUser() || isAdmin());
       
@@ -149,8 +160,10 @@ service cloud.firestore {
     match /alerts/{alertId} {
       allow get: if isValidId(alertId) && (isApprovedUser() || isAdmin());
       allow list: if isApprovedUser() || isAdmin();
-      allow create: if isValidId(alertId) && (isApprovedUser() || isAdmin());
-      allow update: if isValidId(alertId) && (isApprovedUser() || isAdmin()) && incoming().diff(existing()).affectedKeys().hasOnly(['isRead']);
+      allow create: if isValidId(alertId) && (isApprovedUser() || isAdmin()) && isValidAlert(incoming());
+      allow update: if isValidId(alertId) && (isApprovedUser() || isAdmin()) && 
+                      (incoming().diff(existing()).affectedKeys().hasOnly(['isRead']) || 
+                       incoming().diff(existing()).affectedKeys().size() == 0);
       allow delete: if isValidId(alertId) && isAdmin();
     }
 

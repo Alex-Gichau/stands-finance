@@ -80,7 +80,7 @@ export const SettingsPanel: React.FC = () => {
               <div className="flex-1 text-center md:text-left space-y-4">
                 <div>
                   <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight">
-                    {biometricEnrolled ? "Biometric Node Synchronized" : "Initialize Biometric Signature"}
+                    {biometricEnrolled ? "Biometric Transaction Synchronized" : "Initialize Biometric Signature"}
                   </h4>
                   <p className="text-xs text-slate-500 leading-relaxed font-medium mt-1">
                     Authorize expenditure requests via kernel-level fingerprint verification. This protocol bypasses manual code entry for rapid organizational turn-around.
@@ -101,7 +101,7 @@ export const SettingsPanel: React.FC = () => {
                       <ShieldCheck size={20} className="text-emerald-600" />
                       <div className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Security Link Verified</div>
                     </div>
-                    <button className="text-[9px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors">DISCONNECT_NODE</button>
+                    <button className="text-[9px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors">DISCONNECT_TRANSACTION</button>
                   </div>
                 )}
               </div>
@@ -177,7 +177,7 @@ export const SettingsPanel: React.FC = () => {
             <div className="px-8 py-6 border-b border-slate-100">
               <h3 className="text-xs font-black text-slate-900 uppercase tracking-[0.2em] flex items-center gap-2">
                 <UserCheck size={18} className="text-primary" />
-                Session Identity Node
+                Session Identity Transaction
               </h3>
             </div>
             
@@ -195,7 +195,7 @@ export const SettingsPanel: React.FC = () => {
                 <div className="p-4 bg-primary text-white rounded-2xl text-xs font-black uppercase tracking-widest border border-primary/20 shadow-lg shadow-primary/20">{currentUser?.role.replace("_", " ")}</div>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">AFFILIATED_NODE_GROUP</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">AFFILIATED_TRANSACTION_GROUP</label>
                 <div className="p-4 bg-slate-50 rounded-2xl text-xs text-slate-900 border border-slate-100 font-bold uppercase">{currentUser?.group || "GLOBAL_CLUSTER"}</div>
               </div>
             </div>
@@ -283,7 +283,7 @@ export const SettingsPanel: React.FC = () => {
                   <div className="w-16 h-16 bg-slate-50 rounded-3xl flex items-center justify-center border border-slate-100 text-slate-200">
                     <Activity size={24} />
                   </div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Awaiting Log Nodes...</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Awaiting Log Transactions...</p>
                 </div>
               ) : (
                 lastTenLogs.map((log, idx) => (

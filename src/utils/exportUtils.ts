@@ -15,7 +15,7 @@ export function generatePrintableHtml(
   requisitions: Requisition[],
   reportTitle: string,
   currentUser: any,
-  filterSummary = "All Listed Nodes"
+  filterSummary = "All Listed Transactions"
 ): string {
   const fileDate = new Date().toLocaleDateString("en-KE", {
     year: "numeric",
@@ -323,7 +323,7 @@ export function generatePrintableHtml(
 
   <div class="meta-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 25px;">
     <div class="meta-item" style="border-left: 3px solid #64748b;">
-      <div class="meta-label">Total Node Count</div>
+      <div class="meta-label">Total Transaction Count</div>
       <div class="meta-value meta-mono">${totalCount} entries</div>
     </div>
     <div class="meta-item" style="border-left: 3px solid #10b981;">
@@ -399,7 +399,7 @@ export function printRequisitions(
   requisitions: Requisition[],
   reportTitle: string,
   currentUser: any,
-  filterSummary = "All Listed Nodes"
+  filterSummary = "All Listed Transactions"
 ): void {
   const html = generatePrintableHtml(requisitions, reportTitle, currentUser, filterSummary);
 
@@ -440,7 +440,7 @@ export function downloadRequisitionsHtml(
   requisitions: Requisition[],
   reportTitle: string,
   currentUser: any,
-  filterSummary = "All Listed Nodes"
+  filterSummary = "All Listed Transactions"
 ): void {
   const html = generatePrintableHtml(requisitions, reportTitle, currentUser, filterSummary);
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
@@ -499,7 +499,7 @@ export function downloadRequisitionsPdf(
   requisitions: Requisition[],
   reportTitle: string,
   currentUser: any,
-  filterSummary = "All Listed Nodes"
+  filterSummary = "All Listed Transactions"
 ): void {
   const doc = new jsPDF("landscape", "mm", "a4");
 

@@ -139,7 +139,8 @@ export const FinanceLedgerPanel: React.FC = () => {
 
       await addSystemLog(
         "BUDGET_ADJUSTMENT", 
-        `Top-up: Added KES ${amount.toLocaleString()} to ${adjustingProject.name}. Adjusted total: KES ${updatedBudget.toLocaleString()}`
+        `Top-up: Added KES ${amount.toLocaleString()} to ${adjustingProject.name}. Adjusted total: KES ${updatedBudget.toLocaleString()}`,
+        { projectId: adjustingProject.id, amountAdded: amount, newBudget: updatedBudget }
       );
 
       setTopUpAmount("");
@@ -177,7 +178,8 @@ export const FinanceLedgerPanel: React.FC = () => {
 
       await addSystemLog(
         "FUNDS_DISBURSED",
-        `Disbursed KES ${disbursingReq.amount.toLocaleString()} for '${disbursingReq.title}' via ${disburseMethod} (Ref: ${referenceNum})`
+        `Disbursed KES ${disbursingReq.amount.toLocaleString()} for '${disbursingReq.title}' via ${disburseMethod} (Ref: ${referenceNum})`,
+        { requisitionId: disbursingReq.id, amount: disbursingReq.amount, method: disburseMethod, referenceNum }
       );
 
       setReferenceNum("");
@@ -283,7 +285,7 @@ export const FinanceLedgerPanel: React.FC = () => {
               <thead>
                 <tr>
                   <th style="width:12%">Acc Code</th>
-                  <th style="width:48%">Account Allocation Ledger Node</th>
+                  <th style="width:48%">Account Allocation Ledger Transaction</th>
                   <th style="width:20%; text-align:right">Debit (Econ outflow)</th>
                   <th style="width:20%; text-align:right">Credit (Asset ledger)</th>
                 </tr>
@@ -314,7 +316,7 @@ export const FinanceLedgerPanel: React.FC = () => {
             </div>
 
             <div style="font-size:11px; color:#475569; border-top:1px solid #e2e8f0; padding-top:10px; margin-top:20px">
-              <strong>Audit Trail:</strong> L1 Certified @ ${req.approvedAtL1 ? new Date(req.approvedAtL1).toLocaleString() : "N/A"} • L2 Approved @ ${req.approvedAtL2 ? new Date(req.approvedAtL2).toLocaleString() : "N/A"} • System Hash Node: ${req.digitalSignature || "Unsigned_Prototype_Ecosystem"}
+              <strong>Audit Trail:</strong> L1 Certified @ ${req.approvedAtL1 ? new Date(req.approvedAtL1).toLocaleString() : "N/A"} • L2 Approved @ ${req.approvedAtL2 ? new Date(req.approvedAtL2).toLocaleString() : "N/A"} • System Hash Transaction: ${req.digitalSignature || "Unsigned_Prototype_Ecosystem"}
             </div>
 
             <div class="footer-sig">
@@ -539,7 +541,7 @@ export const FinanceLedgerPanel: React.FC = () => {
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800">Double-Entry Ledger Books</h3>
-                <p className="text-[10px] text-slate-500">Every payout and reserve commitment balance ledger node.</p>
+                <p className="text-[10px] text-slate-500">Every payout and reserve commitment balance ledger transaction.</p>
               </div>
               <div className="text-[10px] text-slate-400 font-bold">
                 Showing {ledgerEntries.length} entries
@@ -670,7 +672,7 @@ export const FinanceLedgerPanel: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
             <div>
               <h3 className="text-sm font-bold uppercase tracking-widest text-slate-800">Ministry Group Budget Reserves</h3>
-              <p className="text-xs text-slate-500">Live fiscal matrix mapping allocations, spend trails, and unallocated buffer nodes.</p>
+              <p className="text-xs text-slate-500">Live fiscal matrix mapping allocations, spend trails, and unallocated buffer transactions.</p>
             </div>
 
             <div className="space-y-5">

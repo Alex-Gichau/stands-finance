@@ -25,7 +25,8 @@ import {
   Fingerprint,
   Building2,
   XCircle,
-  ShieldCheck
+  ShieldCheck,
+  Clock
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -165,7 +166,7 @@ export const UsersPanel: React.FC = () => {
             <Users size={24} className="text-primary" />
             User Access Management
           </h2>
-          <p className="text-xs md:text-sm text-slate-500">Maintain directory nodes and security protocols.</p>
+          <p className="text-xs md:text-sm text-slate-500">Maintain directory transactions and security protocols.</p>
         </div>
         
         <div className="flex items-center w-full md:w-auto">
@@ -214,7 +215,7 @@ export const UsersPanel: React.FC = () => {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-200 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                <th className="px-4 md:px-8 py-4">Identification Node</th>
+                <th className="px-4 md:px-8 py-4">Identification Transaction</th>
                 <th className="px-4 md:px-8 py-4 hidden sm:table-cell">Security Level</th>
                 <th className="px-4 md:px-8 py-4 hidden md:table-cell">Affiliation / Key</th>
                 <th className="px-4 md:px-8 py-4">Status</th>
@@ -234,29 +235,29 @@ export const UsersPanel: React.FC = () => {
                       user.isSuspended && "bg-rose-50/10"
                     )}
                   >
-                    <td className="px-4 md:px-8 py-5">
-                      <div className="flex items-center gap-3 md:gap-4">
-                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-xs md:text-sm border border-primary/5 shrink-0">
+                    <td className="px-3 md:px-8 py-2 md:py-5">
+                      <div className="flex items-center gap-2.5 md:gap-4">
+                        <div className="w-7 h-7 md:w-10 md:h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px] md:text-sm border border-primary/5 shrink-0">
                           {user.name.charAt(0)}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs md:text-sm font-bold text-slate-900 leading-tight truncate">{user.name}</p>
-                          <div className="flex items-center gap-1 mt-1 truncate">
-                            <Mail size={9} className="text-slate-300 md:w-2.5 md:h-2.5" />
-                            <p className="text-[8px] md:text-[10px] text-slate-400 font-medium truncate">{user.email}</p>
+                          <p className="text-[11px] md:text-sm font-bold text-slate-800 leading-tight truncate">{user.name}</p>
+                          <div className="flex items-center gap-1 mt-0.5 md:mt-1 truncate">
+                            <Mail size={8} className="text-slate-300 md:w-2.5 md:h-2.5" />
+                            <p className="text-[7.5px] md:text-[10px] text-slate-400 font-medium truncate tracking-tight">{user.email}</p>
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 md:px-8 py-5 hidden sm:table-cell">
+                    <td className="px-3 md:px-8 py-2.5 md:py-5 hidden sm:table-cell">
                       <span className={cn(
-                        "px-2 py-0.5 md:px-2.5 md:py-1 rounded-full border text-[8px] md:text-[9px] font-black uppercase tracking-[0.15em]",
+                        "px-1.5 py-0.5 md:px-2.5 md:py-1 rounded-full border text-[7.5px] md:text-[9px] font-black uppercase tracking-[0.1em] md:tracking-[0.15em]",
                         getRoleBadge(user.role)
                       )}>
                         {user.role}
                       </span>
                     </td>
-                    <td className="px-4 md:px-8 py-5 hidden md:table-cell">
+                    <td className="px-4 md:px-8 py-3 md:py-5 hidden md:table-cell">
                       {user.role === UserRole.CHURCH_GROUP ? (
                         <div className="flex items-center gap-1.5 text-slate-600">
                           <Building2 size={12} className="text-slate-300" />
@@ -268,19 +269,19 @@ export const UsersPanel: React.FC = () => {
                         <div className="flex items-center gap-1.5 text-primary">
                           <Fingerprint size={12} className="text-primary/40" />
                           <span className="text-[10px] font-mono font-bold tracking-widest bg-primary/5 px-2 py-0.5 rounded-lg border border-primary/10">
-                            {user.approverCode || "NODE_PENDING"}
+                            {user.approverCode || "TRANSACTION_PENDING"}
                           </span>
                         </div>
                       ) : (
                         <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">SYSTEM_CORE</span>
                       )}
                     </td>
-                    <td className="px-4 md:px-8 py-5">
+                    <td className="px-4 md:px-8 py-3 md:py-5">
                       <div className="flex items-center gap-2">
                         {!user.isApproved ? (
                           <div className="flex items-center gap-1 px-2 md:px-3 py-1 bg-amber-50 text-amber-600 rounded-lg border border-amber-100 animate-pulse">
-                            <AlertCircle size={10} className="md:w-3 md:h-3" />
-                            <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest">PENDING</span>
+                            <Clock size={10} className="md:w-3 md:h-3" />
+                            <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest">WAITING ROOM</span>
                           </div>
                         ) : user.isSuspended ? (
                           <div className="flex items-center gap-1 px-2 md:px-3 py-1 bg-rose-50 text-rose-600 rounded-lg border border-rose-100">
@@ -295,7 +296,7 @@ export const UsersPanel: React.FC = () => {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 md:px-8 py-5 text-right">
+                    <td className="px-4 md:px-8 py-3 md:py-5 text-right">
                       <div className="flex justify-end items-center gap-1 md:gap-2">
                         <button 
                           onClick={() => startEditing(user)}
@@ -325,7 +326,7 @@ export const UsersPanel: React.FC = () => {
           <div className="space-y-2">
             <h4 className="text-sm font-black text-white uppercase tracking-[0.2em]">Security Protocol Directive</h4>
             <p className="text-xs text-slate-400 leading-relaxed max-w-2xl font-medium">
-              Administrative changes to security levels take effect immediately across all active nodes. Downgrading an account from <strong>ADMIN</strong> level will revoke access to this management layer. Suspended nodes are immediately disconnected from the financial ledger.
+              Administrative changes to security levels take effect immediately across all active transactions. Downgrading an account from <strong>ADMIN</strong> level will revoke access to this management layer. Suspended transactions are immediately disconnected from the financial ledger.
             </p>
           </div>
         </div>
@@ -344,7 +345,7 @@ export const UsersPanel: React.FC = () => {
               <div className="px-4 md:px-8 py-4 md:py-6 border-b border-slate-100 bg-white flex items-center justify-between">
                 <div>
                   <h3 className="text-[10px] md:text-xs font-black text-slate-900 uppercase tracking-[0.2em]">
-                    {isModalOpen ? "New Member Credentials" : "Update Member Node"}
+                    {isModalOpen ? "New Member Credentials" : "Update Member Transaction"}
                   </h3>
                   <p className="text-[8px] md:text-[10px] text-slate-400 font-mono tracking-widest mt-1">SYS_ACCESS_CONTROL_V4</p>
                 </div>
@@ -383,7 +384,7 @@ export const UsersPanel: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-1.5 text-xs text-slate-400">
-                    <label className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Identity Node (Email)</label>
+                    <label className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Identity Transaction (Email)</label>
                     <input 
                       type="email"
                       required
@@ -473,6 +474,46 @@ export const UsersPanel: React.FC = () => {
                     )}
                 </div>
 
+                {!isModalOpen && editingUser && (
+                  <div className="bg-slate-50 rounded-2xl p-6 space-y-4 border border-slate-100">
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Administrative Actions</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {!editingUser.isApproved ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await approveUser(editingUser.id);
+                            setEditingUser({ ...editingUser, isApproved: true });
+                          }}
+                          className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-bold border border-emerald-100 hover:bg-emerald-100 transition-colors uppercase tracking-widest"
+                        >
+                          Approve Account
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await suspendUser(editingUser.id, !editingUser.isSuspended);
+                            setEditingUser({ ...editingUser, isSuspended: !editingUser.isSuspended });
+                          }}
+                          className={cn(
+                            "px-4 py-2 rounded-xl text-xs font-bold border transition-colors uppercase tracking-widest flex items-center justify-center gap-2",
+                            editingUser.isSuspended 
+                              ? "bg-slate-800 text-white hover:bg-slate-900 border-slate-700" 
+                              : "bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-100"
+                          )}
+                        >
+                          {editingUser.isSuspended ? (
+                            <><ShieldCheck size={14} /> Restore Connectivity</>
+                          ) : (
+                            <><UserX size={14} /> Suspend Transaction</>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div className="pt-2 md:pt-4 flex flex-col md:flex-row items-stretch md:items-center justify-end gap-3">
                   <button
                     type="button"
@@ -488,7 +529,7 @@ export const UsersPanel: React.FC = () => {
                   >
                     {(isSubmitting || isSaving) ? <Loader2 size={16} className="animate-spin" /> : <Shield size={16} />}
                     <span className="text-[10px] md:text-xs uppercase tracking-widest font-black">
-                      {isModalOpen ? "AUTHORIZE NODE" : "CONSOLIDATE UPDATE"}
+                      {isModalOpen ? "AUTHORIZE TRANSACTION" : "CONSOLIDATE UPDATE"}
                     </span>
                   </button>
                 </div>

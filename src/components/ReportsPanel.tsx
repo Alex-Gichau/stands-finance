@@ -226,7 +226,7 @@ export const ReportsPanel: React.FC = () => {
             Financial Impact Reporting
           </h2>
           <p className="text-sm text-slate-500 font-medium max-w-xl">
-            Compile and audit organizational expenditure nodes for internal filing and physical archives.
+            Compile and audit organizational expenditure transactions for internal filing and physical archives.
           </p>
         </div>
         
@@ -258,7 +258,7 @@ export const ReportsPanel: React.FC = () => {
               onClick={handlePrintReport}
               disabled={filteredRequisitions.length === 0}
               className="p-3 bg-slate-50 text-slate-600 hover:text-primary hover:bg-primary/5 border border-slate-200 rounded-2xl transition-all disabled:opacity-30"
-              title="Physical Print Node"
+              title="Physical Print Transaction"
             >
               <Printer size={20} />
             </button>
@@ -408,7 +408,7 @@ export const ReportsPanel: React.FC = () => {
           { label: "PERIOD_GROSS_BURN", value: statistics.grossValue, icon: TrendingUp, color: "slate" },
           { label: "RELEASED_LIQUIDITY", value: statistics.disbursed, icon: CheckCircle2, color: "emerald" },
           { label: "QUEUED_AUTHORIZATIONS", value: statistics.approved, icon: Filter, color: "primary" },
-          { label: "PENDING_NODES", value: statistics.pending, icon: Activity, color: "amber" }
+          { label: "PENDING_TRANSACTIONS", value: statistics.pending, icon: Activity, color: "amber" }
         ].map((stat, i) => (
           <motion.div 
             key={stat.label}
@@ -547,7 +547,7 @@ export const ReportsPanel: React.FC = () => {
                       <div>
                         <p className="text-xs font-black text-slate-900 uppercase tracking-[0.2em]">Zero Ledger Results</p>
                         <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
-                          No accounting nodes match your current audit parameters. Try expanding the date range or adjusting the status filters.
+                          No accounting transactions match your current audit parameters. Try expanding the date range or adjusting the status filters.
                         </p>
                       </div>
                     </div>

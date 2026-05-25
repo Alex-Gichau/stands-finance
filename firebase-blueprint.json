@@ -66,11 +66,12 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "type": { "type": "string", "enum": ["OVERSHOOT", "LARGE_REQUEST", "EXPIRY"] },
+        "type": { "type": "string", "enum": ["OVERSHOOT", "LARGE_REQUEST", "EXPIRY", "L2_APPROVED", "FINANCE_DISBURSEMENT"] },
         "severity": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
         "message": { "type": "string" },
         "timestamp": { "type": "string" },
-        "isRead": { "type": "boolean" }
+        "isRead": { "type": "boolean" },
+        "targetRole": { "type": "string" }
       },
       "required": ["id", "type", "severity", "message", "timestamp", "isRead"]
     },

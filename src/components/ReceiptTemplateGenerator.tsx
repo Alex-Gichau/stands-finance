@@ -80,7 +80,7 @@ export const ReceiptTemplateGenerator: React.FC<ReceiptTemplateGeneratorProps> =
       
       // Attach to requisition
       await uploadReceipts(req.id, [imageData]);
-      await addSystemLog("RECEIPT_ATTACHED", `Self-generated template receipt attached to Requisition ID: ${req.id}`);
+      await addSystemLog("RECEIPT_ATTACHED", `Self-generated template receipt attached to Requisition ID: ${req.id}`, { requisitionId: req.id });
       
       setAttached(true);
       setTimeout(() => setAttached(false), 3000);

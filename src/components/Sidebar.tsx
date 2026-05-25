@@ -60,8 +60,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, not
     { id: "approvals", label: "Authorization Hub", icon: CheckCircle, roles: [UserRole.APPROVER_L1, UserRole.APPROVER_L2, UserRole.ADMIN] },
     { id: "finance", label: "Finance Ledger", icon: Banknote, roles: [UserRole.FINANCE, UserRole.ADMIN] },
     { id: "reports", label: "Impact Reports", icon: BarChart3, roles: [UserRole.FINANCE, UserRole.ADMIN] },
-    { id: "users", label: "User Directory", icon: UserCircle, roles: [UserRole.ADMIN] },
-    { id: "settings", label: "System Config", icon: Settings, roles: [UserRole.ADMIN] },
   ];
 
   const filteredItems = menuItems.filter(item => 
@@ -208,9 +206,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, not
     </div>
 
     {/* Mobile Bottom Navigation Bar */}
-    <div className="fixed bottom-0 left-0 right-0 h-16 bg-slate-950 border-t border-slate-800 flex md:hidden items-center justify-between px-2 z-40 shadow-2xl">
-      <div className="flex items-center gap-1 overflow-x-auto no-scrollbar w-full py-1">
-        {filteredItems.map((item) => {
+    <div className="fixed bottom-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-t border-slate-100 flex md:hidden items-center justify-around px-2 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] selection:bg-transparent">
+      <div className="flex items-center justify-around w-full max-w-md mx-auto">
+        {(() => {
+          const mobileItems = filteredItems.filter(item => item.id !== "notifications");
+          const dashboardIdx = mobileItems.findIndex(i => i.id === "dashboard");
+          if (dashboardIdx !== -1) {
+            const [dashboard] = mobileItems.splice(dashboardIdx, 1);
+            const mid = Math.floor(mobileItems.length / 2);
+            mobileItems.splice(mid, 0, dashboard);
+          }
+          return mobileItems;
+        })().map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
           return (
@@ -219,21 +226,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, not
               type="button"
               onClick={() => onViewChange(item.id)}
               className={cn(
-                "flex flex-col items-center justify-center min-w-[64px] flex-1 h-12 rounded-xl transition-all relative shrink-0 select-none",
-                isActive 
-                  ? "bg-primary text-white font-black scale-105" 
-                  : "text-slate-400 hover:text-slate-200 font-bold"
+                "flex flex-col items-center justify-center py-1 group relative transition-all duration-300",
+                "w-full h-full",
+                isActive ? "text-primary" : "text-slate-400 hover:text-slate-600"
               )}
             >
-              <div className="relative">
-                <Icon size={15} />
-                {item.id === "notifications" && notificationsCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white font-black text-[8px] w-4 h-4 rounded-full flex items-center justify-center ring-2 ring-slate-950 leading-none">
-                    {notificationsCount}
-                  </span>
+              <div className={cn(
+                "relative flex items-center justify-center w-10 h-10 rounded-2xl transition-all duration-300",
+                isActive ? "bg-primary/5 -translate-y-1" : "bg-transparent"
+              )}>
+                <Icon size={isActive ? 20 : 18} strokeWidth={isActive ? 2.5 : 2} className="transition-all" />
+                {isActive && (
+                  <motion.div 
+                    layoutId="active-pill"
+                    className="absolute -bottom-1 w-1 h-1 rounded-full bg-primary"
+                  />
                 )}
               </div>
-              <span className="text-[7.5px] uppercase tracking-wider mt-1 truncate max-w-[58px] font-sans">
+              <span className={cn(
+                "text-[8px] font-black uppercase tracking-[0.1em] mt-0.5 transition-all duration-300",
+                isActive ? "opacity-100 scale-100" : "opacity-0 scale-90 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0"
+              )}>
                 {item.label.split(" ")[0]}
               </span>
             </button>

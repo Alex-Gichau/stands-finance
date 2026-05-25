@@ -101,7 +101,7 @@ export const RequisitionsPanel: React.FC = () => {
                 <div className="fixed inset-0 z-40" onClick={() => setShowExportDropdown(false)} />
                 <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden divide-y divide-slate-100 text-left">
                   <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-400 bg-slate-50">
-                    Export Filtered Table ({filtered.length} nodes)
+                    Export Filtered Table ({filtered.length} transactions)
                   </div>
                   <button
                     onClick={() => {
@@ -149,22 +149,22 @@ export const RequisitionsPanel: React.FC = () => {
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+      <div className="bg-white p-3 md:p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
           <input 
             type="text" 
-            placeholder="Search by ID, title, or ministry group..." 
-            className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:border-primary/40 focus:ring-4 focus:ring-primary/5 outline-none transition-all"
+            placeholder="Search documents..." 
+            className="w-full pl-11 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:border-primary/40 focus:ring-4 focus:ring-primary/5 outline-none transition-all"
             value={globalSearchTerm}
             onChange={(e) => setGlobalSearchTerm(e.target.value)}
           />
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
-            <Filter size={14} className="text-slate-400" />
+        <div className="flex items-center gap-2">
+          <div className="flex-1 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+            <Filter size={12} className="text-slate-400" />
             <select 
-              className="bg-transparent text-[11px] font-black uppercase tracking-widest text-slate-600 outline-none cursor-pointer"
+              className="w-full bg-transparent text-[10px] font-black uppercase tracking-widest text-slate-600 outline-none cursor-pointer"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
             >
@@ -182,13 +182,13 @@ export const RequisitionsPanel: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-slate-50/50 border-b border-slate-200">
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">ID & Title</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ministry Group</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Amount (Ksh)</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Expiry</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+              <tr className="bg-slate-50/50 border-b border-slate-200 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                <th className="px-4 md:px-6 py-3 md:py-4">ID & Title</th>
+                <th className="hidden lg:table-cell px-4 md:px-6 py-3 md:py-4">Ministry Group</th>
+                <th className="px-4 md:px-6 py-3 md:py-4 text-right">Amount</th>
+                <th className="px-4 md:px-6 py-3 md:py-4 text-center">Status</th>
+                <th className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4">Expiry</th>
+                <th className="px-4 md:px-6 py-3 md:py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -211,41 +211,41 @@ export const RequisitionsPanel: React.FC = () => {
                           : "hover:bg-slate-50/80 border-l-transparent"
                       )}
                     >
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col">
+                      <td className="px-3 md:px-6 py-2.5 md:py-4">
+                        <div className="flex flex-col min-w-0 max-w-[120px] md:max-w-none">
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-900 text-sm">{req.title}</span>
+                            <span className="font-bold text-slate-900 text-[11px] md:text-sm truncate">{req.title}</span>
                             {req.recurrence && req.recurrence !== "NONE" && (
-                              <Repeat size={10} className="text-primary animate-pulse" />
+                              <Repeat size={10} className="text-primary animate-pulse shrink-0" />
                             )}
                           </div>
-                          <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">{req.id}</span>
+                          <span className="text-[7.5px] md:text-[10px] font-mono text-slate-400 uppercase tracking-wider truncate">{req.id}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-primary/5 text-primary rounded-lg text-[10px] font-bold uppercase tracking-wide">
+                      <td className="hidden lg:table-cell px-4 md:px-6 py-3 md:py-4">
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-primary/5 text-primary rounded-lg text-[10px] font-bold uppercase tracking-wide">
                           {req.groupName}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-right">
-                        <span className="font-mono font-bold text-slate-900 text-sm">{formatCurrency(req.amount)}</span>
+                      <td className="px-3 md:px-6 py-2.5 md:py-4 text-right">
+                        <span className="font-mono font-bold text-slate-900 text-[10px] md:text-sm">{formatCurrency(req.amount)}</span>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-3 md:px-6 py-2.5 md:py-4">
                         <div className="flex justify-center">
                           <span className={cn(
-                            "px-2.5 py-1 rounded-full border text-[9px] font-black uppercase tracking-[0.15em]",
+                            "px-1.5 py-0.5 md:px-2.5 md:py-1 rounded-full border text-[7.5px] md:text-[9px] font-black uppercase tracking-[0.1em] md:tracking-[0.15em] shrink-0",
                             getStatusColor(req.status)
                           )}>
                             {req.status}
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4">
                         {req.expiresAt ? (
                           <div className="flex items-center gap-1.5">
-                            <Clock size={12} className={isExpired ? "text-rose-500" : isNearingExpiry ? "text-amber-600 animate-pulse" : "text-slate-400"} />
+                            <Clock size={10} className={isExpired ? "text-rose-500" : isNearingExpiry ? "text-amber-600 animate-pulse" : "text-slate-400"} />
                             <span className={cn(
-                              "text-[10px] font-mono font-bold uppercase tracking-tighter",
+                              "text-[9px] md:text-[10px] font-mono font-bold uppercase tracking-tighter truncate",
                               isExpired ? "text-rose-500" : isNearingExpiry ? "text-amber-650 font-extrabold" : "text-slate-500"
                             )}>
                               {isExpired ? "EXPIRED" : `${Math.ceil(hoursRemaining)}H REM`}
@@ -300,7 +300,7 @@ export const RequisitionsPanel: React.FC = () => {
                 <Search size={24} className="text-slate-300" />
               </div>
               <h3 className="text-sm font-bold text-slate-600 uppercase tracking-widest">No matching requisitions</h3>
-              <p className="text-xs text-slate-400 mt-2">Adjust your filters or initiate a new request node.</p>
+              <p className="text-xs text-slate-400 mt-2">Adjust your filters or initiate a new request transaction.</p>
             </div>
           )}
         </div>
@@ -423,52 +423,52 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
         <div className="flex-1 overflow-y-auto">
           <div className="grid grid-cols-1 lg:grid-cols-3">
             {/* Left Content */}
-            <div className="lg:col-span-2 p-4 md:p-8 space-y-6 md:space-y-8 border-b lg:border-b-0 lg:border-r border-slate-100">
-              <section className="space-y-4">
+            <div className="lg:col-span-2 p-4 md:p-8 space-y-5 md:space-y-8 border-b lg:border-b-0 lg:border-r border-slate-100">
+              <section className="space-y-3 md:space-y-4">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-[10px] font-black text-primary uppercase tracking-[0.2em]">Contextual Data</h4>
+                  <h4 className="text-[9px] md:text-[10px] font-black text-primary uppercase tracking-[0.2em]">Contextual Data</h4>
                 </div>
-                <div className="bg-slate-50 rounded-2xl p-4 md:p-6 border border-slate-100 space-y-4 text-slate-600 text-xs md:text-sm font-medium leading-relaxed whitespace-pre-wrap">
+                <div className="bg-slate-50 rounded-xl md:rounded-2xl p-3 md:p-6 border border-slate-100 space-y-4 text-[10px] md:text-sm font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">
                   {req.description}
                 </div>
               </section>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-8">
                 <section className="space-y-2">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Financial Breakdown</h4>
+                  <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Financial Breakdown</h4>
                   <div className="space-y-1">
                     <p className="text-xl md:text-2xl font-bold text-slate-900 font-mono">{formatCurrency(req.amount)}</p>
-                    <p className="text-[10px] md:text-[11px] text-slate-500 italic font-medium">{req.amountWords}</p>
+                    <p className="text-[9px] md:text-[11px] text-slate-500 italic font-medium">{req.amountWords}</p>
                   </div>
                 </section>
                 <section className="space-y-2">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Node Ownership</h4>
+                  <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Transaction Ownership</h4>
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm md:text-base shrink-0">
+                    <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs md:text-base shrink-0">
                       {req.requesterName.charAt(0)}
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs md:text-sm font-bold text-slate-900 truncate">{req.requesterName}</p>
-                      <p className="text-[9px] md:text-[10px] text-slate-500 uppercase tracking-wider truncate">{req.groupName}</p>
+                      <p className="text-[8px] md:text-[10px] text-slate-500 uppercase tracking-wider truncate">{req.groupName}</p>
                     </div>
                   </div>
                 </section>
               </div>
 
-              <section className="space-y-4">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Verification Evidence</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <section className="space-y-3 md:space-y-4">
+                <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Verification Evidence</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-4">
                    {req.attachments?.map((attachment, i) => (
-                    <div key={i} className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl hover:border-primary/40 transition-all cursor-pointer group">
-                      <div className="p-2 bg-slate-50 rounded-lg text-slate-400 group-hover:text-primary transition-colors">
-                        <Paperclip size={14} />
+                    <div key={i} className="flex items-center gap-3 p-2.5 bg-white border border-slate-200 rounded-xl hover:border-primary/40 transition-all cursor-pointer group">
+                      <div className="p-1.5 bg-slate-50 rounded-lg text-slate-400 group-hover:text-primary transition-colors">
+                        <Paperclip size={12} />
                       </div>
-                      <span className="text-xs font-medium text-slate-700 truncate">{attachment}</span>
+                      <span className="text-[10px] md:text-xs font-medium text-slate-700 truncate">{attachment}</span>
                     </div>
                   ))}
                   {(!req.attachments || req.attachments.length === 0) && (
-                    <div className="col-span-2 py-4 flex flex-col items-center justify-center text-slate-300 border border-dashed border-slate-200 rounded-2xl">
-                      <p className="text-[10px] font-black uppercase tracking-widest">No Documents Linked</p>
+                    <div className="col-span-1 md:col-span-2 py-4 flex flex-col items-center justify-center text-slate-300 border border-dashed border-slate-200 rounded-2xl">
+                      <p className="text-[9px] font-black uppercase tracking-widest">No Documents Linked</p>
                     </div>
                   )}
                 </div>
@@ -487,32 +487,32 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                   initial={{ y: 10, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   className={cn(
-                    "p-6 rounded-2xl border bg-slate-50",
+                    "p-4 md:p-6 rounded-2xl border bg-slate-50",
                     showDecisionForm === "APPROVE" ? "border-emerald-100" : showDecisionForm === "REJECT" ? "border-rose-100" : "border-amber-100"
                   )}
                 >
-                  <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-4">
-                    {showDecisionForm === "APPROVE" ? "Authorize Ledger Node" : showDecisionForm === "REJECT" ? "Reject Node" : "Escalate Node"}
+                  <h4 className="text-[10px] md:text-xs font-black text-slate-900 uppercase tracking-widest mb-4">
+                    {showDecisionForm === "APPROVE" ? "Authorize Ledger Transaction" : showDecisionForm === "REJECT" ? "Reject Transaction" : "Escalate Transaction"}
                   </h4>
                   <div className="space-y-4">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Decision Note / Reason</label>
+                      <label className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Decision Note / Reason</label>
                       <textarea 
                         value={decisionNote}
                         onChange={(e) => setDecisionNote(e.target.value)}
-                        className="input-field bg-white"
-                        placeholder="Provide reasoning for your decision..."
+                        className="input-field bg-white text-xs"
+                        placeholder="Provide reasoning..."
                         rows={3}
                       />
                     </div>
                     {showDecisionForm === "APPROVE" && (
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Approver Security Code</label>
+                        <label className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Security Code</label>
                         <input 
                           type="password"
                           value={approvalCode}
                           onChange={(e) => setApprovalCode(e.target.value)}
-                          className="input-field bg-white font-mono"
+                          className="input-field bg-white font-mono text-xs"
                           placeholder="••••••"
                         />
                       </div>
@@ -520,7 +520,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                     <div className="flex justify-end gap-3 pt-2">
                        <button 
                         onClick={() => setShowDecisionForm(null)}
-                        className="px-6 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all cursor-pointer"
+                        className="px-4 md:px-6 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-[10px] md:text-xs font-bold hover:bg-slate-50 transition-all cursor-pointer"
                       >
                         CANCEL
                       </button>
@@ -528,13 +528,13 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                         disabled={loading || (showDecisionForm === "APPROVE" && !approvalCode) || (showDecisionForm === "REJECT" && !decisionNote.trim())}
                         onClick={() => handleDecision(showDecisionForm)}
                         className={cn(
-                          "btn-primary px-8 flex items-center gap-2",
+                          "btn-primary px-5 md:px-8 flex items-center gap-2",
                           showDecisionForm === "REJECT" ? "bg-rose-600 hover:bg-rose-700" : 
                           showDecisionForm === "ESCALATE" ? "bg-amber-500 hover:bg-amber-600 shadow-amber-200" : ""
                         )}
                       >
-                        {loading ? <Loader2 size={16} className="animate-spin" /> : null}
-                        CONFIRM {showDecisionForm}
+                        {loading ? <Loader2 size={14} className="animate-spin" /> : null}
+                        <span className="text-[10px] md:text-xs">CONFIRM</span>
                       </button>
                     </div>
                   </div>
@@ -543,40 +543,40 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
             </div>
 
             {/* Right Sidebar - History & Status */}
-            <div className="bg-slate-50/50 p-8 space-y-8 h-full">
+            <div className="bg-slate-50/50 p-6 md:p-8 space-y-6 md:space-y-8 h-full">
               <section className="space-y-4">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Digital Audit Trail</h4>
-                <div className="space-y-6 relative ml-1">
+                <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Digital Audit Trail</h4>
+                <div className="space-y-5 md:space-y-6 relative ml-1">
                   <div className="absolute left-1.5 top-2 bottom-2 w-0.5 bg-slate-200" />
                   
-                  {/* Creation Node */}
-                  <div className="relative pl-8">
-                    <div className="absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full bg-slate-200 border-2 border-white ring-4 ring-slate-50/50" />
-                    <p className="text-[10px] font-serif text-slate-400 mb-1">{formatDate(req.submittedAt)}</p>
-                    <p className="text-[11px] font-bold text-slate-900 leading-tight">Ledger Node Initialized</p>
-                    <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-tighter">Requester: {req.requesterName}</p>
+                  {/* Creation Transaction */}
+                  <div className="relative pl-7 md:pl-8">
+                    <div className="absolute left-0 top-1.5 w-3 h-3 md:w-3.5 md:h-3.5 rounded-full bg-slate-200 border-2 border-white ring-4 ring-slate-50/50" />
+                    <p className="text-[9px] md:text-[10px] font-serif text-slate-400 mb-0.5 md:mb-1">{formatDate(req.submittedAt)}</p>
+                    <p className="text-[10px] md:text-[11px] font-bold text-slate-900 leading-tight">Ledger Transaction Initialized</p>
+                    <p className="text-[8px] md:text-[10px] text-slate-500 mt-1 uppercase tracking-tighter">Requester: {req.requesterName}</p>
                   </div>
 
-                  {/* History Nodes */}
+                  {/* History Transactions */}
                   {req.approvalHistory.map((note, i) => (
-                    <div key={i} className="relative pl-8">
+                    <div key={i} className="relative pl-7 md:pl-8">
                        <div className={cn(
-                        "absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white ring-4 ring-slate-50/50",
+                        "absolute left-0 top-1.5 w-3 h-3 md:w-3.5 md:h-3.5 rounded-full border-2 border-white ring-4 ring-slate-50/50",
                         note.decision === "APPROVE" ? "bg-emerald-500" : "bg-rose-500"
                       )} />
-                      <p className="text-[10px] font-serif text-slate-400 mb-1">{formatDate(note.timestamp)}</p>
+                      <p className="text-[9px] md:text-[10px] font-serif text-slate-400 mb-0.5 md:mb-1">{formatDate(note.timestamp)}</p>
                       <div className="flex items-center gap-1.5 mb-1">
-                        <p className="text-[11px] font-bold text-slate-900 leading-tight">
-                          {note.decision === "APPROVE" ? "Authorized Signature" : "Rejected from Ledger"}
+                        <p className="text-[10px] md:text-[11px] font-bold text-slate-900 leading-tight">
+                          {note.decision === "APPROVE" ? "Authorized" : "Rejected"}
                         </p>
                         <span className={cn(
-                          "px-1.5 py-0.5 rounded-sm text-[8px] font-black uppercase tracking-widest",
+                          "px-1.5 py-0.5 rounded-sm text-[7px] md:text-[8px] font-black uppercase tracking-widest",
                           note.decision === "APPROVE" ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
                         )}>
                           {note.role.split('_').pop()}
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-600 italic bg-white p-2 rounded-lg border border-slate-200 leading-relaxed shadow-sm">
+                      <p className="text-[10px] md:text-[11px] text-slate-600 italic bg-white p-2 rounded-lg border border-slate-200 leading-relaxed shadow-sm">
                         "{note.note || note.rejectionReason}"
                       </p>
                     </div>
@@ -584,21 +584,21 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                 </div>
               </section>
 
-              <section className="pt-8 border-t border-slate-200/60 space-y-4">
-                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Metadata</h4>
-                 <div className="space-y-4">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-500 flex items-center gap-1.5"><CalendarDays size={14} /> Submitted</span>
+              <section className="pt-6 md:pt-8 border-t border-slate-200/60 space-y-4">
+                 <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Metadata</h4>
+                 <div className="space-y-3 md:space-y-4">
+                    <div className="flex items-center justify-between text-[10px] md:text-xs">
+                      <span className="text-slate-500 flex items-center gap-1.5"><CalendarDays size={13} /> Submitted</span>
                       <span className="font-bold text-slate-700">{formatDate(req.submittedAt)}</span>
                     </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-500 flex items-center gap-1.5"><Clock size={14} /> Expiry Target</span>
+                    <div className="flex items-center justify-between text-[10px] md:text-xs">
+                      <span className="text-slate-500 flex items-center gap-1.5"><Clock size={13} /> Expiry</span>
                       <span className="font-bold text-rose-500">{req.expiresAt ? formatDate(req.expiresAt) : "N/A"}</span>
                     </div>
                     {req.recurrence && req.recurrence !== "NONE" && (
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-500 flex items-center gap-1.5"><Repeat size={14} /> Recurrence</span>
-                        <span className="font-black text-primary uppercase tracking-widest">{req.recurrence} CYCLE</span>
+                      <div className="flex items-center justify-between text-[10px] md:text-xs">
+                        <span className="text-slate-500 flex items-center gap-1.5"><Repeat size={13} /> Recurrence</span>
+                        <span className="font-black text-primary uppercase tracking-widest">{req.recurrence}</span>
                       </div>
                     )}
                  </div>
@@ -607,42 +607,42 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
           </div>
         </div>
 
-        <div className="px-4 md:px-8 py-4 md:py-6 border-t border-slate-100 bg-white flex flex-col md:flex-row gap-4 justify-between items-center">
-          <div className="flex items-center gap-3 md:gap-2 w-full md:w-auto justify-center md:justify-start">
+        <div className="px-4 md:px-8 py-3 md:py-6 border-t border-slate-100 bg-white flex flex-col md:flex-row gap-3 md:gap-4 justify-between items-center">
+          <div className="flex items-center gap-2 w-full md:w-auto justify-center md:justify-start">
             <button 
               onClick={() => {
                 onDelete();
                 onClose();
               }}
-              className="p-3 md:p-2.5 hover:bg-rose-50 text-slate-400 hover:text-rose-500 rounded-xl transition-all border border-slate-100 md:border-0"
+              className="p-2.5 hover:bg-rose-50 text-slate-400 hover:text-rose-500 rounded-xl transition-all border border-slate-100 md:border-0"
               title="Delete Document"
             >
-              <Trash2 size={18} />
+              <Trash2 size={16} />
             </button>
             <button 
               onClick={onGenerateReceipt}
-              className="p-3 md:p-2.5 hover:bg-slate-100 text-slate-400 hover:text-primary rounded-xl transition-all border border-slate-100 md:border-0" 
+              className="p-2.5 hover:bg-slate-100 text-slate-400 hover:text-primary rounded-xl transition-all border border-slate-100 md:border-0" 
               title="Generate Receipt Template"
             >
-              <FileText size={18} />
+              <FileText size={16} />
             </button>
-            <button className="p-3 md:p-2.5 hover:bg-slate-100 text-slate-400 rounded-xl transition-all border border-slate-100 md:border-0" title="Print Details">
-              <Printer size={18} />
+            <button className="p-2.5 hover:bg-slate-100 text-slate-400 rounded-xl transition-all border border-slate-100 md:border-0" title="Print Details">
+              <Printer size={16} />
             </button>
           </div>
-          <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-2 w-full md:w-auto">
              <button 
               onClick={onClose}
-              className="flex-1 md:flex-none px-6 md:px-8 py-3 md:py-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-xl text-[10px] md:text-xs font-bold hover:bg-slate-100 transition-all cursor-pointer uppercase tracking-widest"
+              className="flex-1 md:flex-none px-4 md:px-8 py-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-xl text-[9px] md:text-xs font-bold hover:bg-slate-100 transition-all cursor-pointer uppercase tracking-widest"
             >
               EXIT
             </button>
             
             {!showDecisionForm && canAct() && (
-              <div className="flex flex-1 md:flex-none items-center gap-2">
+              <div className="flex flex-1 md:flex-none items-center gap-1.5 md:gap-2">
                 <button 
                   onClick={() => setShowDecisionForm("REJECT")}
-                  className="flex-1 md:flex-none px-4 md:px-6 py-3 md:py-2.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl text-[10px] md:text-xs font-bold hover:bg-rose-100 transition-all cursor-pointer uppercase tracking-widest"
+                  className="flex-1 md:flex-none px-3 md:px-6 py-2.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl text-[9px] md:text-xs font-bold hover:bg-rose-100 transition-all cursor-pointer uppercase tracking-widest"
                 >
                   REJECT
                 </button>
@@ -650,13 +650,13 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                   <>
                     <button 
                       onClick={() => setShowDecisionForm("ESCALATE")}
-                      className="flex-1 md:flex-none px-4 md:px-6 py-3 md:py-2.5 bg-amber-50 text-amber-600 border border-amber-100 rounded-xl text-[10px] md:text-xs font-bold hover:bg-amber-100 transition-all cursor-pointer uppercase tracking-widest"
+                      className="flex-1 md:flex-none px-3 md:px-6 py-2.5 bg-amber-50 text-amber-600 border border-amber-100 rounded-xl text-[9px] md:text-xs font-bold hover:bg-amber-100 transition-all cursor-pointer uppercase tracking-widest"
                     >
                       ESCALATE
                     </button>
                     <button 
                       onClick={() => setShowDecisionForm("APPROVE")}
-                      className="flex-1 md:flex-none px-4 md:px-6 py-3 md:py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100"
+                      className="flex-1 md:flex-none px-3 md:px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-[9px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100"
                     >
                       APPROVE
                     </button>
@@ -665,7 +665,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                 {(req.status === RequisitionStatus.APPROVED_L1 || req.status === RequisitionStatus.ESCALATED) && (
                    <button 
                      onClick={() => setShowDecisionForm("APPROVE")}
-                     className="flex-1 md:flex-none px-4 md:px-6 py-3 md:py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100"
+                     className="flex-1 md:flex-none px-3 md:px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-[9px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100"
                    >
                      APPROVE L2
                    </button>
@@ -674,7 +674,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
             )}
 
             {req.status === RequisitionStatus.APPROVED_L2 && (
-               <button className="flex-1 md:flex-none px-6 py-3 md:py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100">
+               <button className="flex-1 md:flex-none px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-[9px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100">
                 DISBURSE FUNDS
               </button>
             )}
