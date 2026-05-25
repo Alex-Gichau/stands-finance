@@ -31,14 +31,22 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) => {
   const { currentUser, logout } = useRequisitions();
   
-  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
-    const saved = localStorage.getItem("sidebar_collapsed");
-    return saved === "true";
-  });
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("sidebar_collapsed");
+      if (saved === "true") {
+        setIsCollapsed(true);
+      }
+    }
+  }, []);
 
   const toggleCollapse = () => {
     setIsCollapsed(prev => {
-      localStorage.setItem("sidebar_collapsed", String(!prev));
+      if (typeof window !== "undefined") {
+        localStorage.setItem("sidebar_collapsed", String(!prev));
+      }
       return !prev;
     });
   };

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { RequisitionProvider, useRequisitions } from "./contexts/RequisitionContext";
 import { cn } from "./lib/utils";
 import { Sidebar } from "./components/Sidebar";
@@ -22,7 +22,10 @@ import {
   AlertCircle,
   Search,
   X,
-  ShieldCheck
+  ShieldCheck,
+  Lock,
+  Clock,
+  Trash2
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -53,6 +56,71 @@ function AppContent() {
     activeToasts,
     removeToast
   } = useRequisitions();
+
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("recent_searches");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setRecentSearches(parsed.slice(0, 5));
+          }
+        } catch (e) {
+          console.error("Failed to parse recent searches", e);
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setIsSearchFocused(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const saveRecentSearch = (term: string) => {
+    const trimmed = term.trim();
+    if (!trimmed) return;
+    
+    setRecentSearches(prev => {
+      const filtered = prev.filter(s => s.toLowerCase() !== trimmed.toLowerCase());
+      const updated = [trimmed, ...filtered].slice(0, 5);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("recent_searches", JSON.stringify(updated));
+      }
+      return updated;
+    });
+  };
+
+  const removeRecentSearch = (termToRemove: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRecentSearches(prev => {
+      const updated = prev.filter(s => s !== termToRemove);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("recent_searches", JSON.stringify(updated));
+      }
+      return updated;
+    });
+  };
+
+  const clearAllRecentSearches = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRecentSearches([]);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("recent_searches");
+    }
+  };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -378,7 +446,7 @@ function AppContent() {
             <p className="text-xs text-slate-500">System synchronized • {new Date().toLocaleTimeString()}</p>
           </div>
 
-          <div className="flex-1 max-w-md mx-8 hidden md:block">
+          <div className="flex-1 max-w-md mx-8 hidden md:block" ref={searchRef}>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
               <input 
@@ -386,7 +454,22 @@ function AppContent() {
                 placeholder="Search requisitions by title or group..." 
                 className="w-full pl-10 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all"
                 value={globalSearchTerm}
-                onChange={(e) => setGlobalSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setGlobalSearchTerm(val);
+                  if (val.trim() !== "") {
+                    setCurrentView("requisitions");
+                  }
+                }}
+                onFocus={() => setIsSearchFocused(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    saveRecentSearch(globalSearchTerm);
+                    setIsSearchFocused(false);
+                    setCurrentView("requisitions");
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
               />
               {globalSearchTerm && (
                 <button 
@@ -396,6 +479,54 @@ function AppContent() {
                   <X size={14} />
                 </button>
               )}
+
+              <AnimatePresence>
+                {isSearchFocused && recentSearches.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 8 }}
+                    className="absolute left-0 right-0 top-full mt-2 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-50 p-2"
+                  >
+                    <div className="flex items-center justify-between px-2 py-1.5 border-b border-slate-100 mb-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Recent Searches</span>
+                      <button 
+                        onClick={clearAllRecentSearches}
+                        className="text-[9px] font-bold text-rose-500 hover:text-rose-700 uppercase tracking-wider flex items-center gap-1 cursor-pointer bg-transparent border-none"
+                      >
+                        <Trash2 size={10} />
+                        Clear All
+                      </button>
+                    </div>
+                    <div className="space-y-0.5">
+                      {recentSearches.map((term, idx) => (
+                        <div
+                          key={`${term}-${idx}`}
+                          onClick={() => {
+                            setGlobalSearchTerm(term);
+                            saveRecentSearch(term);
+                            setIsSearchFocused(false);
+                            setCurrentView("requisitions");
+                          }}
+                          className="flex items-center justify-between px-2 py-1.5 hover:bg-slate-50 rounded-lg text-xs text-slate-700 cursor-pointer transition-colors group"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Clock size={12} className="text-slate-400 group-hover:text-indigo-500" />
+                            <span className="font-medium">{term}</span>
+                          </div>
+                          <button
+                            onClick={(e) => removeRecentSearch(term, e)}
+                            className="text-slate-400 hover:text-rose-500 hover:bg-slate-100 rounded p-1 transition-all cursor-pointer bg-transparent border-none"
+                            title="Remove search from history"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
           

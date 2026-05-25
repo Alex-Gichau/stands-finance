@@ -52,6 +52,10 @@ export const RequisitionsPanel: React.FC = () => {
     const canSee = currentUser?.role === UserRole.ADMIN || req.groupId === currentUser?.group;
     
     return matchesSearch && matchesStatus && canSee;
+  }).sort((a, b) => {
+    const timeA = new Date(a.submittedAt || a.updatedAt || 0).getTime();
+    const timeB = new Date(b.submittedAt || b.updatedAt || 0).getTime();
+    return timeB - timeA;
   });
 
   const getStatusColor = (status: RequisitionStatus) => {
