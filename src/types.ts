@@ -22,6 +22,7 @@ export interface UserProfile {
   isApproved: boolean;
   isSuspended: boolean;
   profilePromptPreference?: "ASK" | "NEVER";
+  theme?: "light" | "dark";
   phone?: string;
   department?: string;
 }

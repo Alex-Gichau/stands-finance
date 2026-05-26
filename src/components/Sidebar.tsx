@@ -209,7 +209,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, not
     </div>
 
     {/* Mobile Bottom Navigation Bar */}
-    <div className="fixed bottom-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-t border-slate-100 flex md:hidden items-center justify-around px-2 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] selection:bg-transparent">
+    <div className="fixed bottom-0 left-0 right-0 h-16 bg-card/80 backdrop-blur-md border-t border-border flex md:hidden items-center justify-around px-2 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] selection:bg-transparent transition-colors duration-300">
       <div className="flex items-center justify-around w-full max-w-md mx-auto">
         {(() => {
           const mobileItems = filteredItems.filter(item => item.id !== "notifications");

@@ -17,27 +17,37 @@
   --radius-2xl: 1rem;
 }
 
+@theme dark {
+  --color-primary: #3b82f6;          /* Bright Blue */
+  --color-secondary: #fbbf24;        /* Bright Amber */
+  --color-background: #020617;       /* Slate 950 */
+  --color-foreground: #f8fafc;
+  --color-card: #0f172a;             /* Slate 900 */
+  --color-border: #1e293b;           /* Slate 800 */
+  --color-muted: #94a3b8;
+}
+
 @layer base {
   body {
-    @apply antialiased text-[#0f172a] bg-[#f8fafc] font-sans;
+    @apply antialiased text-foreground bg-background font-sans transition-colors duration-300;
   }
 }
 
 @layer components {
   .card-header {
-    @apply px-5 py-4 border-b border-[#e2e8f0] bg-[#f8fafc] flex justify-between items-center;
+    @apply px-5 py-4 border-b border-border bg-background/50 backdrop-blur flex justify-between items-center;
   }
   
   .label-caps {
-    @apply text-[10px] font-bold text-[#64748b] uppercase tracking-wider;
+    @apply text-[10px] font-bold text-muted uppercase tracking-wider;
   }
   
   .btn-primary {
-    @apply bg-[#1e3a8a] text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-0.5 transition-all active:scale-95 text-sm;
+    @apply bg-primary text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-0.5 transition-all active:scale-95 text-sm;
   }
 
   .input-field {
-    @apply w-full bg-[#f1f5f9]/30 border border-[#e2e8f0] rounded-xl px-4 py-2.5 focus:border-[#1e3a8a]/30 focus:ring-4 focus:ring-[#1e3a8a]/5 outline-none transition-all text-sm;
+    @apply w-full bg-slate-500/5 dark:bg-white/5 border border-border rounded-xl px-4 py-2.5 focus:border-primary/30 focus:ring-4 focus:ring-primary/5 outline-none transition-all text-sm;
   }
 }
 

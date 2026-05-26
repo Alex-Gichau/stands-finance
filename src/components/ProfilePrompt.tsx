@@ -99,7 +99,7 @@ export const ProfilePrompt: React.FC<ProfilePromptProps> = ({ user, onComplete }
       <motion.div 
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="w-full max-w-lg bg-white rounded-[2.5rem] shadow-2xl overflow-hidden relative border border-slate-200"
+        className="w-full max-w-lg bg-card rounded-[2.5rem] shadow-2xl overflow-hidden relative border border-border"
       >
         <div className="p-8 md:p-10 space-y-8">
           <AnimatePresence mode="wait">
@@ -115,8 +115,8 @@ export const ProfilePrompt: React.FC<ProfilePromptProps> = ({ user, onComplete }
                   <div className="w-16 h-16 bg-primary/10 text-primary rounded-3xl flex items-center justify-center mx-auto mb-4">
                     <UserCircle size={40} />
                   </div>
-                  <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Complete Your Profile</h2>
-                  <p className="text-slate-500 text-sm leading-relaxed max-w-sm mx-auto">
+                  <h2 className="text-2xl font-black text-foreground uppercase tracking-tight">Complete Your Profile</h2>
+                  <p className="text-muted text-sm leading-relaxed max-w-sm mx-auto">
                     Welcome back, <span className="text-primary font-bold">{user.name}</span>! Would you like to update your security or add more personal details?
                   </p>
                 </div>
@@ -124,45 +124,45 @@ export const ProfilePrompt: React.FC<ProfilePromptProps> = ({ user, onComplete }
                 <div className="grid grid-cols-1 gap-4">
                   <button 
                     onClick={() => setStep("PASSWORD")}
-                    className="flex items-center gap-4 p-5 bg-slate-50 hover:bg-slate-100 rounded-3xl border border-slate-100 transition-all text-left group"
+                    className="flex items-center gap-4 p-5 bg-background hover:bg-background/80 rounded-3xl border border-border/50 transition-all text-left group"
                   >
-                    <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-slate-400 group-hover:text-primary transition-colors">
+                    <div className="w-12 h-12 bg-card rounded-2xl flex items-center justify-center shadow-sm text-muted group-hover:text-primary transition-colors">
                       <Lock size={20} />
                     </div>
                     <div className="flex-1">
-                      <h3 className="font-black text-slate-800 text-[11px] uppercase tracking-widest mb-0.5">Security Hub</h3>
-                      <p className="text-[10px] text-slate-500 font-medium tracking-tight">Change or reinforce your password security.</p>
+                      <h3 className="font-black text-foreground/80 text-[11px] uppercase tracking-widest mb-0.5">Security Hub</h3>
+                      <p className="text-[10px] text-muted font-medium tracking-tight">Change or reinforce your password security.</p>
                     </div>
-                    <ChevronRight size={16} className="text-slate-300" />
+                    <ChevronRight size={16} className="text-muted/50" />
                   </button>
 
                   <button 
                     onClick={() => setStep("DETAILS")}
-                    className="flex items-center gap-4 p-5 bg-slate-50 hover:bg-slate-100 rounded-3xl border border-slate-100 transition-all text-left group"
+                    className="flex items-center gap-4 p-5 bg-background hover:bg-background/80 rounded-3xl border border-border/50 transition-all text-left group"
                   >
-                    <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-slate-400 group-hover:text-primary transition-colors">
+                    <div className="w-12 h-12 bg-card rounded-2xl flex items-center justify-center shadow-sm text-muted group-hover:text-primary transition-colors">
                       <MessageSquare size={20} />
                     </div>
                     <div className="flex-1">
-                      <h3 className="font-black text-slate-800 text-[11px] uppercase tracking-widest mb-0.5">Identity & Metadata</h3>
-                      <p className="text-[10px] text-slate-500 font-medium tracking-tight">Add contact details and department information.</p>
+                      <h3 className="font-black text-foreground/80 text-[11px] uppercase tracking-widest mb-0.5">Identity & Metadata</h3>
+                      <p className="text-[10px] text-muted font-medium tracking-tight">Add contact details and department information.</p>
                     </div>
-                    <ChevronRight size={16} className="text-slate-300" />
+                    <ChevronRight size={16} className="text-muted/50" />
                   </button>
                 </div>
 
                 <div className="pt-4 space-y-4">
                   <div className="flex flex-col items-center gap-3">
-                    <div className="flex items-center gap-3 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
+                    <div className="flex items-center gap-3 bg-background p-1.5 rounded-2xl border border-border/50">
                       <button 
                         onClick={() => setPreference("ASK")}
-                        className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${preference === "ASK" ? "bg-white text-primary shadow-sm ring-1 ring-slate-200" : "text-slate-400 hover:text-slate-600"}`}
+                        className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${preference === "ASK" ? "bg-card text-primary shadow-sm ring-1 ring-border" : "text-muted hover:text-foreground"}`}
                       >
                         Ask Next Time
                       </button>
                       <button 
                         onClick={() => setPreference("NEVER")}
-                        className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${preference === "NEVER" ? "bg-white text-primary shadow-sm ring-1 ring-slate-200" : "text-slate-400 hover:text-slate-600"}`}
+                        className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${preference === "NEVER" ? "bg-card text-primary shadow-sm ring-1 ring-border" : "text-muted hover:text-foreground"}`}
                       >
                         Never Ask
                       </button>
@@ -172,7 +172,7 @@ export const ProfilePrompt: React.FC<ProfilePromptProps> = ({ user, onComplete }
                   <button 
                     onClick={handleSkip}
                     disabled={loading}
-                    className="w-full py-4 text-slate-400 hover:text-slate-600 font-black text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
+                    className="w-full py-4 text-muted hover:text-foreground font-black text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
                   >
                     Skip to Dashboard 
                     <X size={12} />
@@ -189,22 +189,22 @@ export const ProfilePrompt: React.FC<ProfilePromptProps> = ({ user, onComplete }
                 exit={{ opacity: 0, x: -20 }}
                 className="space-y-6"
               >
-                <div className="flex items-center gap-4 border-b border-slate-100 pb-6">
-                  <button onClick={() => setStep("INTRO")} className="p-2 hover:bg-slate-50 rounded-xl text-slate-400">
+                <div className="flex items-center gap-4 border-b border-border/50 pb-6">
+                  <button onClick={() => setStep("INTRO")} className="p-2 hover:bg-background rounded-xl text-muted">
                     <ChevronRight size={20} className="rotate-180" />
                   </button>
-                  <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Identity Details</h2>
+                  <h2 className="text-xl font-black text-foreground uppercase tracking-tight">Identity Details</h2>
                 </div>
 
                 {error && (
-                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600 text-xs font-bold">
+                  <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center gap-3 text-rose-500 text-xs font-bold">
                     <AlertCircle size={16} />
                     {error}
                   </div>
                 )}
 
                 {success && (
-                  <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center gap-3 text-emerald-600 text-xs font-bold">
+                  <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-3 text-emerald-500 text-xs font-bold">
                     <CheckCircle size={16} />
                     {success}
                   </div>
@@ -212,42 +212,42 @@ export const ProfilePrompt: React.FC<ProfilePromptProps> = ({ user, onComplete }
 
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Legal Full Name</label>
+                    <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1">Legal Full Name</label>
                     <div className="relative">
-                      <UserCircle className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                      <UserCircle className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={16} />
                       <input 
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-3.5 text-xs font-bold focus:bg-white focus:border-primary transition-all outline-none"
+                        className="w-full bg-background border border-border rounded-2xl pl-12 pr-5 py-3.5 text-xs font-bold focus:bg-card focus:border-primary transition-all outline-none"
                         placeholder="John Doe"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Phone Number</label>
+                    <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1">Phone Number</label>
                     <div className="relative">
-                      <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                      <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={16} />
                       <input 
                         type="tel"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-3.5 text-xs font-bold focus:bg-white focus:border-primary transition-all outline-none font-mono"
+                        className="w-full bg-background border border-border rounded-2xl pl-12 pr-5 py-3.5 text-xs font-bold focus:bg-card focus:border-primary transition-all outline-none font-mono"
                         placeholder="+254 700 000 000"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Department / Office</label>
+                    <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1">Department / Office</label>
                     <div className="relative">
-                      <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                      <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={16} />
                       <input 
                         type="text"
                         value={department}
                         onChange={(e) => setDepartment(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-3.5 text-xs font-bold focus:bg-white focus:border-primary transition-all outline-none"
+                        className="w-full bg-background border border-border rounded-2xl pl-12 pr-5 py-3.5 text-xs font-bold focus:bg-card focus:border-primary transition-all outline-none"
                         placeholder="e.g. Finance, Missions"
                       />
                     </div>
@@ -257,7 +257,7 @@ export const ProfilePrompt: React.FC<ProfilePromptProps> = ({ user, onComplete }
                 <div className="pt-4 flex items-center gap-3">
                   <button 
                     onClick={() => setStep("INTRO")}
-                    className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all hover:bg-slate-200 shadow-sm"
+                    className="flex-1 py-4 bg-background text-muted rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all hover:bg-background/80 shadow-sm border border-border"
                   >
                     Back
                   </button>
@@ -281,34 +281,34 @@ export const ProfilePrompt: React.FC<ProfilePromptProps> = ({ user, onComplete }
                 exit={{ opacity: 0, x: -20 }}
                 className="space-y-8"
               >
-                <div className="flex items-center gap-4 border-b border-slate-100 pb-6">
-                  <button onClick={() => setStep("INTRO")} className="p-2 hover:bg-slate-50 rounded-xl text-slate-400">
+                <div className="flex items-center gap-4 border-b border-border/50 pb-6">
+                  <button onClick={() => setStep("INTRO")} className="p-2 hover:bg-background rounded-xl text-muted">
                     <ChevronRight size={20} className="rotate-180" />
                   </button>
-                  <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Security Update</h2>
+                  <h2 className="text-xl font-black text-foreground uppercase tracking-tight">Security Update</h2>
                 </div>
 
-                <div className="p-6 bg-blue-50 border border-blue-100 rounded-3xl space-y-4">
-                  <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-primary shadow-sm">
+                <div className="p-6 bg-blue-500/5 border border-blue-500/20 rounded-3xl space-y-4">
+                  <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center text-primary shadow-sm border border-blue-500/20">
                     <Lock size={18} />
                   </div>
                   <div className="space-y-1.5">
-                    <h3 className="font-black text-slate-900 text-sm uppercase tracking-tight">Dispatch Reset Link</h3>
-                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                    <h3 className="font-black text-foreground text-sm uppercase tracking-tight">Dispatch Reset Link</h3>
+                    <p className="text-xs text-muted leading-relaxed font-medium">
                       For security, we will send a temporary one-time password reset link to <strong className="text-primary">{user.email}</strong>.
                     </p>
                   </div>
                 </div>
 
                 {error && (
-                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600 text-xs font-bold">
+                  <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center gap-3 text-rose-500 text-xs font-bold">
                     <AlertCircle size={16} />
                     {error}
                   </div>
                 )}
 
                 {success && (
-                  <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center gap-3 text-emerald-600 text-xs font-bold">
+                  <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-3 text-emerald-500 text-xs font-bold">
                     <CheckCircle size={16} />
                     {success}
                   </div>
@@ -318,16 +318,16 @@ export const ProfilePrompt: React.FC<ProfilePromptProps> = ({ user, onComplete }
                   <button 
                     onClick={handlePasswordReset}
                     disabled={loading || !!success}
-                    className="w-full py-5 bg-slate-900 text-white rounded-[1.8rem] font-black text-xs uppercase tracking-widest transition-all hover:bg-slate-800 shadow-2xl shadow-slate-950/20 flex items-center justify-center gap-3 active:scale-[0.98]"
+                    className="w-full py-5 bg-foreground text-background rounded-[1.8rem] font-black text-xs uppercase tracking-widest transition-all hover:opacity-90 shadow-2xl flex items-center justify-center gap-3 active:scale-[0.98]"
                   >
                     {loading ? "Dispatching..." : success ? "Link Sent ✓" : "Authorize Password Update Loop"}
-                    {loading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                    {loading && <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
                   </button>
                   
                   {!success && (
                     <button 
                       onClick={() => setStep("INTRO")}
-                      className="w-full py-4 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:text-slate-600 transition-colors"
+                      className="w-full py-4 text-muted font-black text-[10px] uppercase tracking-widest hover:text-foreground transition-colors"
                     >
                       Maybe Later
                     </button>

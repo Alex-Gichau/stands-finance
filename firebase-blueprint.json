@@ -13,7 +13,10 @@
         "approverCode": { "type": "string" },
         "isActive": { "type": "boolean" },
         "isApproved": { "type": "boolean" },
-        "isSuspended": { "type": "boolean" }
+        "isSuspended": { "type": "boolean" },
+        "profilePromptPreference": { "type": "string", "enum": ["ASK", "NEVER"] },
+        "phone": { "type": "string" },
+        "department": { "type": "string" }
       },
       "required": ["id", "name", "email", "role", "isActive", "isApproved", "isSuspended"]
     },

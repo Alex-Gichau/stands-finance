@@ -303,6 +303,32 @@ function AppContent() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+K or Cmd+K to focus search
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        setIsSearchFocused(true);
+      }
+
+      // Escape to close everything
+      if (e.key === 'Escape') {
+        setIsNotificationsOpen(false);
+        setIsProfileOpen(false);
+        setIsSearchFocused(false);
+        setSelectedReqForNoticeDetail(null);
+        setIsGeneratingReceiptFromHub(null);
+        setShowProfilePrompt(false);
+        searchInputRef.current?.blur();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -727,7 +753,10 @@ function AppContent() {
   const unreadNotificationsCount = notificationItems.filter(item => !readNoticeIds.includes(item.id)).length;
 
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden font-sans">
+    <div className={cn(
+      "flex h-screen overflow-hidden font-sans transition-colors duration-300",
+      currentUser?.theme === 'dark' ? "dark bg-background text-foreground" : "bg-slate-50 text-slate-900"
+    )}>
       <AnimatePresence>
         {showProfilePrompt && currentUser && (
           <ProfilePrompt user={currentUser} onComplete={() => setShowProfilePrompt(false)} />
@@ -738,21 +767,22 @@ function AppContent() {
       
       <main className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 select-none">
+        <header className="h-16 bg-card border-b border-border flex items-center justify-between px-4 md:px-8 shrink-0 select-none">
           <div>
-            <h1 className="text-xs md:text-lg font-bold text-slate-900 leading-tight truncate max-w-[150px] md:max-w-none">
+            <h1 className="text-xs md:text-lg font-bold text-foreground leading-tight truncate max-w-[150px] md:max-w-none">
               {currentView.charAt(0).toUpperCase() + currentView.slice(1)}: {currentUser.group}
             </h1>
-            <p className="text-[10px] text-slate-500 hidden sm:block">System synchronized • {new Date().toLocaleTimeString()}</p>
+            <p className="text-[10px] text-muted hidden sm:block">System synchronized • {new Date().toLocaleTimeString()}</p>
           </div>
 
           <div className="flex-1 max-w-md mx-8 hidden md:block" ref={searchRef}>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" size={16} />
               <input 
+                ref={searchInputRef}
                 type="text" 
                 placeholder="Search requisitions by title or group..." 
-                className="w-full pl-10 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all"
+                className="w-full pl-10 pr-10 py-2 bg-background border border-border rounded-lg text-xs focus:ring-2 focus:ring-primary/10 focus:border-primary outline-none transition-all placeholder:text-muted/50"
                 value={globalSearchTerm}
                 onChange={(e) => {
                   const val = e.target.value;
@@ -786,10 +816,10 @@ function AppContent() {
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 8 }}
-                    className="absolute left-0 right-0 top-full mt-2 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-50 p-2"
+                    className="absolute left-0 right-0 top-full mt-2 bg-card border border-border rounded-xl shadow-lg overflow-hidden z-50 p-2"
                   >
-                    <div className="flex items-center justify-between px-2 py-1.5 border-b border-slate-100 mb-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Recent Searches</span>
+                    <div className="flex items-center justify-between px-2 py-1.5 border-b border-border/10 mb-1">
+                      <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Recent Searches</span>
                       <button 
                         onClick={clearAllRecentSearches}
                         className="text-[9px] font-bold text-rose-500 hover:text-rose-700 uppercase tracking-wider flex items-center gap-1 cursor-pointer bg-transparent border-none"
@@ -839,11 +869,11 @@ function AppContent() {
             <div className="relative" ref={notificationsRef}>
               <button 
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                className="relative p-2 text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
+                className="relative p-2 text-muted hover:text-primary transition-colors cursor-pointer"
               >
                 <Bell size={16} />
                 {notificationItems.length > 0 && (
-                  <div className="absolute top-1 right-1 bg-rose-500 text-white font-black text-[7px] w-3.5 h-3.5 rounded-full flex items-center justify-center border-2 border-white transform translate-x-1 -translate-y-1">
+                  <div className="absolute top-1 right-1 bg-rose-500 text-white font-black text-[7px] w-3.5 h-3.5 rounded-full flex items-center justify-center border-2 border-background transform translate-x-1 -translate-y-1">
                     {notificationItems.length}
                   </div>
                 )}
@@ -856,17 +886,17 @@ function AppContent() {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 mt-2 w-80 bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden z-50 text-left"
+                    className="absolute right-0 mt-2 w-80 bg-card rounded-xl border border-border shadow-xl overflow-hidden z-50 text-left"
                   >
-                    <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-700 uppercase tracking-widest">Active Alerts ({notificationItems.length})</span>
+                    <div className="px-4 py-3 bg-background/50 border-b border-border flex items-center justify-between">
+                      <span className="text-xs font-bold text-foreground uppercase tracking-widest">Active Alerts ({notificationItems.length})</span>
                       {notificationItems.length > 0 && (
                         <button 
                           onClick={() => {
                             setShowReportReminder(false);
                             setIsNotificationsOpen(false);
                           }}
-                          className="text-[9px] font-bold text-indigo-600 uppercase tracking-tight hover:underline cursor-pointer"
+                          className="text-[9px] font-bold text-primary uppercase tracking-tight hover:underline cursor-pointer"
                         >
                           Clear All
                         </button>

@@ -23,14 +23,17 @@ import {
   Server,
   Zap,
   ArrowRight,
-  UserCheck
+  UserCheck,
+  Moon,
+  Sun,
+  Palette
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { cn } from "../lib/utils";
 import { motion } from "motion/react";
 
 export const SettingsPanel: React.FC = () => {
-  const { thresholds, updateThreshold, currentUser, biometricEnrolled, enrollBiometric, systemLogs, seedAllEcosystemData } = useRequisitions();
+  const { thresholds, updateThreshold, currentUser, updateUserProfile, biometricEnrolled, enrollBiometric, systemLogs, seedAllEcosystemData } = useRequisitions();
 
   const lastTenLogs = systemLogs.slice(0, 10);
 
@@ -38,11 +41,11 @@ export const SettingsPanel: React.FC = () => {
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-700">
        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-1">
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+          <h2 className="text-2xl font-black text-foreground tracking-tight flex items-center gap-2">
             <Settings2 size={28} className="text-primary" />
             System Configuration
           </h2>
-          <p className="text-sm text-slate-500 font-medium max-w-xl">
+          <p className="text-sm text-muted font-medium max-w-xl">
             Configure authorization pipelines, security thresholds, and organizational audit parameters.
           </p>
         </div>
@@ -51,7 +54,7 @@ export const SettingsPanel: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
           {/* Hardware Biometric Enrollment */}
-          <section className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+          <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm hover:shadow-md transition-shadow">
             <div className="bg-slate-900 px-8 py-4 flex items-center justify-between">
               <h3 className="text-[10px] font-black text-white uppercase tracking-[0.2em] flex items-center gap-2">
                 <Fingerprint size={16} className="text-primary" />
@@ -79,10 +82,10 @@ export const SettingsPanel: React.FC = () => {
               
               <div className="flex-1 text-center md:text-left space-y-4">
                 <div>
-                  <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight">
+                  <h4 className="text-lg font-black text-foreground uppercase tracking-tight">
                     {biometricEnrolled ? "Biometric Transaction Synchronized" : "Initialize Biometric Signature"}
                   </h4>
-                  <p className="text-xs text-slate-500 leading-relaxed font-medium mt-1">
+                  <p className="text-xs text-muted leading-relaxed font-medium mt-1">
                     Authorize expenditure requests via kernel-level fingerprint verification. This protocol bypasses manual code entry for rapid organizational turn-around.
                   </p>
                 </div>
@@ -110,34 +113,34 @@ export const SettingsPanel: React.FC = () => {
 
           {/* Security & Access Thresholds */}
           {currentUser?.role === "ADMIN" && (
-            <section className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm">
-              <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-[0.2em] flex items-center gap-2">
+            <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm">
+              <div className="px-8 py-6 border-b border-border flex items-center justify-between">
+                <h3 className="text-xs font-black text-foreground uppercase tracking-[0.2em] flex items-center gap-2">
                   <Lock size={16} className="text-primary" />
                   Operational Security Thresholds
                 </h3>
-                <p className="text-[10px] text-slate-400 font-mono">PROTO_DYNAMIC_V4</p>
+                <p className="text-[10px] text-muted font-mono">PROTO_DYNAMIC_V4</p>
               </div>
               
-              <div className="divide-y divide-slate-50">
+              <div className="divide-y divide-border/50">
                 {thresholds.map((t, i) => (
                   <motion.div 
                     key={t.id}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.1 }}
-                    className="flex items-center justify-between p-8 hover:bg-slate-50/50 transition-colors group"
+                    className="flex items-center justify-between p-8 hover:bg-background transition-colors group"
                   >
                     <div className="flex items-center gap-5">
                       <div className={cn(
                         "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 group-hover:scale-110",
-                        t.isEnabled ? "bg-primary/10 text-primary" : "bg-slate-100 text-slate-400"
+                        t.isEnabled ? "bg-primary/10 text-primary" : "bg-background text-muted"
                       )}>
                         <Zap size={20} />
                       </div>
                       <div>
-                        <p className="text-sm font-black text-slate-900 uppercase tracking-tight group-hover:text-primary transition-colors">{t.type.replace("_", " ")}</p>
-                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">TRIGGER_VALUE: {t.threshold}{t.type.toLowerCase().includes('budget') ? '%' : ' KES'}</p>
+                        <p className="text-sm font-black text-foreground uppercase tracking-tight group-hover:text-primary transition-colors">{t.type.replace("_", " ")}</p>
+                        <p className="text-[10px] text-muted font-mono mt-0.5">TRIGGER_VALUE: {t.threshold}{t.type.toLowerCase().includes('budget') ? '%' : ' KES'}</p>
                       </div>
                     </div>
                     
@@ -147,7 +150,7 @@ export const SettingsPanel: React.FC = () => {
                           type="number" 
                           value={t.threshold}
                           onChange={(e) => updateThreshold(t.id, { threshold: Number(e.target.value) })}
-                          className="w-24 px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black font-mono focus:border-primary/50 outline-none transition-colors text-right"
+                          className="w-24 px-4 py-2 bg-background border border-border rounded-xl text-xs font-black font-mono focus:border-primary/50 outline-none transition-colors text-right"
                         />
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[9px] font-black text-slate-300 uppercase">VAL</span>
                       </div>
@@ -172,12 +175,12 @@ export const SettingsPanel: React.FC = () => {
           )}
 
           {/* User Profile Identity */}
-          <section className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm relative">
+          <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm relative">
              <div className="absolute top-0 right-0 p-10 opacity-5 pointer-events-none">
                 <UserCheck size={120} className="text-primary" />
              </div>
-            <div className="px-8 py-6 border-b border-slate-100">
-              <h3 className="text-xs font-black text-slate-900 uppercase tracking-[0.2em] flex items-center gap-2">
+            <div className="px-8 py-6 border-b border-border">
+              <h3 className="text-xs font-black text-foreground uppercase tracking-[0.2em] flex items-center gap-2">
                 <UserCheck size={18} className="text-primary" />
                 Session Identity Transaction
               </h3>
@@ -185,12 +188,12 @@ export const SettingsPanel: React.FC = () => {
             
             <div className="p-10 grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">LEGAL_NAME_DISPLAY</label>
-                <div className="p-4 bg-slate-50 rounded-2xl text-xs text-slate-900 border border-slate-100 font-bold">{currentUser?.name}</div>
+                <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1">LEGAL_NAME_DISPLAY</label>
+                <div className="p-4 bg-background rounded-2xl text-xs text-foreground border border-border font-bold">{currentUser?.name}</div>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">IDENTITY_EMAIL</label>
-                <div className="p-4 bg-slate-50 rounded-2xl text-xs text-slate-900 border border-slate-100 font-bold">{currentUser?.email}</div>
+                <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1">IDENTITY_EMAIL</label>
+                <div className="p-4 bg-background rounded-2xl text-xs text-foreground border border-border font-bold">{currentUser?.email}</div>
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">PROTOCOL_ACCESS_ROLE</label>
@@ -265,10 +268,10 @@ export const SettingsPanel: React.FC = () => {
           )}
 
           {/* Real-time Audit Trail */}
-          <section className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm flex flex-col h-[500px]">
-            <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+          <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm flex flex-col h-[500px]">
+            <div className="px-8 py-6 border-b border-border flex items-center justify-between bg-background">
               <div>
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-[0.2em] flex items-center gap-2">
+                <h3 className="text-xs font-black text-foreground uppercase tracking-[0.2em] flex items-center gap-2">
                   <History size={16} className="text-primary" />
                   Audit Trail
                 </h3>
@@ -282,10 +285,10 @@ export const SettingsPanel: React.FC = () => {
             <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin">
               {lastTenLogs.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4">
-                  <div className="w-16 h-16 bg-slate-50 rounded-3xl flex items-center justify-center border border-slate-100 text-slate-200">
+                  <div className="w-16 h-16 bg-background rounded-3xl flex items-center justify-center border border-border text-muted/30">
                     <Activity size={24} />
                   </div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Awaiting Log Transactions...</p>
+                  <p className="text-[10px] font-black text-muted uppercase tracking-widest">Awaiting Log Transactions...</p>
                 </div>
               ) : (
                 lastTenLogs.map((log, idx) => (
@@ -294,26 +297,26 @@ export const SettingsPanel: React.FC = () => {
                     initial={{ opacity: 0, x: 10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: idx * 0.05 }}
-                    className="p-5 border border-slate-50 rounded-2xl hover:bg-slate-50/50 transition-all group"
+                    className="p-5 border border-border rounded-2xl hover:bg-background transition-all group"
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-lg border border-slate-200 bg-white text-slate-400 group-hover:text-primary group-hover:border-primary/20 transition-colors">
+                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-lg border border-border bg-card text-muted group-hover:text-primary group-hover:border-primary/20 transition-colors">
                         {log.action}
                       </span>
-                      <span className="font-mono text-[9px] text-slate-400 font-bold">
+                      <span className="font-mono text-[9px] text-muted font-bold">
                         {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
                     
-                    <p className="text-[11px] text-slate-700 font-medium leading-relaxed mb-3">
+                    <p className="text-[11px] text-foreground font-medium leading-relaxed mb-3">
                       {log.details}
                     </p>
                     
                     <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-md bg-slate-100 flex items-center justify-center text-[8px] font-black text-slate-500">
+                      <div className="w-4 h-4 rounded-md bg-background flex items-center justify-center text-[8px] font-black text-muted">
                         {log.performedBy?.charAt(0)}
                       </div>
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter truncate max-w-[150px]">
+                      <span className="text-[9px] font-black text-muted uppercase tracking-tighter truncate max-w-[150px]">
                         {log.performedBy}
                       </span>
                     </div>
@@ -323,10 +326,61 @@ export const SettingsPanel: React.FC = () => {
             </div>
           </section>
 
+          {/* Interface Aesthetics & Theme */}
+          <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm transition-all">
+            <div className="px-8 py-5 border-b border-border bg-slate-50/50 dark:bg-slate-900/50">
+              <h3 className="text-[10px] font-black text-foreground uppercase tracking-[0.2em] flex items-center gap-2">
+                <Palette size={16} className="text-primary" />
+                Interface Visual Core
+              </h3>
+            </div>
+            
+            <div className="p-8 space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-xs font-black text-foreground uppercase tracking-tight">High-Contrast Dark Mode</p>
+                  <p className="text-[10px] text-muted font-medium italic">Reduced eye-strain for audit cycles</p>
+                </div>
+                
+                <div className="flex items-center gap-3 p-1.5 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-border/50">
+                  <button 
+                    onClick={() => currentUser && updateUserProfile(currentUser.id, { theme: 'light' })}
+                    className={cn(
+                      "w-10 h-10 flex items-center justify-center rounded-xl transition-all",
+                      currentUser?.theme !== 'dark' 
+                        ? "bg-white dark:bg-slate-700 text-amber-500 shadow-sm shadow-amber-500/10" 
+                        : "text-slate-400 hover:text-slate-600"
+                    )}
+                  >
+                    <Sun size={18} />
+                  </button>
+                  <button 
+                    onClick={() => currentUser && updateUserProfile(currentUser.id, { theme: 'dark' })}
+                    className={cn(
+                      "w-10 h-10 flex items-center justify-center rounded-xl transition-all",
+                      currentUser?.theme === 'dark' 
+                        ? "bg-white dark:bg-slate-700 text-primary shadow-sm shadow-primary/10" 
+                        : "text-slate-400 hover:text-slate-600"
+                    )}
+                  >
+                    <Moon size={18} />
+                  </button>
+                </div>
+              </div>
+
+              {currentUser?.theme === 'dark' && (
+                <div className="p-4 bg-primary/5 border border-primary/20 rounded-2xl flex items-center gap-3">
+                  <Cpu size={16} className="text-primary animate-pulse" />
+                  <span className="text-[9px] font-black text-primary uppercase tracking-widest">Display_Driver: OLED_OPTIMIZED_V2</span>
+                </div>
+              )}
+            </div>
+          </section>
+
           {/* Alert Channels */}
-          <section className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm">
-            <div className="px-8 py-5 border-b border-slate-100 bg-slate-50/50">
-              <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em] flex items-center gap-2">
+          <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm">
+            <div className="px-8 py-5 border-b border-border bg-background">
+              <h3 className="text-[10px] font-black text-foreground uppercase tracking-[0.2em] flex items-center gap-2">
                 <Bell size={16} className="text-primary" />
                 Alert Pipelines
               </h3>
@@ -337,14 +391,14 @@ export const SettingsPanel: React.FC = () => {
                 { label: "Internal Message Hub", active: true, icon: Mail },
                 { label: "SMS Critical Broadcast", active: false, icon: Smartphone }
               ].map((channel) => (
-                <div key={channel.label} className="flex items-center justify-between p-4 rounded-2xl hover:bg-slate-50 group transition-colors">
+                <div key={channel.label} className="flex items-center justify-between p-4 rounded-2xl hover:bg-background group transition-colors">
                   <div className="flex items-center gap-3">
-                    <channel.icon size={16} className={cn("transition-colors", channel.active ? "text-primary" : "text-slate-300")} />
-                    <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{channel.label}</span>
+                    <channel.icon size={16} className={cn("transition-colors", channel.active ? "text-primary" : "text-muted")} />
+                    <span className="text-[10px] font-black text-foreground/70 uppercase tracking-widest">{channel.label}</span>
                   </div>
                   <button className={cn(
                     "w-10 h-5 rounded-full relative transition-all duration-300",
-                    channel.active ? "bg-primary" : "bg-slate-200"
+                    channel.active ? "bg-primary" : "bg-border"
                   )}>
                     <div className={cn(
                       "absolute top-1 w-3 h-3 rounded-full bg-white shadow-sm transition-all",
