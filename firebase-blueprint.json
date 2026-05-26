@@ -1,0 +1,168 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Information about the user and their security rights.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["CHURCH_GROUP", "APPROVER_L1", "APPROVER_L2", "FINANCE", "ADMIN"] },
+        "group": { "type": "string" },
+        "approverCode": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "isApproved": { "type": "boolean" },
+        "isSuspended": { "type": "boolean" }
+      },
+      "required": ["id", "name", "email", "role", "isActive", "isApproved", "isSuspended"]
+    },
+    "Requisition": {
+      "title": "Requisition",
+      "description": "A fiscal requisition request.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "groupId": { "type": "string" },
+        "groupName": { "type": "string" },
+        "requesterId": { "type": "string" },
+        "requesterName": { "type": "string" },
+        "status": { "type": "string", "enum": ["DRAFT", "SUBMITTED", "APPROVED_L1", "APPROVED_L2", "ESCALATED", "DISBURSED", "REJECTED", "CANCELLED"] },
+        "submittedAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "approvedAtL1": { "type": "string" },
+        "approvedAtL2": { "type": "string" },
+        "disbursedAt": { "type": "string" },
+        "approvalHistory": { "type": "array" },
+        "rejectReason": { "type": "string" },
+        "additionalInfo": { "type": "string" },
+        "attachments": { "type": "array" },
+        "receipts": { "type": "array" }
+      },
+      "required": ["id", "title", "description", "amount", "groupId", "groupName", "requesterId", "requesterName", "status", "submittedAt", "updatedAt", "approvalHistory"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "A project with an allocated budget.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "groupId": { "type": "string" },
+        "allocatedBudget": { "type": "number" },
+        "spentAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["ACTIVE", "ON_HOLD", "COMPLETED"] },
+        "color": { "type": "string" }
+      },
+      "required": ["id", "name", "groupId", "allocatedBudget", "spentAmount", "status"]
+    },
+    "BudgetAlert": {
+      "title": "BudgetAlert",
+      "description": "An automated system alert.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["OVERSHOOT", "LARGE_REQUEST", "EXPIRY", "L2_APPROVED", "FINANCE_DISBURSEMENT"] },
+        "severity": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "targetRole": { "type": "string" }
+      },
+      "required": ["id", "type", "severity", "message", "timestamp", "isRead"]
+    },
+    "AlertThreshold": {
+      "title": "AlertThreshold",
+      "description": "System thresholds for alerts.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "threshold": { "type": "number" },
+        "isEnabled": { "type": "boolean" },
+        "notifyEmail": { "type": "boolean" }
+      },
+      "required": ["id", "type", "threshold", "isEnabled", "notifyEmail"]
+    },
+    "ForecastMonth": {
+      "title": "ForecastMonth",
+      "description": "Projection data for cash flow.",
+      "type": "object",
+      "properties": {
+        "month": { "type": "string" },
+        "projected": { "type": "number" },
+        "actual": { "type": "number" }
+      },
+      "required": ["month", "projected", "actual"]
+    },
+    "SystemLog": {
+      "title": "SystemLog",
+      "description": "Audit logs of system actions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "performedBy": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "action", "details", "performedBy", "timestamp"]
+    },
+    "SavedReport": {
+      "title": "SavedReport",
+      "description": "A persisted audit report snapshot.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "generatedBy": { "type": "string" },
+        "generatedById": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "period": { "type": "string" },
+        "stats": { "type": "object" },
+        "filters": { "type": "object" },
+        "itemCount": { "type": "number" }
+      },
+      "required": ["id", "title", "description", "generatedBy", "generatedById", "timestamp", "period", "stats", "filters", "itemCount"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles and permissions."
+    },
+    "requisitions/{requisitionId}": {
+      "schema": "Requisition",
+      "description": "Fiscal requisition records."
+    },
+    "projects/{projectId}": {
+      "schema": "Project",
+      "description": "Church projects and budget allocations."
+    },
+    "alerts/{alertId}": {
+      "schema": "BudgetAlert",
+      "description": "System-generated budget and security alerts."
+    },
+    "thresholds/{thresholdId}": {
+      "schema": "AlertThreshold",
+      "description": "Monitoring thresholds."
+    },
+    "forecast/{monthId}": {
+      "schema": "ForecastMonth",
+      "description": "Cash flow forecasting data."
+    },
+    "system_logs/{logId}": {
+      "schema": "SystemLog",
+      "description": "Audit trails for security analysis."
+    },
+    "reports/{reportId}": {
+      "schema": "SavedReport",
+      "description": "Historical financial snapshots."
+    }
+  }
+}
