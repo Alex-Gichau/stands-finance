@@ -219,7 +219,12 @@ export const RequisitionsPanel: React.FC = () => {
                               <Repeat size={10} className="text-primary animate-pulse shrink-0" />
                             )}
                           </div>
-                          <span className="text-[7.5px] md:text-[10px] font-mono text-slate-400 uppercase tracking-wider truncate">{req.id}</span>
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mt-1">
+                            <span className="text-[7.5px] md:text-[10px] font-mono text-slate-400 uppercase tracking-wider truncate shrink-0">{req.id}</span>
+                            <span className="inline-flex items-center px-1.5 py-0.5 bg-slate-100/80 border border-slate-200/50 text-slate-700 rounded-md text-[7.5px] md:text-[9px] font-extrabold uppercase tracking-wider leading-none w-fit">
+                              {req.groupName}
+                            </span>
+                          </div>
                         </div>
                       </td>
                       <td className="hidden lg:table-cell px-4 md:px-6 py-3 md:py-4">

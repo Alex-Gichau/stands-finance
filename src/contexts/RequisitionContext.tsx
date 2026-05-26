@@ -193,6 +193,26 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     testConnection();
   }, []);
 
+  // Capture invitation parameter state
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("invite") === "true") {
+      const email = params.get("email");
+      const role = params.get("role") as UserRole;
+      const group = params.get("group");
+      const code = params.get("code");
+
+      if (email && role) {
+        sessionStorage.setItem("requisition_invite", JSON.stringify({ email, role, group, code }));
+        console.log("Captured secure system invitation in session storage for:", email);
+      }
+
+      // Clear search parameters cleanly for aesthetic UI experience
+      const newUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+  }, []);
+
   // Auth Sync
   useEffect(() => {
     let unsubUserDoc = () => {};
@@ -204,10 +224,40 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         const userRef = doc(db, "users", firebaseUser.uid);
 
         unsubUserDoc = onSnapshot(userRef, async (userSnap) => {
+          let inviteConsumed = false;
+          let invitedRole: UserRole | null = null;
+          let invitedGroup: string | null = null;
+          let invitedCode: string | null = null;
+
+          const storedInviteStr = sessionStorage.getItem("requisition_invite");
+          if (storedInviteStr) {
+            try {
+              const invite = JSON.parse(storedInviteStr);
+              if (invite.email && firebaseUser.email && invite.email.toLowerCase() === firebaseUser.email.toLowerCase()) {
+                invitedRole = invite.role;
+                invitedGroup = invite.group || null;
+                invitedCode = invite.code || null;
+                inviteConsumed = true;
+                sessionStorage.removeItem("requisition_invite");
+              }
+            } catch (e) {
+              console.error("Failed parsing stored invitation:", e);
+            }
+          }
+
           if (userSnap.exists()) {
             const profile = userSnap.data() as UserProfile;
-            // Auto-promote bootstrap admin if info is missing or incorrect
-            if (firebaseUser.email === "gichaumburu@gmail.com" && (!profile.isApproved || profile.role !== UserRole.ADMIN)) {
+            
+            if (inviteConsumed && invitedRole) {
+              // Upgrade profile with invited attributes
+              await setDoc(userRef, {
+                role: invitedRole,
+                isApproved: true,
+                ...(invitedGroup && { group: invitedGroup }),
+                ...(invitedCode && { approverCode: invitedCode }),
+              }, { merge: true });
+            } else if (firebaseUser.email === "gichaumburu@gmail.com" && (!profile.isApproved || profile.role !== UserRole.ADMIN)) {
+              // Auto-promote bootstrap admin if info is missing or incorrect
               await setDoc(userRef, { role: UserRole.ADMIN, isApproved: true }, { merge: true });
             } else {
               setCurrentUser(profile);
@@ -220,14 +270,16 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
               id: firebaseUser.uid,
               name: firebaseUser.displayName || "Anonymous User",
               email: firebaseUser.email || "",
-              role: isAdmin ? UserRole.ADMIN : UserRole.CHURCH_GROUP,
+              role: inviteConsumed && invitedRole ? invitedRole : (isAdmin ? UserRole.ADMIN : UserRole.CHURCH_GROUP),
               isActive: true,
-              isApproved: isAdmin,
+              isApproved: inviteConsumed ? true : isAdmin,
               isSuspended: false,
+              ...(inviteConsumed && invitedGroup && { group: invitedGroup }),
+              ...(inviteConsumed && invitedCode && { approverCode: invitedCode }),
             };
             await setDoc(userRef, newProfile);
             
-            if (!isAdmin) {
+            if (!isAdmin && !inviteConsumed) {
               fetch("/api/notify-slack", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

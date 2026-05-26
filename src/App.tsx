@@ -30,9 +30,13 @@ import {
   Clock,
   Trash2,
   Settings,
-  UserCircle
+  UserCircle,
+  Mail,
+  CheckCircle
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { auth } from "./lib/firebase";
+import { sendPasswordResetEmail } from "firebase/auth";
 
 import { AlertCircle as AlertCircleIcon } from "lucide-react"; // alias if needed or rely on main imports
 
@@ -98,7 +102,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, index, removeToast, setCur
       <div className={cn(
         "bg-slate-950/95 backdrop-blur-xl rounded-2xl border overflow-hidden flex flex-col p-4 pb-5 space-y-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.6)] transition-all",
         toast.severity === "HIGH" 
-          ? "border-rose-500/30 border-l-4 border-l-rose-500 shadow-rose-950/20" 
+          ? "border-blue-500/30 border-l-4 border-l-blue-500 shadow-blue-950/20" 
           : toast.severity === "MEDIUM" 
             ? "border-amber-500/30 border-l-4 border-l-amber-500 shadow-amber-950/20" 
             : "border-slate-800 border-l-4 border-l-primary"
@@ -110,16 +114,16 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, index, removeToast, setCur
             <span className="relative flex h-2 w-2">
               <span className={cn(
                 "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
-                toast.severity === "HIGH" ? "bg-rose-400" : toast.severity === "MEDIUM" ? "bg-amber-400" : "bg-primary/55"
+                toast.severity === "HIGH" ? "bg-blue-400" : toast.severity === "MEDIUM" ? "bg-amber-400" : "bg-primary/55"
               )}></span>
               <span className={cn(
                 "relative inline-flex rounded-full h-2 w-2",
-                toast.severity === "HIGH" ? "bg-rose-500" : toast.severity === "MEDIUM" ? "bg-amber-500" : "bg-primary"
+                toast.severity === "HIGH" ? "bg-blue-500" : toast.severity === "MEDIUM" ? "bg-amber-500" : "bg-primary"
               )}></span>
             </span>
             <span className={cn(
               "text-[9px] font-black uppercase tracking-[0.2em] font-mono",
-              toast.severity === "HIGH" ? "text-rose-400" : toast.severity === "MEDIUM" ? "text-amber-400" : "text-primary/90"
+              toast.severity === "HIGH" ? "text-blue-400" : toast.severity === "MEDIUM" ? "text-amber-400" : "text-primary/90"
             )}>
               {toast.type.replace("_", " ")}
             </span>
@@ -137,7 +141,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, index, removeToast, setCur
           <div className={cn(
             "w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border",
             toast.severity === "HIGH" 
-              ? "bg-rose-500/10 border-rose-500/20 text-rose-400" 
+              ? "bg-blue-500/10 border-blue-500/20 text-blue-400" 
               : toast.severity === "MEDIUM" 
                 ? "bg-amber-500/10 border-amber-500/20 text-amber-400" 
                 : "bg-slate-900 border-slate-800 text-primary"
@@ -165,7 +169,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, index, removeToast, setCur
               <span className={cn(
                 "text-[8px] font-black uppercase tracking-widest font-mono px-1.5 py-0.5 rounded border",
                 toast.severity === "HIGH"
-                  ? "text-rose-400 bg-rose-500/5 border-rose-500/10"
+                  ? "text-blue-400 bg-blue-500/5 border-blue-500/10"
                   : toast.severity === "MEDIUM"
                     ? "text-amber-400 bg-amber-500/5 border-amber-500/10"
                     : "text-primary/80 bg-primary/5 border-primary/10"
@@ -191,7 +195,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, index, removeToast, setCur
             className={cn(
               "h-full transition-all ease-linear shadow-[0_0_8px_rgba(255,255,255,0.45)]",
               toast.severity === "HIGH" 
-                ? "bg-gradient-to-r from-rose-600 to-rose-400" 
+                ? "bg-gradient-to-r from-blue-600 to-blue-400" 
                 : toast.severity === "MEDIUM" 
                   ? "bg-gradient-to-r from-amber-600 to-amber-400" 
                   : "bg-gradient-to-r from-primary/90 to-primary"
@@ -215,6 +219,19 @@ function AppContent() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [pendingInvite, setPendingInvite] = useState<any>(null);
+
+  useEffect(() => {
+    const inviteStr = sessionStorage.getItem("requisition_invite");
+    if (inviteStr) {
+      try {
+        const invite = JSON.parse(inviteStr);
+        setPendingInvite(invite);
+      } catch (e) {}
+    }
+  }, []);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [showReportReminder, setShowReportReminder] = useState(true);
@@ -316,9 +333,29 @@ function AppContent() {
     }
   };
 
+  const handleForgotPassword = async () => {
+    setError("");
+    setSuccess("");
+    if (!email) {
+      setError("Please input your email under 'YOUR EMAIL' first.");
+      return;
+    }
+    
+    setIsSubmitting(true);
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setSuccess("Secure password reset link has been dispatched to your email!");
+    } catch (err: any) {
+      setError(err?.message || "Failed to dispatch reset email.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setSuccess("");
     
     if (authMode === "EMAIL_SIGNUP" && (password.length < 8 || password.length > 15)) {
       setError("Password must be between 8 and 15 characters long.");
@@ -376,6 +413,18 @@ function AppContent() {
           className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-2xl p-8 md:p-12 space-y-8 relative z-10"
         >
           <div className="text-center space-y-4">
+            {pendingInvite && (
+              <div className="p-4 bg-sky-950/40 border border-sky-800/40 rounded-2xl text-left space-y-1.5 mb-2 animate-in slide-in-from-top duration-300">
+                <div className="flex items-center gap-2 text-sky-400 font-bold text-[10px] uppercase tracking-wider">
+                  <Mail size={13} className="text-sky-400" />
+                  <span className="text-sky-450 font-black">Invitation Active</span>
+                </div>
+                <p className="text-[10px] text-slate-300 leading-relaxed font-semibold">
+                  Logging in via Google as <strong className="text-white font-extrabold">{pendingInvite.email}</strong> will claim your pre-approved privilege as <strong className="text-white font-extrabold">{pendingInvite.role?.replace("_", " ")}</strong> representing <strong className="text-white font-extrabold">{pendingInvite.group || "St Andrews Admin"}</strong>.
+                </p>
+              </div>
+            )}
+
             <div className="relative inline-block">
               <motion.div 
                 whileHover={{ scale: 1.05, rotate: 5 }}
@@ -422,6 +471,17 @@ function AppContent() {
                   {error}
                 </motion.div>
               )}
+
+              {success && (
+                <motion.div 
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-[10px] font-black uppercase tracking-widest text-center leading-relaxed font-mono"
+                >
+                  <CheckCircle size={14} className="mx-auto mb-2" />
+                  {success}
+                </motion.div>
+              )}
               
               {authMode === "EMAIL_SIGNUP" && (
                 <div className="space-y-1.5">
@@ -450,9 +510,20 @@ function AppContent() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">
-                  {authMode === "EMAIL_SIGNUP" ? "SECURE_CREDENTIAL (8-15 chars)" : "AUTH_SECURITY_CODE"}
-                </label>
+                <div className="flex items-center justify-between px-1">
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                    {authMode === "EMAIL_SIGNUP" ? "SECURE_CREDENTIAL (8-15 chars)" : "AUTH_SECURITY_CODE"}
+                  </label>
+                  {authMode === "EMAIL_LOGIN" && (
+                    <button
+                      type="button"
+                      onClick={handleForgotPassword}
+                      className="text-[9px] font-black text-primary hover:text-primary/80 uppercase tracking-widest transition-colors hover:underline"
+                    >
+                      Forgot Password?
+                    </button>
+                  )}
+                </div>
                 <input 
                   type="password"
                   required

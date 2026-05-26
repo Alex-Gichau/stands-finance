@@ -65,6 +65,9 @@ export const UsersPanel: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [regType, setRegType] = useState<"PASSWORD" | "GMAIL">("PASSWORD");
+  const [generatedInvite, setGeneratedInvite] = useState<{ url: string; email: string; name: string } | null>(null);
+  const [copiedInvite, setCopiedInvite] = useState(false);
 
   // Editing states
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
@@ -93,6 +96,25 @@ export const UsersPanel: React.FC = () => {
 
     if (!name.trim()) return setError("Name is required");
     if (!email.trim() || !email.includes("@")) return setError("Valid email required");
+
+    if (regType === "GMAIL") {
+      setIsSubmitting(true);
+      try {
+        const inviteUrl = window.location.origin + "?invite=true&email=" + encodeURIComponent(email.trim()) + "&role=" + role + "&group=" + encodeURIComponent(group || "") + "&code=" + approverCode;
+        setGeneratedInvite({
+          url: inviteUrl,
+          email: email.trim(),
+          name: name.trim()
+        });
+        setSuccess(`Secure Gmail invitation link generated successfully for ${name}!`);
+      } catch (err: any) {
+        setError(err?.message || "Generation failed.");
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
     if (password.length < 8 || password.length > 15) return setError("Password must be between 8 and 15 characters");
 
     setIsSubmitting(true);
@@ -450,7 +472,7 @@ export const UsersPanel: React.FC = () => {
                   <p className="text-[8px] md:text-[10px] text-slate-400 font-mono tracking-widest mt-1">SYS_ACCESS_CONTROL_V4</p>
                 </div>
                 <button 
-                  onClick={() => { setIsModalOpen(false); setEditingUser(null); setError(null); setSuccess(null); }}
+                  onClick={() => { setIsModalOpen(false); setEditingUser(null); setError(null); setSuccess(null); setGeneratedInvite(null); }}
                   className="p-2 hover:bg-slate-100 rounded-full transition-colors"
                 >
                   <XCircle size={18} className="text-slate-400 md:w-5 md:h-5" />
@@ -458,6 +480,31 @@ export const UsersPanel: React.FC = () => {
               </div>
 
               <form onSubmit={isModalOpen ? handleRegister : handleEditSave} className="p-4 md:p-8 space-y-4 md:space-y-6">
+                 {isModalOpen && (
+                   <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl w-full mb-2">
+                     <button
+                       type="button"
+                       onClick={() => { setRegType("PASSWORD"); setGeneratedInvite(null); setError(null); setSuccess(null); }}
+                       className={cn(
+                         "flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
+                         regType === "PASSWORD" ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-slate-700"
+                       )}
+                     >
+                       Direct Password Account
+                     </button>
+                     <button
+                       type="button"
+                       onClick={() => { setRegType("GMAIL"); setGeneratedInvite(null); setError(null); setSuccess(null); }}
+                       className={cn(
+                         "flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
+                         regType === "GMAIL" ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-slate-700"
+                       )}
+                     >
+                       Gmail Invite Sign-up Link
+                     </button>
+                   </div>
+                 )}
+
                  {(error || editError) && (
                   <div className="p-3 md:p-4 bg-rose-50 border border-rose-100 rounded-2xl flex gap-3 items-center text-[10px] md:text-xs text-rose-600 font-bold">
                     <AlertCircle size={14} className="md:w-4 md:h-4" />
@@ -471,6 +518,44 @@ export const UsersPanel: React.FC = () => {
                   </div>
                 )}
 
+                {isModalOpen && regType === "GMAIL" && generatedInvite && (
+                  <div className="p-4 bg-sky-50 border border-sky-100 rounded-2xl space-y-3 animate-in fade-in duration-300 text-left">
+                    <div className="flex items-center gap-2 text-sky-600 font-bold text-xs uppercase tracking-wider">
+                      <Mail size={14} />
+                      <span>Invite Ready to Transmit</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 leading-relaxed font-semibold">
+                      An entry has been prepared for <strong className="text-slate-850 font-black">{generatedInvite.name}</strong>. Provide this link to activate and log in via Google/Gmail with their assigned role:
+                    </p>
+                    <input 
+                      type="text" 
+                      readOnly 
+                      value={generatedInvite.url} 
+                      className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-[10px] font-mono text-slate-600 select-all outline-none"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(generatedInvite.url);
+                          setCopiedInvite(true);
+                          setTimeout(() => setCopiedInvite(false), 2000);
+                        }}
+                        className="flex-1 py-2 bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                      >
+                        {copiedInvite ? "COPIED!" : "COPY SECURE LINK"}
+                      </button>
+                      <a
+                        href={`mailto:${encodeURIComponent(generatedInvite.email)}?subject=${encodeURIComponent("St. Andrews Finance Hub Access Invitation")}&body=${encodeURIComponent(`Hello ${generatedInvite.name},\n\nYou have been authorized as a ${role.replace("_", " ")}${group ? ` representing the ${group} group` : ""} on the St. Andrews Requisition Hub.\n\nPlease activate your access by clicking this link and signing in with your Google/Gmail Account:\n\n${generatedInvite.url}\n\nWarm regards,\nSystem Administrator`)}`}
+                        className="flex-1 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all text-center flex items-center justify-center gap-1.5"
+                      >
+                        <Mail size={12} />
+                        SEND EMAIL INVITE
+                      </a>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                   <div className="space-y-1.5">
                     <label className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
@@ -478,7 +563,14 @@ export const UsersPanel: React.FC = () => {
                       type="text"
                       required
                       value={isModalOpen ? name : editName}
-                      onChange={(e) => isModalOpen ? setName(e.target.value) : setEditName(e.target.value)}
+                      onChange={(e) => {
+                        if (isModalOpen) {
+                          setName(e.target.value);
+                          setGeneratedInvite(null);
+                        } else {
+                          setEditName(e.target.value);
+                        }
+                      }}
                       className="input-field text-xs md:text-sm"
                       placeholder="Enter legal name"
                     />
@@ -490,14 +582,17 @@ export const UsersPanel: React.FC = () => {
                       required
                       disabled={!isModalOpen}
                       value={isModalOpen ? email : editingUser?.email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        setGeneratedInvite(null);
+                      }}
                       className={cn("input-field text-xs md:text-sm", !isModalOpen && "bg-slate-50 cursor-not-allowed")}
                       placeholder="email@church.com"
                     />
                   </div>
                 </div>
 
-                {isModalOpen && (
+                {isModalOpen && regType === "PASSWORD" && (
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password Credentials (8-15 characters)</label>
                     <div className="relative">
