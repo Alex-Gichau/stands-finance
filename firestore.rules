@@ -49,9 +49,9 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && 
-             (('email' in request.auth.token && request.auth.token.email == 'gichaumburu@gmail.com') ||
+             (request.auth.token.get('email', '') == 'gichaumburu@gmail.com' ||
               (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN'));
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'ADMIN'));
     }
 
     function isOwner(ownerId) {
@@ -121,10 +121,10 @@ service cloud.firestore {
              data.id is string &&
              data.type in ['OVERSHOOT', 'LARGE_REQUEST', 'EXPIRY', 'L2_APPROVED', 'FINANCE_DISBURSEMENT'] &&
              data.severity in ['LOW', 'MEDIUM', 'HIGH'] &&
-             data.message is string && data.message.size() <= 1000 &&
+             data.message is string && data.message.size() <= 1500 &&
              data.timestamp is string &&
              data.isRead is bool &&
-             (!data.keys().hasAny(['targetRole']) || data.targetRole is string);
+             (!('targetRole' in data) || data.targetRole is string);
     }
 
     // --- match Blocks ---
@@ -182,8 +182,8 @@ service cloud.firestore {
     }
 
     match /system_logs/{logId} {
-      allow get: if isValidId(logId) && (isAdmin() || isSignedIn());
-      allow list: if isApprovedUser();
+      allow get: if isValidId(logId) && (isAdmin() || hasRole('FINANCE'));
+      allow list: if isAdmin() || hasRole('FINANCE');
       allow create: if isValidId(logId) && isSignedIn() && isValidSystemLog(incoming());
       allow update, delete: if false;
     }

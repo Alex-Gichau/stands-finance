@@ -61,7 +61,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, not
     { id: "finance", label: "Finance Ledger", icon: Banknote, roles: [UserRole.FINANCE, UserRole.ADMIN] },
     { id: "reports", label: "Impact Reports", icon: BarChart3, roles: [UserRole.FINANCE, UserRole.ADMIN] },
     { id: "users", label: "Users", icon: UserCircle, roles: [UserRole.ADMIN] },
-    { id: "settings", label: "Audit Trails", icon: Settings, roles: [UserRole.ADMIN, UserRole.FINANCE, UserRole.APPROVER_L1, UserRole.APPROVER_L2, UserRole.CHURCH_GROUP], desktopOnly: true },
+    { id: "settings", label: "Audit Trails", icon: Settings, roles: [UserRole.ADMIN, UserRole.FINANCE], desktopOnly: true },
   ];
 
   const filteredItems = menuItems.filter(item => 

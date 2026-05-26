@@ -173,8 +173,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       newPriorityAlerts.forEach(a => seenAlertsRef.current.add(a.id));
       setActiveToasts(prev => {
         const combined = [...newPriorityAlerts, ...prev];
-        // Keep only top 4
-        return combined.slice(0, 4);
+        // Keep only top 2
+        return combined.slice(0, 2);
       });
     }
   }, [alerts]);
@@ -523,11 +523,16 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setReports(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SavedReport)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, "reports"));
 
-    const unsubLogs = onSnapshot(query(collection(db, "system_logs"), orderBy("timestamp", "desc")), (snap) => {
-      let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemLog));
-      if (shouldFilter && filterGroup) data = data.filter(log => log.groupId === filterGroup || log.details.includes(filterGroup));
-      setSystemLogs(data);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, "system_logs"));
+    let unsubLogs = () => {};
+    if (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.FINANCE) {
+      unsubLogs = onSnapshot(query(collection(db, "system_logs"), orderBy("timestamp", "desc")), (snap) => {
+        let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemLog));
+        if (shouldFilter && filterGroup) data = data.filter(log => log.groupId === filterGroup || log.details.includes(filterGroup));
+        setSystemLogs(data);
+      }, (err) => handleFirestoreError(err, OperationType.LIST, "system_logs"));
+    } else {
+      setSystemLogs([]);
+    }
       
     const unsubUsers = onSnapshot(collection(db, "users"), (snap) => {
       let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
@@ -732,7 +737,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     } catch (error: any) {
       console.error("Login failed", error);
       if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
-        throw new Error("Google Sign-in popup was blocked or closed. Please ensure popups are enabled for this site, or use 'Sign in with Email' (Admin: gichaumburu@gmail.com / password123).");
+        throw new Error("Google Sign-in was interrupted. This usually happens if popups are blocked or the window was closed. Please use 'Sign in with Email' using the credentials shown below.");
       }
       throw error;
     }
@@ -900,7 +905,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const suspendUser = useCallback(async (id: string, isSuspended: boolean) => {
     try {
       await updateDoc(doc(db, "users", id), { isSuspended });
-      await addSystemLog("USER_SUSPION", `Admin changed suspension for user ID: ${id} to ${isSuspended}`, { userId: id, isSuspended });
+      await addSystemLog("USER_SUSPENSION", `Admin changed suspension for user ID: ${id} to ${isSuspended}`, { userId: id, isSuspended });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${id}`);
     }

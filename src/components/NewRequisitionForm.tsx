@@ -7,21 +7,36 @@ import React, { useState, useEffect } from "react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { numberToWords } from "../utils/numberUtils";
 import { formatCurrency, cn } from "../lib/utils";
-import { Upload, X, Paperclip, Loader2, DollarSign, FileText, Info, Repeat } from "lucide-react";
+import { Upload, X, Paperclip, Loader2, DollarSign, FileText, Info, Repeat, Users } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { RecurrenceType } from "../types";
+import { RecurrenceType, UserRole } from "../types";
 
 interface NewRequisitionFormProps {
   onClose: () => void;
 }
 
 export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose }) => {
-  const { addRequisition, currentUser, projects } = useRequisitions();
+  const { addRequisition, currentUser, projects, churchGroups } = useRequisitions();
   const [amount, setAmount] = useState<string>("");
   const [amountWords, setAmountWords] = useState<string>("");
   const [recurrence, setRecurrence] = useState<RecurrenceType>(RecurrenceType.NONE);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const isAdminOrFinance = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.FINANCE;
+  const [selectedGroup, setSelectedGroup] = useState<string>("");
+
+  useEffect(() => {
+    if (isAdminOrFinance) {
+      if (churchGroups && churchGroups.length > 0) {
+        setSelectedGroup(churchGroups[0].name);
+      } else {
+        setSelectedGroup("Youth Camp 2026");
+      }
+    } else {
+      setSelectedGroup(currentUser?.group || "Youth Camp 2026");
+    }
+  }, [currentUser, churchGroups, isAdminOrFinance]);
 
   useEffect(() => {
     const val = parseFloat(amount);
@@ -51,7 +66,7 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
     // Simulate delay
     await new Promise(resolve => setTimeout(resolve, 1500));
 
-    const groupVal = currentUser?.group || "General Group";
+    const groupVal = selectedGroup || currentUser?.group || "General Group";
     const matchingProject = projects.find(p => p.groupId === groupVal || p.name === groupVal);
 
     try {
@@ -93,11 +108,58 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
         <form onSubmit={handleSubmit} className="overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 flex-1">
           {/* Section 1: Requisition Information */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <FileText size={16} className="text-primary" />
+            <div className="flex items-center gap-2 mb-2 w-full justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <FileText size={16} className="text-primary" />
+                </div>
+                <h4 className="text-[10px] md:text-xs font-black text-slate-700 uppercase tracking-widest">General Information</h4>
               </div>
-              <h4 className="text-[10px] md:text-xs font-black text-slate-700 uppercase tracking-widest">General Information</h4>
+            </div>
+
+            {/* Department/Group Autofill or Dropdown Field */}
+            <div className="space-y-1.5 p-4 bg-slate-50 rounded-2xl border border-slate-150">
+              <div className="flex items-center gap-1.5 mb-1 bg-white inline-flex px-2.5 py-1 rounded-full border border-slate-100 shadow-sm">
+                <Users size={12} className="text-primary" />
+                <span className="text-[10px] font-black text-slate-600 uppercase tracking-[0.15em] leading-none">
+                  Department / Church Group
+                </span>
+              </div>
+              
+              {isAdminOrFinance ? (
+                <div className="space-y-1.5">
+                  <select
+                    value={selectedGroup}
+                    onChange={(e) => setSelectedGroup(e.target.value)}
+                    className="input-field cursor-pointer h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold uppercase tracking-widest text-[11px]"
+                  >
+                    {churchGroups && churchGroups.length > 0 ? (
+                      churchGroups.map((g) => (
+                        <option key={g.id} value={g.name} className="font-sans text-xs">
+                          {g.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="Youth Camp 2026">YOUTH CAMP 2026</option>
+                    )}
+                  </select>
+                  <p className="text-[9px] text-primary font-black uppercase tracking-wider pl-1 font-mono">
+                    ★ Privileged Terminal Mode: Change designated church group manually
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <input
+                    type="text"
+                    disabled
+                    value={selectedGroup}
+                    className="input-field h-10 px-3 bg-slate-200/50 text-slate-500 border-slate-200 text-xs font-bold uppercase tracking-wider cursor-not-allowed"
+                  />
+                  <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest pl-1 font-mono flex items-center gap-1">
+                    <span>⚡ Group Auto-filled: Requisition matches user church group securely</span>
+                  </p>
+                </div>
+              )}
             </div>
             
             <div className="space-y-1.5">

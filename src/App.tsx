@@ -307,11 +307,11 @@ function AppContent() {
                   {authMode === "EMAIL_SIGNUP" ? "Already have access? Authorize Session" : "Need access? Request Activation Hub Access"}
                 </button>
                 
-                <div className="text-center space-y-2 px-4 py-3 bg-slate-950/30 rounded-2xl border border-slate-800/30 hidden">
+                <div className="text-center space-y-2 px-4 py-3 bg-slate-950/30 rounded-2xl border border-slate-800/30">
                   <p className="text-[8px] font-black text-slate-500 uppercase tracking-[0.2em] leading-none">Identity Email & Auth Security Code</p>
                   <div className="flex flex-col items-center gap-1 pt-1">
                     <span className="text-[9px] font-bold text-primary tracking-wider">gichaumburu@gmail.com</span>
-                    <span className="text-[10px] font-mono text-primary font-black uppercase tracking-widest">password123</span>
+                    <span className="text-[10px] font-mono text-primary font-black uppercase tracking-widest leading-none">password123</span>
                   </div>
                 </div>
               </div>
@@ -445,7 +445,11 @@ function AppContent() {
       case "notifications": return <NotificationHub onSelectRequisition={(req) => setSelectedReqForNoticeDetail(req)} />;
       case "requisitions": return <RequisitionsPanel />;
       case "approvals": return <ApprovalsPanel />;
-      case "settings": return <SettingsPanel />;
+      case "settings": 
+        if (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.FINANCE) {
+          return <SettingsPanel />;
+        }
+        return <Dashboard />;
       case "users": return <UsersPanel />;
       case "reports": return <ReportsPanel />;
       case "finance": return <FinanceLedgerPanel />;
@@ -798,48 +802,83 @@ function AppContent() {
           {activeToasts.map((toast) => (
             <motion.div
               key={toast.id}
-              initial={{ opacity: 0, x: 50, scale: 0.9 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 20, scale: 0.95 }}
+              initial={{ opacity: 0, x: 50, scale: 0.9, y: 10 }}
+              animate={{ opacity: 1, x: 0, scale: 1, y: 0 }}
+              exit={{ opacity: 0, x: 30, scale: 0.95, filter: "blur(4px)" }}
+              transition={{ type: "spring", stiffness: 350, damping: 25 }}
               className="pointer-events-auto"
             >
-              <div className="bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
-                <div className={cn(
-                  "h-1.5 w-full",
-                  toast.severity === "HIGH" ? "bg-rose-500" : "bg-amber-500"
-                )} />
-                <div className="p-4 flex gap-3">
-                  <div className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
-                    toast.severity === "HIGH" ? "bg-rose-50 text-rose-600" : "bg-amber-50 text-amber-600"
-                  )}>
-                    <AlertCircle size={18} />
+              <div className={cn(
+                "bg-slate-950/95 backdrop-blur-xl rounded-2xl border overflow-hidden flex flex-col p-4 space-y-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.6)] transition-all",
+                toast.severity === "HIGH" 
+                  ? "border-rose-500/30 border-l-4 border-l-rose-500 shadow-rose-950/20" 
+                  : toast.severity === "MEDIUM" 
+                    ? "border-amber-500/30 border-l-4 border-l-amber-500 shadow-amber-950/20" 
+                    : "border-slate-800 border-l-4 border-l-primary"
+              )}>
+                
+                {/* Header Row */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className={cn(
+                        "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
+                        toast.severity === "HIGH" ? "bg-rose-400" : toast.severity === "MEDIUM" ? "bg-amber-400" : "bg-primary/55"
+                      )}></span>
+                      <span className={cn(
+                        "relative inline-flex rounded-full h-2 w-2",
+                        toast.severity === "HIGH" ? "bg-rose-500" : toast.severity === "MEDIUM" ? "bg-amber-500" : "bg-primary"
+                      )}></span>
+                    </span>
+                    <span className={cn(
+                      "text-[9px] font-black uppercase tracking-[0.2em] font-mono",
+                      toast.severity === "HIGH" ? "text-rose-400" : toast.severity === "MEDIUM" ? "text-amber-400" : "text-primary/90"
+                    )}>
+                      {toast.type.replace("_", " ")}
+                    </span>
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Budget Integrity Alert</span>
-                      <button 
-                        onClick={() => removeToast(toast.id)}
-                        className="text-slate-400 hover:text-slate-900 transition-colors"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                    <p className="text-[11px] font-bold text-slate-800 leading-snug mt-1">{toast.message}</p>
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="text-[9px] font-mono text-slate-400 italic">SEC_CHAMBER_NOTIFY</span>
-                      <button 
-                        onClick={() => {
-                          setCurrentView("dashboard");
-                          removeToast(toast.id);
-                        }}
-                        className="text-[9px] font-black text-indigo-600 uppercase tracking-widest hover:underline"
-                      >
-                        Investigate →
-                      </button>
-                    </div>
+                  <button 
+                    onClick={() => removeToast(toast.id)}
+                    className="text-slate-500 hover:text-white transition-colors p-1 rounded-full hover:bg-slate-900/60"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+
+                {/* Body Content */}
+                <div className="flex gap-3 items-start">
+                  <div className={cn(
+                    "w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border",
+                    toast.severity === "HIGH" 
+                      ? "bg-rose-500/10 border-rose-500/20 text-rose-400" 
+                      : toast.severity === "MEDIUM" 
+                        ? "bg-amber-500/10 border-amber-500/20 text-amber-400" 
+                        : "bg-slate-900 border-slate-800 text-primary"
+                  )}>
+                    <AlertCircle size={14} />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <span className="text-[8px] font-black uppercase tracking-wider text-slate-500 leading-none">Budget Integrity Log</span>
+                    <p className="text-[11px] font-bold text-slate-200 leading-snug">{toast.message}</p>
                   </div>
                 </div>
+
+                {/* Footer Action Bar */}
+                <div className="flex items-center justify-between pt-2.5 border-t border-slate-900 text-[9px]">
+                  <span className="font-mono text-slate-500 font-bold">
+                    {new Date(toast.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                  <button 
+                    onClick={() => {
+                      setCurrentView("dashboard");
+                      removeToast(toast.id);
+                    }}
+                    className="flex items-center gap-1 font-black text-primary hover:text-primary/80 uppercase tracking-widest transition-colors font-mono"
+                  >
+                    INTERCEPT <ArrowRight size={10} />
+                  </button>
+                </div>
+
               </div>
             </motion.div>
           ))}
