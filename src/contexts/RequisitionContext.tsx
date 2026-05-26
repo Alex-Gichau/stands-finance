@@ -987,14 +987,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const updateUserProfile = useCallback(async (id: string, updates: Partial<UserProfile>) => {
     try {
-      const cleanUpdates: any = { ...updates };
-      if (cleanUpdates.group === undefined) {
-        cleanUpdates.group = deleteField();
-      }
-      if (cleanUpdates.approverCode === undefined) {
-        cleanUpdates.approverCode = deleteField();
-      }
-      await updateDoc(doc(db, "users", id), cleanUpdates);
+      await updateDoc(doc(db, "users", id), updates);
       await addSystemLog("USER_PROFILE_UPDATE", `Profile updated for user ID: ${id}`, { userId: id, updates });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${id}`);

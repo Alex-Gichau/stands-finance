@@ -21,6 +21,9 @@ export interface UserProfile {
   isActive: boolean;
   isApproved: boolean;
   isSuspended: boolean;
+  profilePromptPreference?: "ASK" | "NEVER";
+  phone?: string;
+  department?: string;
 }
 
 export enum RequisitionStatus {

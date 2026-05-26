@@ -15,6 +15,7 @@ import { ApprovalsPanel } from "./components/ApprovalsPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { UsersPanel } from "./components/UsersPanel";
 import { WaitingRoom } from "./components/WaitingRoom";
+import { ProfilePrompt } from "./components/ProfilePrompt";
 import { ReportsPanel } from "./components/ReportsPanel";
 import { FinanceLedgerPanel } from "./components/FinanceLedgerPanel";
 import { UserRole, BudgetAlert } from "./types";
@@ -243,7 +244,6 @@ function AppContent() {
   const [reportState, setReportState] = useState<"IDLE" | "GENERATING" | "SUCCESS">("IDLE");
   const [selectedReqForNoticeDetail, setSelectedReqForNoticeDetail] = useState<any | null>(null);
   const [isGeneratingReceiptFromHub, setIsGeneratingReceiptFromHub] = useState<any | null>(null);
-  
   const { 
     currentUser, 
     login, 
@@ -262,6 +262,23 @@ function AppContent() {
     readNoticeIds,
     toggleNoticeRead
   } = useRequisitions();
+
+  const [showProfilePrompt, setShowProfilePrompt] = useState(false);
+  const [hasPromptBeenShown, setHasPromptBeenShown] = useState(false);
+
+  useEffect(() => {
+    if (currentUser && currentUser.isApproved && !currentUser.isSuspended) {
+       // Only show if preference is not NEVER and we haven't shown it this session
+       const isNever = currentUser.profilePromptPreference === "NEVER";
+       const sessionShown = sessionStorage.getItem(`profile_prompt_shown_${currentUser.id}`);
+       
+       if (!isNever && !sessionShown && !hasPromptBeenShown) {
+         setShowProfilePrompt(true);
+         setHasPromptBeenShown(true);
+         sessionStorage.setItem(`profile_prompt_shown_${currentUser.id}`, "true");
+       }
+    }
+  }, [currentUser, hasPromptBeenShown]);
 
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -711,6 +728,12 @@ function AppContent() {
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden font-sans">
+      <AnimatePresence>
+        {showProfilePrompt && currentUser && (
+          <ProfilePrompt user={currentUser} onComplete={() => setShowProfilePrompt(false)} />
+        )}
+      </AnimatePresence>
+
       <Sidebar currentView={currentView} onViewChange={setCurrentView} notificationsCount={unreadNotificationsCount} />
       
       <main className="flex-1 flex flex-col min-w-0">
