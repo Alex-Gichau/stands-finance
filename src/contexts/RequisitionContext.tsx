@@ -731,8 +731,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     } catch (error: any) {
       console.error("Login failed", error);
-      if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
-        throw new Error("Google Sign-in popup was blocked. Please try using 'Sign in with Email' or enable popups for this site.");
+      if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
+        throw new Error("Google Sign-in popup was blocked or closed. Please ensure popups are enabled for this site, or use 'Sign in with Email' (Admin: gichaumburu@gmail.com / password123).");
       }
       throw error;
     }
