@@ -9,6 +9,7 @@ import {
   Search, 
   Filter, 
   Trash2, 
+  Pencil,
   Eye,
   CheckCircle,
   XCircle,
@@ -35,6 +36,7 @@ import { printRequisitions, downloadRequisitionsHtml, downloadRequisitionsCsv, d
 import { NewRequisitionForm } from "./NewRequisitionForm";
 import { ReceiptTemplateGenerator } from "./ReceiptTemplateGenerator";
 import { ReceiptGallery } from "./ReceiptGallery";
+import { EditRequisitionModal } from "./EditRequisitionModal";
 
 export const RequisitionsPanel: React.FC = () => {
   const { requisitions, deleteRequisition, currentUser, globalSearchTerm, setGlobalSearchTerm } = useRequisitions();
@@ -43,6 +45,15 @@ export const RequisitionsPanel: React.FC = () => {
   const [isGeneratingReceipt, setIsGeneratingReceipt] = useState<Requisition | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+  
+  const [editingReq, setEditingReq] = useState<Requisition | null>(null);
+  const [requisitionToDelete, setRequisitionToDelete] = useState<Requisition | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  React.useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const filtered = requisitions.filter(req => {
     const matchesSearch = req.title.toLowerCase().includes(globalSearchTerm.toLowerCase()) || 
@@ -197,18 +208,27 @@ export const RequisitionsPanel: React.FC = () => {
                   const isExpired = req.expiresAt && new Date(req.expiresAt) < new Date();
                   const hoursRemaining = req.expiresAt ? (new Date(req.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60) : null;
                   const isNearingExpiry = !isExpired && hoursRemaining !== null && hoursRemaining <= 24 && hoursRemaining > 0;
+                  
+                  const updateAge = now - new Date(req.updatedAt).getTime();
+                  const isRecentlyApprovedOrDisbursed = (req.status === RequisitionStatus.APPROVED_L2 || req.status === RequisitionStatus.DISBURSED) && updateAge < 8000;
+
                   return (
                     <motion.tr 
                       key={req.id} 
                       initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
+                      animate={{ 
+                        opacity: 1,
+                        backgroundColor: isRecentlyApprovedOrDisbursed ? "rgba(16, 185, 129, 0.08)" : undefined
+                      }}
                       exit={{ opacity: 0 }}
                       onClick={() => setViewingReq(req)}
                       className={cn(
                         "transition-colors group cursor-pointer border-l-2",
-                        isNearingExpiry 
-                          ? "bg-amber-50/60 hover:bg-amber-100/60 border-l-amber-500" 
-                          : "hover:bg-slate-50/80 border-l-transparent"
+                        isRecentlyApprovedOrDisbursed
+                          ? "border-l-emerald-500 shadow-[inset_4px_0_0_0_#10b981]" 
+                          : isNearingExpiry 
+                            ? "bg-amber-50/60 hover:bg-amber-100/60 border-l-amber-500" 
+                            : "hover:bg-slate-50/80 border-l-transparent"
                       )}
                     >
                       <td className="px-3 md:px-6 py-2.5 md:py-4">
@@ -262,19 +282,38 @@ export const RequisitionsPanel: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button className="p-2 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 text-slate-400 hover:text-primary transition-all">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setViewingReq(req);
+                            }}
+                            className="p-2 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 text-slate-400 hover:text-primary transition-all"
+                          >
                             <Eye size={16} />
                           </button>
                           {currentUser?.role === UserRole.ADMIN && (
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteRequisition(req.id);
-                              }}
-                              className="p-2 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 text-slate-400 hover:text-rose-500 transition-all"
-                            >
-                              <Trash2 size={16} />
-                            </button>
+                            <>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingReq(req);
+                                }}
+                                className="p-2 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 text-slate-400 hover:text-amber-500 transition-all"
+                                title="Edit Requisition"
+                              >
+                                <Pencil size={15} />
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRequisitionToDelete(req);
+                                }}
+                                className="p-2 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 text-slate-400 hover:text-rose-500 transition-all"
+                                title="Delete Permanently"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -323,13 +362,70 @@ export const RequisitionsPanel: React.FC = () => {
             req={viewingReq} 
             onClose={() => setViewingReq(null)} 
             onDelete={() => {
-              deleteRequisition(viewingReq.id);
+              setRequisitionToDelete(viewingReq);
               setViewingReq(null);
             }}
             onGenerateReceipt={() => {
               setIsGeneratingReceipt(viewingReq);
             }}
+            onEdit={() => {
+              setEditingReq(viewingReq);
+              setViewingReq(null);
+            }}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Modal for Editing */}
+      <AnimatePresence>
+        {editingReq && (
+          <EditRequisitionModal 
+            req={editingReq} 
+            onClose={() => setEditingReq(null)} 
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Delete Confirmation Dialog */}
+      <AnimatePresence>
+        {requisitionToDelete && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6 border border-slate-200 text-center space-y-6"
+            >
+              <div className="w-12 h-12 bg-rose-50 border border-rose-100 rounded-full flex items-center justify-center mx-auto text-rose-600">
+                <AlertTriangle size={24} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Confirm Deletion</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Are you absolutely sure you want to permanently delete requisition <strong className="text-slate-800 font-bold">{requisitionToDelete.title}</strong>? This action is irreversible and will erase the financial ledger entry.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setRequisitionToDelete(null)}
+                  className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button"
+                  onClick={async () => {
+                    await deleteRequisition(requisitionToDelete.id);
+                    setRequisitionToDelete(null);
+                  }}
+                  className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-rose-200 transition-all cursor-pointer"
+                >
+                  Confirm Delete
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
@@ -351,9 +447,10 @@ export interface DetailModalProps {
   onClose: () => void;
   onDelete: () => void;
   onGenerateReceipt: () => void;
+  onEdit?: () => void;
 }
 
-export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClose, onDelete, onGenerateReceipt }) => {
+export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClose, onDelete, onGenerateReceipt, onEdit }) => {
   const { currentUser, updateRequisitionStatus } = useRequisitions();
   const [decisionNote, setDecisionNote] = useState("");
   const [approvalCode, setApprovalCode] = useState("");
@@ -624,6 +721,15 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
             >
               <Trash2 size={16} />
             </button>
+            {currentUser?.role === UserRole.ADMIN && onEdit && (
+              <button 
+                onClick={onEdit}
+                className="p-2.5 hover:bg-amber-50 text-slate-400 hover:text-amber-500 rounded-xl transition-all border border-slate-100 md:border-0"
+                title="Edit Requisition details"
+              >
+                <Pencil size={16} />
+              </button>
+            )}
             <button 
               onClick={onGenerateReceipt}
               className="p-2.5 hover:bg-slate-100 text-slate-400 hover:text-primary rounded-xl transition-all border border-slate-100 md:border-0" 

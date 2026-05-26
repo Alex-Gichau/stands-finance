@@ -69,6 +69,7 @@ interface RequisitionContextType {
   signupWithEmail: (email: string, pass: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
   addRequisition: (req: Omit<Requisition, "id" | "status" | "submittedAt" | "updatedAt" | "approvalHistory">) => Promise<void>;
+  updateRequisition: (id: string, updates: Partial<Requisition>) => Promise<void>;
   updateRequisitionStatus: (id: string, status: RequisitionStatus, decision: "APPROVE" | "REJECT" | "ESCALATE", note?: string, method?: any, rejectionReason?: string, approvalCode?: string) => Promise<void>;
   uploadReceipts: (id: string, receipts: string[]) => Promise<void>;
   deleteRequisition: (id: string) => Promise<void>;
@@ -1199,6 +1200,20 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [addSystemLog]);
 
+  const updateRequisition = useCallback(async (id: string, updates: Partial<Requisition>) => {
+    try {
+      const reqRef = doc(db, "requisitions", id);
+      const cleanedUpdates = {
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+      await updateDoc(reqRef, cleanedUpdates);
+      await addSystemLog("REQUISITION_EDITED", `Requisition '${id}' updated by Administrator`, { requisitionId: id, updates });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `requisitions/${id}`);
+    }
+  }, [addSystemLog]);
+
   const uploadReceipts = useCallback(async (id: string, newReceipts: string[]) => {
     try {
       const reqRef = doc(db, "requisitions", id);
@@ -1274,6 +1289,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       signupWithEmail,
       logout,
       addRequisition,
+      updateRequisition,
       updateRequisitionStatus,
       uploadReceipts,
       deleteRequisition,

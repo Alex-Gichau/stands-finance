@@ -61,7 +61,6 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, index, removeToast, setCur
       setProgress(prev => {
         if (prev <= 0) {
           clearInterval(timer);
-          removeToast(toast.id);
           return 0;
         }
         return prev - decrement;
@@ -69,7 +68,13 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, index, removeToast, setCur
     }, intervalTime);
 
     return () => clearInterval(timer);
-  }, [isHovered, toast.id, removeToast, decrement]);
+  }, [isHovered, decrement]);
+
+  useEffect(() => {
+    if (progress <= 0) {
+      removeToast(toast.id);
+    }
+  }, [progress, toast.id, removeToast]);
 
   return (
     <motion.div

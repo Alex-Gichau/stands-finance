@@ -206,9 +206,9 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ onSelectRequis
       case "FINANCE_DISBURSEMENT_REQUIRED":
         return {
           icon: ShieldCheck,
-          accentBg: "bg-rose-50 border-rose-200",
-          iconBg: "bg-rose-100 text-rose-700",
-          pill: "bg-rose-50 text-rose-700 border-rose-200"
+          accentBg: "bg-blue-50 border-blue-200",
+          iconBg: "bg-blue-100 text-blue-700",
+          pill: "bg-blue-50 text-blue-700 border-blue-200"
         };
       default:
         return {

@@ -7,7 +7,7 @@ import React, { useState, useEffect } from "react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { numberToWords } from "../utils/numberUtils";
 import { formatCurrency, cn } from "../lib/utils";
-import { Upload, X, Paperclip, Loader2, DollarSign, FileText, Info, Repeat, Users } from "lucide-react";
+import { Upload, X, Paperclip, Loader2, DollarSign, FileText, Info, Repeat, Users, PlusCircle, Save } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { RecurrenceType, UserRole } from "../types";
 
@@ -16,7 +16,7 @@ interface NewRequisitionFormProps {
 }
 
 export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose }) => {
-  const { addRequisition, currentUser, projects, churchGroups } = useRequisitions();
+  const { addRequisition, currentUser, projects, churchGroups, addChurchGroup } = useRequisitions();
   const [amount, setAmount] = useState<string>("");
   const [amountWords, setAmountWords] = useState<string>("");
   const [recurrence, setRecurrence] = useState<RecurrenceType>(RecurrenceType.NONE);
@@ -25,6 +25,27 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
 
   const isAdminOrFinance = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.FINANCE;
   const [selectedGroup, setSelectedGroup] = useState<string>("");
+
+  const [showNewGroupInput, setShowNewGroupInput] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupDescription, setNewGroupDescription] = useState("");
+  const [addingGroup, setAddingGroup] = useState(false);
+
+  const handleAddNewGroup = async () => {
+    if (!newGroupName.trim()) return;
+    setAddingGroup(true);
+    try {
+      await addChurchGroup(newGroupName.trim(), newGroupDescription.trim() || undefined);
+      setSelectedGroup(newGroupName.trim());
+      setNewGroupName("");
+      setNewGroupDescription("");
+      setShowNewGroupInput(false);
+    } catch (err) {
+      console.error("Failed to add group:", err);
+    } finally {
+      setAddingGroup(false);
+    }
+  };
 
   useEffect(() => {
     if (isAdminOrFinance) {
@@ -115,7 +136,66 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
                 </div>
                 <h4 className="text-[10px] md:text-xs font-black text-slate-700 uppercase tracking-widest">General Information</h4>
               </div>
+              {isAdminOrFinance && (
+                <button
+                  type="button"
+                  onClick={() => setShowNewGroupInput(!showNewGroupInput)}
+                  className="text-[9px] font-black text-primary hover:text-primary/80 uppercase tracking-widest flex items-center gap-1 bg-primary/5 px-2.5 py-1.5 rounded-lg border border-primary/10"
+                >
+                  <PlusCircle size={12} />
+                  <span>Quick Add Group</span>
+                </button>
+              )}
             </div>
+
+            {showNewGroupInput && (
+              <motion.div 
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3.5"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">New Church Group Name</label>
+                    <input 
+                      type="text" 
+                      value={newGroupName}
+                      onChange={(e) => setNewGroupName(e.target.value)}
+                      placeholder="e.g. St Andrews Choir"
+                      className="input-field bg-white h-9 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Optional Scope / Description</label>
+                    <input 
+                      type="text" 
+                      value={newGroupDescription}
+                      onChange={(e) => setNewGroupDescription(e.target.value)}
+                      placeholder="e.g. Traditional Choir Ministry"
+                      className="input-field bg-white h-9 text-xs"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowNewGroupInput(false)}
+                    className="px-3 py-1.5 bg-white border border-slate-200 text-slate-500 text-[9px] font-bold uppercase tracking-wider rounded-lg"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={addingGroup || !newGroupName.trim()}
+                    onClick={handleAddNewGroup}
+                    className="px-3.5 py-1.5 bg-primary text-white text-[9px] font-black uppercase tracking-wider rounded-lg flex items-center gap-1 hover:bg-primary/95 shadow-sm"
+                  >
+                    {addingGroup ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />}
+                    <span>Save Group entry</span>
+                  </button>
+                </div>
+              </motion.div>
+            )}
 
             {/* Department/Group Autofill or Dropdown Field */}
             <div className="space-y-1.5 p-4 bg-slate-50 rounded-2xl border border-slate-150">
