@@ -69,8 +69,8 @@ service cloud.firestore {
              data.isActive is bool &&
              data.isApproved is bool &&
              data.isSuspended is bool &&
-             (!data.keys().contains('group') || (data.group is string && data.group.size() <= 100)) &&
-             (!data.keys().contains('approverCode') || (data.approverCode is string && data.approverCode.size() <= 20));
+             (!data.keys().hasAny(['group']) || (data.group is string && data.group.size() <= 100)) &&
+             (!data.keys().hasAny(['approverCode']) || (data.approverCode is string && data.approverCode.size() <= 20));
     }
 
     function isValidRequisition(data) {
@@ -80,15 +80,15 @@ service cloud.firestore {
              (data.amount is int || data.amount is float) && data.amount > 0 &&
              data.status in ['DRAFT', 'SUBMITTED', 'APPROVED_L1', 'APPROVED_L2', 'ESCALATED', 'DISBURSED', 'REJECTED', 'CANCELLED'] &&
              data.approvalHistory is list && data.approvalHistory.size() <= 20 &&
-             (!data.keys().contains('amountWords') || (data.amountWords is string)) &&
-             (!data.keys().contains('receipts') || (data.receipts is list && data.receipts.size() <= 50)) &&
-             (!data.keys().contains('attachments') || (data.attachments is list && data.attachments.size() <= 20)) &&
-             (!data.keys().contains('projectId') || (data.projectId is string && data.projectId.size() <= 128)) &&
-             (!data.keys().contains('approvedAtL1') || (data.approvedAtL1 is string)) &&
-             (!data.keys().contains('approvedAtL2') || (data.approvedAtL2 is string)) &&
-             (!data.keys().contains('disbursedAt') || (data.disbursedAt is string)) &&
-             (!data.keys().contains('rejectReason') || (data.rejectReason is string)) &&
-             (!data.keys().contains('additionalInfo') || (data.additionalInfo is string));
+             (!data.keys().hasAny(['amountWords']) || (data.amountWords is string)) &&
+             (!data.keys().hasAny(['receipts']) || (data.receipts is list && data.receipts.size() <= 50)) &&
+             (!data.keys().hasAny(['attachments']) || (data.attachments is list && data.attachments.size() <= 20)) &&
+             (!data.keys().hasAny(['projectId']) || (data.projectId is string && data.projectId.size() <= 128)) &&
+             (!data.keys().hasAny(['approvedAtL1']) || (data.approvedAtL1 is string)) &&
+             (!data.keys().hasAny(['approvedAtL2']) || (data.approvedAtL2 is string)) &&
+             (!data.keys().hasAny(['disbursedAt']) || (data.disbursedAt is string)) &&
+             (!data.keys().hasAny(['rejectReason']) || (data.rejectReason is string)) &&
+             (!data.keys().hasAny(['additionalInfo']) || (data.additionalInfo is string));
     }
 
     function isValidProject(data) {
@@ -96,7 +96,7 @@ service cloud.firestore {
              data.name is string && data.name.size() <= 100 &&
              (data.allocatedBudget is int || data.allocatedBudget is float) && 
              (data.spentAmount is int || data.spentAmount is float) &&
-             (!data.keys().contains('color') || data.color is string);
+             (!data.keys().hasAny(['color']) || data.color is string);
     }
 
     function isValidSystemLog(data) {
@@ -105,7 +105,9 @@ service cloud.firestore {
              data.action is string && data.action.size() <= 100 &&
              data.details is string && data.details.size() <= 1000 &&
              data.performedBy is string && data.performedBy.size() <= 200 &&
-             data.timestamp is string && data.timestamp.size() <= 100;
+             data.timestamp is string && data.timestamp.size() <= 100 &&
+             (!data.keys().hasAny(['groupId']) || (data.groupId is string)) &&
+             (!data.keys().hasAny(['metadata']) || (data.metadata is map || data.metadata is list));
     }
 
     function isValidSavedReport(data) {
@@ -122,7 +124,7 @@ service cloud.firestore {
              data.message is string && data.message.size() <= 1000 &&
              data.timestamp is string &&
              data.isRead is bool &&
-             (!data.keys().contains('targetRole') || data.targetRole is string);
+             (!data.keys().hasAny(['targetRole']) || data.targetRole is string);
     }
 
     // --- match Blocks ---
@@ -132,8 +134,8 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow get: if isSignedIn() && (isOwner(userId) || (isValidId(userId) && isAdmin()));
-      allow list: if isAdmin();
+      allow get: if isSignedIn() && (isOwner(userId) || (isValidId(userId) && (isAdmin() || isApprovedUser())));
+      allow list: if isApprovedUser();
       allow create: if isValidId(userId) && (isAdmin() || (isSignedIn() && isOwner(userId))) && isValidUserProfile(incoming());
       allow update: if isValidId(userId) && (isAdmin() || (isSignedIn() && isOwner(userId)));
     }
@@ -181,7 +183,7 @@ service cloud.firestore {
 
     match /system_logs/{logId} {
       allow get: if isValidId(logId) && (isAdmin() || isSignedIn());
-      allow list: if isAdmin();
+      allow list: if isApprovedUser();
       allow create: if isValidId(logId) && isSignedIn() && isValidSystemLog(incoming());
       allow update, delete: if false;
     }
@@ -190,6 +192,11 @@ service cloud.firestore {
       allow read: if isApprovedUser() || isAdmin();
       allow create: if isValidId(reportId) && (isAdmin() || hasRole('FINANCE')) && isValidSavedReport(incoming());
       allow delete: if isAdmin();
+    }
+
+    match /church_groups/{groupId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
   }
 }

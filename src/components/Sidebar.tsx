@@ -60,6 +60,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, not
     { id: "approvals", label: "Authorization Hub", icon: CheckCircle, roles: [UserRole.APPROVER_L1, UserRole.APPROVER_L2, UserRole.ADMIN] },
     { id: "finance", label: "Finance Ledger", icon: Banknote, roles: [UserRole.FINANCE, UserRole.ADMIN] },
     { id: "reports", label: "Impact Reports", icon: BarChart3, roles: [UserRole.FINANCE, UserRole.ADMIN] },
+    { id: "users", label: "Users", icon: UserCircle, roles: [UserRole.ADMIN] },
+    { id: "settings", label: "Audit Trails", icon: Settings, roles: [UserRole.ADMIN, UserRole.FINANCE, UserRole.APPROVER_L1, UserRole.APPROVER_L2, UserRole.CHURCH_GROUP], desktopOnly: true },
   ];
 
   const filteredItems = menuItems.filter(item => 
@@ -134,7 +136,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, not
                 isCollapsed ? "justify-center p-3" : "gap-4 px-4 py-3.5",
                 isActive 
                   ? "bg-primary text-white shadow-lg shadow-primary/20" 
-                  : "hover:bg-white/5 text-slate-400 hover:text-slate-100"
+                  : "hover:bg-white/5 text-slate-400 hover:text-slate-100",
+                item.desktopOnly ? "hidden lg:flex" : ""
               )}
             >
               <Icon size={18} className={cn("shrink-0", isActive ? "text-white" : "text-slate-500 group-hover:text-slate-300")} />

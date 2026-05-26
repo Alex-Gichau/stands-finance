@@ -141,12 +141,20 @@ export interface AlertThreshold {
   notifyEmail: boolean;
 }
 
+export interface ChurchGroup {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: string;
+}
+
 export interface SystemLog {
   id: string;
   action: string;
   details: string;
   performedBy: string;
   timestamp: string;
+  groupId?: string;
   metadata?: any;
 }
 

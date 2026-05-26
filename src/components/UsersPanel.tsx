@@ -31,9 +31,27 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 
 export const UsersPanel: React.FC = () => {
-  const { users, approveUser, suspendUser, updateUserRole, updateUserProfile, currentUser, adminRegisterUser } = useRequisitions();
+  const { 
+    users, 
+    approveUser, 
+    suspendUser, 
+    updateUserRole, 
+    updateUserProfile, 
+    currentUser, 
+    adminRegisterUser,
+    churchGroups,
+    addChurchGroup,
+    deleteChurchGroup
+  } = useRequisitions();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState<string>("ALL");
+  const [activeTab, setActiveTab] = useState<"users" | "groups">("users");
+
+  // Group modal states
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [groupName, setGroupName] = useState("");
+  const [groupDesc, setGroupDesc] = useState("");
+  const [isGroupSubmitting, setIsGroupSubmitting] = useState(false);
 
   // Registration modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -164,15 +182,24 @@ export const UsersPanel: React.FC = () => {
         <div>
           <h2 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <Users size={24} className="text-primary" />
-            User Access Management
+            Identity & Affiliation
           </h2>
-          <p className="text-xs md:text-sm text-slate-500">Maintain directory transactions and security protocols.</p>
+          <p className="text-xs md:text-sm text-slate-500">Manage user directory and organizational structure.</p>
         </div>
         
-        <div className="flex items-center w-full md:w-auto">
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          {activeTab === "groups" && (
+            <button 
+              onClick={() => setIsGroupModalOpen(true)}
+              className="w-full md:w-auto btn-primary flex items-center justify-center gap-2 px-6 py-3 md:py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800"
+            >
+              <Building2 size={18} />
+              <span className="text-[10px] md:text-xs uppercase tracking-widest font-black">NEW CHURCH GROUP</span>
+            </button>
+          )}
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="w-full md:w-auto btn-primary flex items-center justify-center gap-2 px-6 py-3 md:py-2.5 rounded-xl"
+            className="w-full md:w-auto btn-primary flex items-center justify-center gap-2 px-6 py-3 md:py-2.5 rounded-xl shadow-lg shadow-primary/20"
           >
             <UserPlus size={18} />
             <span className="text-[10px] md:text-xs uppercase tracking-widest font-black">REGISTER NEW MEMBER</span>
@@ -180,8 +207,32 @@ export const UsersPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Tab Switcher */}
+      <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-2xl w-fit">
+        <button 
+          onClick={() => setActiveTab("users")}
+          className={cn(
+            "px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+            activeTab === "users" ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-slate-700"
+          )}
+        >
+          User Directory
+        </button>
+        <button 
+          onClick={() => setActiveTab("groups")}
+          className={cn(
+            "px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+            activeTab === "groups" ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-slate-700"
+          )}
+        >
+          Church Groups ({churchGroups.length})
+        </button>
+      </div>
+
+      {activeTab === "users" ? (
+        <>
+          {/* Filter bar */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input 
@@ -314,6 +365,55 @@ export const UsersPanel: React.FC = () => {
           </table>
         </div>
       </div>
+      </>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <AnimatePresence mode="popLayout">
+            {churchGroups.map((group) => (
+              <motion.div
+                key={group.id}
+                layout
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm group hover:border-primary/20 transition-all"
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-primary/10 group-hover:text-primary transition-all">
+                    <Building2 size={24} />
+                  </div>
+                  <button 
+                    onClick={() => deleteChurchGroup(group.id)}
+                    className="p-2 text-slate-300 hover:text-rose-500 transition-colors"
+                  >
+                    <XCircle size={18} />
+                  </button>
+                </div>
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight mb-1">{group.name}</h3>
+                <p className="text-xs text-slate-500 leading-relaxed min-h-[3rem]">{group.description || "No description provided."}</p>
+                <div className="mt-6 pt-6 border-t border-slate-50 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Users size={14} className="text-slate-300" />
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      {users.filter(u => u.group === group.name).length} MEMBERS
+                    </span>
+                  </div>
+                  <span className="text-[9px] font-mono text-slate-300">{group.id}</span>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+          <button 
+            onClick={() => setIsGroupModalOpen(true)}
+            className="border-2 border-dashed border-slate-200 p-6 rounded-[2rem] flex flex-col items-center justify-center gap-3 text-slate-400 hover:border-primary/40 hover:text-primary transition-all group"
+          >
+            <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Building2 size={24} />
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-[0.2em]">REGISTER NEW GROUP</span>
+          </button>
+        </div>
+      )}
 
       <div className="p-6 bg-slate-900 rounded-3xl border border-slate-800 shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 p-8 opacity-10">
@@ -441,14 +541,18 @@ export const UsersPanel: React.FC = () => {
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Ministry Group Affiliation</label>
                         <div className="relative">
                           <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                          <input 
-                            type="text"
+                          <select
                             required
                             value={isModalOpen ? group : editGroup}
                             onChange={(e) => isModalOpen ? setGroup(e.target.value) : setEditGroup(e.target.value)}
-                            className="input-field pl-11 bg-white font-bold text-slate-600 uppercase tracking-widest placeholder:not-italic"
-                            placeholder="Worship, Youth, Missions..."
-                          />
+                            className="input-field pl-11 bg-white font-bold text-slate-600 uppercase tracking-widest"
+                          >
+                            <option value="">SELECT GROUP</option>
+                            {churchGroups.map(cg => (
+                              <option key={cg.id} value={cg.name}>{cg.name}</option>
+                            ))}
+                            <option value="INDEPENDENT">INDEPENDENT / OTHER</option>
+                          </select>
                         </div>
                       </div>
                     )}
@@ -531,6 +635,82 @@ export const UsersPanel: React.FC = () => {
                     <span className="text-[10px] md:text-xs uppercase tracking-widest font-black">
                       {isModalOpen ? "AUTHORIZE TRANSACTION" : "CONSOLIDATE UPDATE"}
                     </span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Church Group Registration Modal */}
+      <AnimatePresence>
+        {isGroupModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-200"
+            >
+              <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-[0.2em]">New Church Group</h3>
+                  <p className="text-[10px] text-slate-400 font-mono tracking-widest mt-1">SYS_STRUCT_MOD</p>
+                </div>
+                <button onClick={() => setIsGroupModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                  <XCircle size={18} className="text-slate-400" />
+                </button>
+              </div>
+
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setIsGroupSubmitting(true);
+                try {
+                  await addChurchGroup(groupName, groupDesc);
+                  setGroupName(""); setGroupDesc("");
+                  setIsGroupModalOpen(false);
+                } catch (err) {
+                  console.error(err);
+                } finally {
+                  setIsGroupSubmitting(false);
+                }
+              }} className="p-8 space-y-6">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Group Name</label>
+                  <input 
+                    type="text"
+                    required
+                    value={groupName}
+                    onChange={(e) => setGroupName(e.target.value)}
+                    className="input-field"
+                    placeholder="e.g. Youth Ministry"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Description</label>
+                  <textarea 
+                    value={groupDesc}
+                    onChange={(e) => setGroupDesc(e.target.value)}
+                    className="input-field min-h-[100px] py-3"
+                    placeholder="What is the purpose of this group?"
+                  />
+                </div>
+                <div className="pt-4 flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsGroupModalOpen(false)}
+                    className="px-6 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
+                  >
+                    CANCEL
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isGroupSubmitting}
+                    className="btn-primary px-8 py-2.5 flex items-center gap-2 rounded-xl"
+                  >
+                    {isGroupSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Building2 size={16} />}
+                    <span className="text-[10px] uppercase tracking-widest font-black">REGISTER GROUP</span>
                   </button>
                 </div>
               </form>

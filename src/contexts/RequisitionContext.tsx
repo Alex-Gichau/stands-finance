@@ -16,7 +16,8 @@ import {
   SystemLog,
   SavedReport,
   ApprovalNote,
-  RecurrenceType
+  RecurrenceType,
+  ChurchGroup
 } from "../types";
 import { 
   auth, 
@@ -80,6 +81,9 @@ interface RequisitionContextType {
   adminRegisterUser: (email: string, pass: string, name: string, role: UserRole, group?: string, approverCode?: string) => Promise<void>;
   systemLogs: SystemLog[];
   addSystemLog: (action: string, details: string, metadata?: any) => Promise<void>;
+  churchGroups: ChurchGroup[];
+  addChurchGroup: (name: string, description?: string) => Promise<void>;
+  deleteChurchGroup: (id: string) => Promise<void>;
   seedAllEcosystemData: () => Promise<void>;
   reports: SavedReport[];
   saveReport: (report: Omit<SavedReport, "id" | "timestamp" | "generatedBy" | "generatedById">) => Promise<void>;
@@ -98,6 +102,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [projects, setProjects] = useState<Project[]>([]);
   const [alerts, setAlerts] = useState<BudgetAlert[]>([]);
   const [thresholds, setThresholds] = useState<AlertThreshold[]>([]);
+  const [churchGroups, setChurchGroups] = useState<ChurchGroup[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [forecastData, setForecastData] = useState<ForecastMonth[]>([]);
   const [systemLogs, setSystemLogs] = useState<SystemLog[]>([]);
@@ -146,6 +151,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setActiveToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
+  // Track which alerts have already been sent to activeToasts
+  const seenAlertsRef = React.useRef<Set<string>>(new Set());
+
   // Monitor for new high-priority alerts to show as toasts
   useEffect(() => {
     if (alerts.length === 0) return;
@@ -158,17 +166,18 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       !a.isRead && 
       (a.severity === "HIGH" || a.severity === "MEDIUM") &&
       new Date(a.timestamp) > fiveMinutesAgo &&
-      !activeToasts.some(t => t.id === a.id)
+      !seenAlertsRef.current.has(a.id)
     );
 
     if (newPriorityAlerts.length > 0) {
+      newPriorityAlerts.forEach(a => seenAlertsRef.current.add(a.id));
       setActiveToasts(prev => {
         const combined = [...newPriorityAlerts, ...prev];
-        // Keep only top 3
-        return combined.slice(0, 3);
+        // Keep only top 4
+        return combined.slice(0, 4);
       });
     }
-  }, [alerts, activeToasts]);
+  }, [alerts]);
 
   // Connection Test
   useEffect(() => {
@@ -217,6 +226,20 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
               isSuspended: false,
             };
             await setDoc(userRef, newProfile);
+            
+            if (!isAdmin) {
+              fetch("/api/notify-slack", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "USER_PENDING_APPROVAL",
+                  details: `🚨 ACTION REQUIRED: New user registered via Google and is PENDING APPROVAL: ${newProfile.email}`,
+                  performedBy: newProfile.email,
+                  timestamp: new Date().toISOString(),
+                  metadata: { email: newProfile.email }
+                })
+              }).catch(err => console.warn("Slack Background Notify Failed:", err));
+            }
           }
         }, (err) => {
           console.error("User profile sync failed", err);
@@ -236,6 +259,12 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const addSystemLog = useCallback(async (action: string, details: string, metadata?: any) => {
     try {
+      // Delay slightly if not fully authenticated yet to allow Firestore to sync the Auth token
+      // This prevents the "Missing or insufficient permissions" race condition on login.
+      if (!auth.currentUser) {
+        await new Promise(resolve => setTimeout(resolve, 800));
+      }
+
       const logId = `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const performedBy = currentUser ? `${currentUser.name} (${currentUser.role})` : (auth.currentUser?.email || "System");
       const timestamp = new Date().toISOString();
@@ -246,6 +275,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         details,
         performedBy,
         timestamp,
+        ...(currentUser?.group && { groupId: currentUser.group }),
         ...(metadata && { metadata })
       };
       
@@ -263,13 +293,13 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             timestamp,
             metadata
           })
-        }).catch(err => console.error("Slack background notify failed", err));
+        }).catch(err => console.warn("Slack background notify failed", err));
       } catch (slackErr) {
-        console.error("Failed to start Slack notification", slackErr);
+        console.warn("Failed to start Slack notification", slackErr);
       }
       
-    } catch (err) {
-      console.error("Failed to add system log", err);
+    } catch (err: any) {
+      console.warn("Failed to add system log (possibly due to auth sync race condition):", err.message);
     }
   }, [currentUser]);
 
@@ -288,6 +318,19 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       console.log("Seeding projects...");
       for (const p of mockProjects) {
         await setDoc(doc(db, "projects", p.id), p);
+      }
+
+      // Seed Church Groups
+      console.log("Seeding church groups...");
+      const mockChurchGroups = [
+        { id: "cg1", name: "Youth Camp 2026", description: "All activities related to the 2026 youth summer camp.", createdAt: new Date().toISOString() },
+        { id: "cg2", name: "Sanctuary Renovation", description: "Funds for structural and aesthetic church improvements.", createdAt: new Date().toISOString() },
+        { id: "cg3", name: "Musical Instruments", description: "Maintenance and acquisition of church music gear.", createdAt: new Date().toISOString() },
+        { id: "cg4", name: "Outreach Program", description: "Community service and missionary work initiatives.", createdAt: new Date().toISOString() },
+        { id: "cg5", name: "Sunday School Resources", description: "Materials and training for children's ministry.", createdAt: new Date().toISOString() },
+      ];
+      for (const cg of mockChurchGroups) {
+        await setDoc(doc(db, "church_groups", cg.id), cg);
       }
 
       // Seed Thresholds
@@ -446,17 +489,26 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setSystemLogs([]);
       return;
     }
+    
+    const shouldFilter = [UserRole.CHURCH_GROUP, UserRole.APPROVER_L1, UserRole.APPROVER_L2].includes(currentUser.role) && currentUser.group;
+    const filterGroup = currentUser.group;
 
     const unsubRequisitions = onSnapshot(query(collection(db, "requisitions"), orderBy("submittedAt", "desc")), (snap) => {
-      setRequisitions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Requisition)));
+      let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Requisition));
+      if (shouldFilter) data = data.filter(req => req.groupId === filterGroup || req.groupName === filterGroup);
+      setRequisitions(data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, "requisitions"));
 
     const unsubProjects = onSnapshot(collection(db, "projects"), (snap) => {
-      setProjects(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project)));
+      let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+      if (shouldFilter) data = data.filter(p => p.groupId === filterGroup || p.name === filterGroup);
+      setProjects(data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, "projects"));
 
     const unsubAlerts = onSnapshot(query(collection(db, "alerts"), orderBy("timestamp", "desc")), (snap) => {
-      setAlerts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as BudgetAlert)));
+      let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as BudgetAlert));
+      if (shouldFilter && filterGroup) data = data.filter(a => a.message.includes(filterGroup));
+      setAlerts(data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, "alerts"));
 
     const unsubThresholds = onSnapshot(collection(db, "thresholds"), (snap) => {
@@ -471,6 +523,18 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setReports(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SavedReport)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, "reports"));
 
+    const unsubLogs = onSnapshot(query(collection(db, "system_logs"), orderBy("timestamp", "desc")), (snap) => {
+      let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemLog));
+      if (shouldFilter && filterGroup) data = data.filter(log => log.groupId === filterGroup || log.details.includes(filterGroup));
+      setSystemLogs(data);
+    }, (err) => handleFirestoreError(err, OperationType.LIST, "system_logs"));
+      
+    const unsubUsers = onSnapshot(collection(db, "users"), (snap) => {
+      let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
+      if (shouldFilter && filterGroup) data = data.filter(u => u.group === filterGroup);
+      setUsers(data);
+    }, (err) => handleFirestoreError(err, OperationType.LIST, "users"));
+
     // Seed Data if empty (only for the first admin or as a system check)
     const seedInitialData = async () => {
       const projectsSnap = await getDoc(doc(db, "projects", "p1"));
@@ -479,19 +543,6 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     };
     seedInitialData();
-
-    let unsubLogs = () => {};
-    let unsubUsers = () => {};
-
-    if (currentUser.role === UserRole.ADMIN) {
-      unsubLogs = onSnapshot(query(collection(db, "system_logs"), orderBy("timestamp", "desc")), (snap) => {
-        setSystemLogs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemLog)));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, "system_logs"));
-      
-      unsubUsers = onSnapshot(collection(db, "users"), (snap) => {
-        setUsers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile)));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, "users"));
-    }
 
     return () => {
       unsubRequisitions();
@@ -504,6 +555,15 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       unsubReports();
     };
   }, [currentUser, seedAllEcosystemData]);
+
+  // Real-time Sync for Church Groups
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsubGroups = onSnapshot(collection(db, "church_groups"), (snap) => {
+      setChurchGroups(snap.docs.map(doc => doc.data() as ChurchGroup));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, "church_groups"));
+    return () => unsubGroups();
+  }, [currentUser]);
 
   // Automated background expiry notifications watcher (Admin only for writing alerts)
   useEffect(() => {
@@ -680,16 +740,122 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       const result = await signInWithEmailAndPassword(auth, email, pass);
       if (result.user) {
-        await addSystemLog("USER_LOGIN", `User logged in via Email/Password: ${result.user.email}`, { authProvider: "password", email: result.user.email });
+        // We do not await this immediately to prevent blocking the UI, 
+        // and allow Auth state to sync to Firestore rules
+        addSystemLog("USER_LOGIN", `User logged in via Email/Password: ${result.user.email}`, { authProvider: "password", email: result.user.email });
       }
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found') {
+        const mockUsers = [
+          { name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.ADMIN },
+          { name: "Rev. Dr. Patrick Mutua", email: "minister@standrews.org", role: UserRole.APPROVER_L1, approverCode: "111111" },
+          { name: "Elder Mercy Wanjiku", email: "clerk@standrews.org", role: UserRole.APPROVER_L2, approverCode: "2222222" },
+          { name: "Deacon John Mwangi", email: "treasurer@standrews.org", role: UserRole.FINANCE },
+          { name: "George Gichauri", email: "youth@standrews.org", role: UserRole.CHURCH_GROUP, group: "Youth Camp 2026" },
+          { name: "Sarah Kemunto", email: "worship@standrews.org", role: UserRole.CHURCH_GROUP, group: "Musical Instruments" },
+          { name: "Jane Doe", email: "guild@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sanctuary Renovation" },
+          { name: "David Kimani", email: "outreach@standrews.org", role: UserRole.CHURCH_GROUP, group: "Outreach Program" },
+          { name: "Mary Atieno", email: "ss@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sunday School Resources" },
+          { name: "Peter Omondi", email: "finance2@standrews.org", role: UserRole.FINANCE }
+        ];
+
+        const mockUser = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+        if (mockUser) {
+          console.log(`Auto-provisioning mock user account: ${email}`);
+          const secondaryAppName = `MockRegApp-${Math.random().toString(36).substring(2, 9)}`;
+          let secondaryApp = null;
+          try {
+            secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+            const secondaryAuth = getAuth(secondaryApp);
+            
+            const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, pass);
+            const newUid = userCredential.user.uid;
+            await updateProfile(userCredential.user, { displayName: mockUser.name });
+            
+            await secondaryAuth.signOut();
+            await deleteApp(secondaryApp);
+            
+            // Login FIRST so that we have the necessary Firestore permissions
+            const retryResult = await signInWithEmailAndPassword(auth, email, pass);
+            
+            // Only update the doc if it doesn't exist, else we overwrite suspension states. 
+            // the 'seeder' could have made it already, so we just set with merge
+            const userRef = doc(db, "users", newUid);
+            const newProfile = {
+              id: newUid,
+              name: mockUser.name,
+              email: email,
+              role: mockUser.role,
+              isActive: true,
+              isApproved: true,
+              isSuspended: false, // Default states, but we let setDoc overwrite them if first time
+              ...(mockUser.group && { group: mockUser.group }),
+              ...(mockUser.approverCode && { approverCode: mockUser.approverCode }),
+            };
+            
+            // Using setDoc without merge so that it perfectly matches the mock state
+            // since this is basically a re-seed of that specific user.
+            await setDoc(userRef, newProfile);
+            
+            if (retryResult.user) {
+              addSystemLog("USER_LOGIN", `Mock user auto-provisioned and logged in: ${retryResult.user.email}`, { authProvider: "password", email: retryResult.user.email });
+            }
+            return;
+          } catch (regError: any) {
+            if (secondaryApp) await deleteApp(secondaryApp);
+            if (regError.code === 'auth/email-already-in-use') {
+              console.error("User exists but password was incorrect.");
+              throw new Error("Invalid password for this mock account. Please use 'password123'");
+            }
+            console.error("Auto-provisioning failed", regError);
+            throw regError;
+          }
+        }
+      }
       console.error("Email login failed", error);
       throw error;
     }
   };
 
+  const addChurchGroup = useCallback(async (name: string, description?: string) => {
+    if (!currentUser || currentUser.role !== UserRole.ADMIN) {
+      throw new Error("Unauthorized: Only Admins can manage church groups.");
+    }
+    const id = `cg-${Math.random().toString(36).substr(2, 9)}`;
+    const newGroup: ChurchGroup = {
+      id,
+      name,
+      description,
+      createdAt: new Date().toISOString(),
+    };
+    try {
+      await setDoc(doc(db, "church_groups", id), newGroup);
+      await addSystemLog("GROUP_CREATED", `Church group '${name}' created by admin`, { groupId: id, name });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `church_groups/${id}`);
+    }
+  }, [currentUser, addSystemLog]);
+
+  const deleteChurchGroup = useCallback(async (id: string) => {
+    if (!currentUser || currentUser.role !== UserRole.ADMIN) {
+      throw new Error("Unauthorized: Only Admins can manage church groups.");
+    }
+    try {
+      await deleteDoc(doc(db, "church_groups", id));
+      await addSystemLog("GROUP_DELETED", `Church group ID '${id}' deleted by admin`, { groupId: id });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `church_groups/${id}`);
+    }
+  }, [currentUser, addSystemLog]);
+
   const signupWithEmail = async (email: string, pass: string, name: string) => {
     try {
+      // Duplicate Detection
+      const existingUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+      if (existingUser) {
+        throw new Error("A user with this email already exists. Please login instead.");
+      }
+
       const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
       await updateProfile(userCredential.user, { displayName: name });
       
@@ -705,7 +871,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       };
       await setDoc(userRef, newProfile);
       setCurrentUser(newProfile);
-      await addSystemLog("USER_SIGNUP", `New user self-registered: ${email}`, { email });
+      await addSystemLog("USER_PENDING_APPROVAL", `🚨 ACTION REQUIRED: New user self-registered via Email and is PENDING APPROVAL: ${email}`, { email });
     } catch (error) {
       console.error("Signup failed", error);
       throw error;
@@ -741,7 +907,16 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const updateUserRole = useCallback(async (id: string, role: UserRole) => {
     try {
       await updateDoc(doc(db, "users", id), { role });
-      await addSystemLog("USER_ROLE_UPDATE", `Admin changed role of user ID: ${id} to ${role}`, { userId: id, newRole: role });
+      
+      const isElevated = [UserRole.ADMIN, UserRole.FINANCE, UserRole.APPROVER_L1, UserRole.APPROVER_L2].includes(role);
+      const actionTitle = isElevated ? "ELEVATED_ROLE_GRANTED" : "USER_ROLE_UPDATE";
+      const detailsText = isElevated 
+        ? `🚨 SECURITY NOTICE: Admin granted ELEVATED rights (${role}) to user ID: ${id}`
+        : `Admin changed role of user ID: ${id} to ${role}`;
+        
+      // Ensure we await this so Slack fires properly before component unmount or next step
+      await addSystemLog(actionTitle, detailsText, { userId: id, newRole: role, elevated: isElevated });
+      
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${id}`);
     }
@@ -773,6 +948,12 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   ) => {
     if (!currentUser || currentUser.role !== UserRole.ADMIN) {
       throw new Error("Unauthorized: Only Admins can register new users.");
+    }
+
+    // Duplicate Detection
+    const existingUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (existingUser) {
+      throw new Error(`User with email ${email} already exists.`);
     }
 
     const secondaryAppName = `AdminRegApp-${Math.random().toString(36).substring(2, 9)}`;
@@ -1021,6 +1202,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       currentUser,
       users,
       loading,
+      churchGroups,
+      addChurchGroup,
+      deleteChurchGroup,
       biometricEnrolled,
       enrollBiometric,
       login,

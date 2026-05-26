@@ -89,6 +89,7 @@ function AppContent() {
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
+  const notificationsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -97,6 +98,9 @@ function AppContent() {
       }
       if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
         setIsProfileOpen(false);
+      }
+      if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
+        setIsNotificationsOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -560,7 +564,7 @@ function AppContent() {
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Operational</span>
             </div>
             
-            <div className="relative">
+            <div className="relative" ref={notificationsRef}>
               <button 
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
                 className="relative p-2 text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
@@ -739,21 +743,6 @@ function AppContent() {
                       <p className="text-xs font-bold text-slate-900 truncate">{currentUser.email}</p>
                     </div>
                     <div className="p-1">
-                      {currentUser.role === UserRole.ADMIN && (
-                        <>
-                          <button
-                            onClick={() => {
-                              setCurrentView("users");
-                              setIsProfileOpen(false);
-                            }}
-                            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-left"
-                          >
-                            <UserCircle size={14} className="text-slate-400" />
-                            USERS
-                          </button>
-                          <div className="h-[1px] bg-slate-50 my-1" />
-                        </>
-                      )}
                       <button
                         onClick={() => {
                           setCurrentView("settings");
