@@ -736,6 +736,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     } catch (error: any) {
       console.error("Login failed", error);
+      if (error.code === 'auth/unauthorized-domain') {
+        throw new Error("Unauthorized Domain: The current hosting domain (Vercel or custom domain) has not been whitelisted. Please open Firebase Console -> Go to Authentication -> Settings -> Authorized Domains -> Add your current domain (e.g., your-app.vercel.app) to the list.");
+      }
       if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
         throw new Error("Google Sign-in was interrupted. This usually happens if popups are blocked or the window was closed. Please use 'Sign in with Email' using the credentials shown below.");
       }
