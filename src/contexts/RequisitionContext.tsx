@@ -558,12 +558,11 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   // Real-time Sync for Church Groups
   useEffect(() => {
-    if (!currentUser) return;
     const unsubGroups = onSnapshot(collection(db, "church_groups"), (snap) => {
       setChurchGroups(snap.docs.map(doc => doc.data() as ChurchGroup));
     }, (err) => handleFirestoreError(err, OperationType.LIST, "church_groups"));
     return () => unsubGroups();
-  }, [currentUser]);
+  }, []);
 
   // Automated background expiry notifications watcher (Admin only for writing alerts)
   useEffect(() => {
@@ -730,8 +729,11 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (result.user) {
         await addSystemLog("USER_LOGIN", `User logged in via Google: ${result.user.email}`, { authProvider: "google", email: result.user.email });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed", error);
+      if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
+        throw new Error("Google Sign-in popup was blocked. Please try using 'Sign in with Email' or enable popups for this site.");
+      }
       throw error;
     }
   };
