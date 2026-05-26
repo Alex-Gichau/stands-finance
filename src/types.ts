@@ -27,6 +27,8 @@ export interface UserProfile {
   department?: string;
 }
 
+export type SearchFilter = "ALL" | "TITLE" | "GROUP" | "REQUESTER";
+
 export enum RequisitionStatus {
   DRAFT = "DRAFT",
   SUBMITTED = "SUBMITTED",

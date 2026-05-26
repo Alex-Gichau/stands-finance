@@ -17,7 +17,8 @@ import {
   SavedReport,
   ApprovalNote,
   RecurrenceType,
-  ChurchGroup
+  ChurchGroup,
+  SearchFilter
 } from "../types";
 import { 
   auth, 
@@ -90,6 +91,8 @@ interface RequisitionContextType {
   saveReport: (report: Omit<SavedReport, "id" | "timestamp" | "generatedBy" | "generatedById">) => Promise<void>;
   globalSearchTerm: string;
   setGlobalSearchTerm: (term: string) => void;
+  searchFilter: SearchFilter;
+  setSearchFilter: (filter: SearchFilter) => void;
   activeToasts: BudgetAlert[];
   removeToast: (id: string) => void;
   readNoticeIds: string[];
@@ -112,6 +115,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [loading, setLoading] = useState(true);
   const [biometricEnrolled, setBiometricEnrolled] = useState(false);
   const [globalSearchTerm, setGlobalSearchTerm] = useState("");
+  const [searchFilter, setSearchFilter] = useState<SearchFilter>("ALL");
   const [activeToasts, setActiveToasts] = useState<BudgetAlert[]>([]);
   const [readNoticeIds, setReadNoticeIds] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
@@ -1300,6 +1304,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       saveReport,
       globalSearchTerm,
       setGlobalSearchTerm,
+      searchFilter,
+      setSearchFilter,
       activeToasts,
       removeToast,
       readNoticeIds,

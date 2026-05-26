@@ -18,7 +18,7 @@ import { WaitingRoom } from "./components/WaitingRoom";
 import { ProfilePrompt } from "./components/ProfilePrompt";
 import { ReportsPanel } from "./components/ReportsPanel";
 import { FinanceLedgerPanel } from "./components/FinanceLedgerPanel";
-import { UserRole, BudgetAlert } from "./types";
+import { UserRole, BudgetAlert, SearchFilter } from "./types";
 import { 
   Bell, 
   ArrowRight,
@@ -257,6 +257,8 @@ function AppContent() {
     deleteRequisition,
     globalSearchTerm,
     setGlobalSearchTerm,
+    searchFilter,
+    setSearchFilter,
     activeToasts,
     removeToast,
     readNoticeIds,
@@ -767,8 +769,8 @@ function AppContent() {
       
       <main className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="h-16 bg-card border-b border-border flex items-center justify-between px-4 md:px-8 shrink-0 select-none">
-          <div>
+        <header className="min-h-[5rem] py-3 bg-card border-b border-border flex items-center justify-between px-4 md:px-8 shrink-0 select-none transition-all">
+          <div className="flex flex-col justify-center">
             <h1 className="text-xs md:text-lg font-bold text-foreground leading-tight truncate max-w-[150px] md:max-w-none">
               {currentView.charAt(0).toUpperCase() + currentView.slice(1)}: {currentUser.group}
             </h1>
@@ -776,39 +778,41 @@ function AppContent() {
           </div>
 
           <div className="flex-1 max-w-md mx-8 hidden md:block" ref={searchRef}>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" size={16} />
-              <input 
-                ref={searchInputRef}
-                type="text" 
-                placeholder="Search requisitions by title or group..." 
-                className="w-full pl-10 pr-10 py-2 bg-background border border-border rounded-lg text-xs focus:ring-2 focus:ring-primary/10 focus:border-primary outline-none transition-all placeholder:text-muted/50"
-                value={globalSearchTerm}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setGlobalSearchTerm(val);
-                  if (val.trim() !== "") {
-                    setCurrentView("requisitions");
-                  }
-                }}
-                onFocus={() => setIsSearchFocused(true)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    saveRecentSearch(globalSearchTerm);
-                    setIsSearchFocused(false);
-                    setCurrentView("requisitions");
-                    (e.target as HTMLInputElement).blur();
-                  }
-                }}
-              />
-              {globalSearchTerm && (
-                <button 
-                  onClick={() => setGlobalSearchTerm("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                >
-                  <X size={14} />
-                </button>
-              )}
+            <div className="relative pb-0.5">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" size={16} />
+                <input 
+                  ref={searchInputRef}
+                  type="text" 
+                  placeholder="Search requisitions by title or group..." 
+                  className="w-full pl-10 pr-10 py-2 bg-background border border-border rounded-lg text-xs focus:ring-2 focus:ring-primary/10 focus:border-primary outline-none transition-all placeholder:text-muted/50"
+                  value={globalSearchTerm}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setGlobalSearchTerm(val);
+                    if (val.trim() !== "") {
+                      setCurrentView("requisitions");
+                    }
+                  }}
+                  onFocus={() => setIsSearchFocused(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      saveRecentSearch(globalSearchTerm);
+                      setIsSearchFocused(false);
+                      setCurrentView("requisitions");
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
+                />
+                {globalSearchTerm && (
+                  <button 
+                    onClick={() => setGlobalSearchTerm("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
 
               <AnimatePresence>
                 {isSearchFocused && recentSearches.length > 0 && (
@@ -857,6 +861,28 @@ function AppContent() {
                   </motion.div>
                 )}
               </AnimatePresence>
+            </div>
+
+            <div className="flex items-center gap-2 mt-2">
+              {[
+                { id: "ALL", label: "All Hubs" },
+                { id: "TITLE", label: "By Title" },
+                { id: "GROUP", label: "By Group" },
+                { id: "REQUESTER", label: "By Requester" }
+              ].map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setSearchFilter(f.id as SearchFilter)}
+                  className={cn(
+                    "px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all",
+                    searchFilter === f.id 
+                      ? "bg-primary text-white shadow-sm ring-1 ring-primary/20" 
+                      : "bg-slate-500/5 dark:bg-white/5 text-muted hover:text-foreground border border-border/50"
+                  )}
+                >
+                  {f.label}
+                </button>
+              ))}
             </div>
           </div>
           

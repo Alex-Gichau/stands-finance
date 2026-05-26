@@ -39,7 +39,14 @@ import { ReceiptGallery } from "./ReceiptGallery";
 import { EditRequisitionModal } from "./EditRequisitionModal";
 
 export const RequisitionsPanel: React.FC = () => {
-  const { requisitions, deleteRequisition, currentUser, globalSearchTerm, setGlobalSearchTerm } = useRequisitions();
+  const { 
+    requisitions, 
+    deleteRequisition, 
+    currentUser, 
+    globalSearchTerm, 
+    setGlobalSearchTerm,
+    searchFilter
+  } = useRequisitions();
   const [isAdding, setIsAdding] = useState(false);
   const [viewingReq, setViewingReq] = useState<Requisition | null>(null);
   const [isGeneratingReceipt, setIsGeneratingReceipt] = useState<Requisition | null>(null);
@@ -56,10 +63,28 @@ export const RequisitionsPanel: React.FC = () => {
   }, []);
 
   const filtered = requisitions.filter(req => {
-    const matchesSearch = req.title.toLowerCase().includes(globalSearchTerm.toLowerCase()) || 
-                          req.groupName.toLowerCase().includes(globalSearchTerm.toLowerCase()) ||
-                          req.id.toLowerCase().includes(globalSearchTerm.toLowerCase()) ||
-                          (req.recurrence && req.recurrence.toLowerCase().includes(globalSearchTerm.toLowerCase()));
+    const term = globalSearchTerm.toLowerCase();
+    
+    let matchesSearch = false;
+    if (!term) {
+      matchesSearch = true;
+    } else {
+      const inTitle = req.title.toLowerCase().includes(term);
+      const inGroup = req.groupName.toLowerCase().includes(term);
+      const inRequester = req.requesterName?.toLowerCase().includes(term);
+      const inId = req.id.toLowerCase().includes(term);
+
+      if (searchFilter === "ALL") {
+        matchesSearch = inTitle || inGroup || inRequester || inId;
+      } else if (searchFilter === "TITLE") {
+        matchesSearch = inTitle;
+      } else if (searchFilter === "GROUP") {
+        matchesSearch = inGroup;
+      } else if (searchFilter === "REQUESTER") {
+        matchesSearch = inRequester;
+      }
+    }
+
     const matchesStatus = filterStatus === "ALL" || req.status === filterStatus;
     
     const canSee = currentUser?.role === UserRole.ADMIN || req.groupId === currentUser?.group;
