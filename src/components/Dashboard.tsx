@@ -4,7 +4,7 @@
  */
 
 import React, { useMemo, useState } from "react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { ComposedChart, Area, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
 import { formatCurrency, cn } from "../lib/utils";
@@ -12,6 +12,59 @@ import { AlertTriangle, TrendingUp, Layout, Activity, ClipboardList, CheckCircle
 import { motion, AnimatePresence } from "motion/react";
 import { RequisitionDetailModal } from "./RequisitionsPanel";
 import { ReceiptTemplateGenerator } from "./ReceiptTemplateGenerator";
+
+// Custom high-detail chart tooltip
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    const approvalRate = data.requested > 0 ? Math.round((data.approved / data.requested) * 100) : 0;
+    return (
+      <div className="bg-white/95 backdrop-blur-md border border-slate-200 p-4 rounded-2xl shadow-xl space-y-2 text-xs text-slate-750 min-w-[245px]">
+        <div className="font-black text-slate-900 border-b border-slate-100 pb-1.5 flex justify-between items-center">
+          <span className="text-[11px] uppercase tracking-wider text-slate-500 font-extrabold">{label} Statistics</span>
+          <span className="text-[8px] font-mono bg-slate-100 px-1.5 py-0.5 rounded-md uppercase text-slate-400">Ledger Metrics</span>
+        </div>
+        <div className="space-y-1.5 pt-1.5 text-[11px]">
+          <div className="flex items-center justify-between gap-4">
+            <span className="flex items-center gap-1.5 text-slate-500 font-medium">
+              <span className="w-2 h-2 rounded-full bg-blue-600 inline-block" />
+              Requested Volume:
+            </span>
+            <span className="font-bold text-slate-900 font-mono">Ksh {Number(data.requested).toLocaleString()}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="flex items-center gap-1.5 text-slate-500 font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+              Approved / Settled:
+            </span>
+            <span className="font-bold text-slate-900 font-mono">Ksh {Number(data.approved).toLocaleString()}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4 border-t border-dashed border-slate-100 pt-1.5 mt-0.5">
+            <span className="flex items-center gap-1.5 text-slate-500 font-medium">
+              <span className="w-2 h-2 rounded-full bg-purple-500 inline-block" />
+              Avg Request Size:
+            </span>
+            <span className="font-bold text-indigo-950 font-mono">Ksh {Number(data.average).toLocaleString()}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="flex items-center gap-1.5 text-slate-500 font-medium">
+              <span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />
+              Submission Count:
+            </span>
+            <span className="font-bold text-slate-900 font-mono">{data.count} Requisitions</span>
+          </div>
+          <div className="flex items-center justify-between gap-4 text-[10px] bg-slate-50 px-2 py-1.5 rounded-xl border border-slate-100 mt-2">
+            <span className="text-slate-500 font-black uppercase tracking-wider text-[8px]">Approval Conversion:</span>
+            <span className={`font-black font-mono text-[10px] ${approvalRate >= 80 ? "text-emerald-600" : approvalRate >= 50 ? "text-amber-600" : "text-slate-600"}`}>
+              {approvalRate}%
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
 
 const Dashboard: React.FC = () => {
   const { requisitions, projects, alerts, currentUser, seedAllEcosystemData, deleteRequisition, systemLogs } = useRequisitions();
@@ -23,9 +76,16 @@ const Dashboard: React.FC = () => {
 
   const [velocityTimeframe, setVelocityTimeframe] = useState<"DAILY" | "MONTHLY" | "ANNUAL">("DAILY");
 
+  const [showRequested, setShowRequested] = useState(true);
+  const [showApproved, setShowApproved] = useState(true);
+  const [showAverage, setShowAverage] = useState(false);
+  const [showCount, setShowCount] = useState(false);
+
   const dailyData = useMemo(() => {
     const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const sumByDay: Record<string, number> = { Sun: 0, Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0 };
+    const approvedByDay: Record<string, number> = { Sun: 0, Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0 };
+    const countByDay: Record<string, number> = { Sun: 0, Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0 };
     
     requisitions.forEach(req => {
       const dateStr = req.submittedAt || req.updatedAt;
@@ -34,22 +94,47 @@ const Dashboard: React.FC = () => {
         const dayName = days[d.getDay()];
         if (dayName) {
           sumByDay[dayName] += req.amount;
+          if (req.status === RequisitionStatus.APPROVED_L1 || req.status === RequisitionStatus.APPROVED_L2 || req.status === RequisitionStatus.DISBURSED) {
+            approvedByDay[dayName] += req.amount;
+          }
+          countByDay[dayName] += 1;
         }
       }
     });
 
-    const baseline: Record<string, number> = { Mon: 30000, Tue: 45000, Wed: 60000, Thu: 35000, Fri: 80000, Sat: 25000, Sun: 15000 };
+    const baselineRequested: Record<string, number> = { Mon: 30000, Tue: 45000, Wed: 60000, Thu: 35000, Fri: 80000, Sat: 25000, Sun: 15000 };
+    const baselineApproved: Record<string, number> = { Mon: 24000, Tue: 39000, Wed: 50000, Thu: 28000, Fri: 72000, Sat: 19000, Sun: 10000 };
+    const baselineCount: Record<string, number> = { Sun: 1, Mon: 3, Tue: 4, Wed: 5, Thu: 3, Fri: 7, Sat: 2 };
     
-    return days.map(day => ({
-      name: day,
-      value: sumByDay[day] > 0 ? sumByDay[day] : baseline[day]
-    }));
+    return days.map(day => {
+      const isSeeded = requisitions.length > 0;
+      const requested = isSeeded ? sumByDay[day] : baselineRequested[day];
+      const approved = isSeeded ? approvedByDay[day] : baselineApproved[day];
+      const count = isSeeded ? countByDay[day] : baselineCount[day];
+      const average = count > 0 ? Math.round(requested / count) : 0;
+
+      return {
+        name: day,
+        value: requested, // For legacy fallback
+        requested,
+        approved,
+        count,
+        average
+      };
+    });
   }, [requisitions]);
 
   const monthlyData = useMemo(() => {
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const sumByMonth: Record<string, number> = {};
-    months.forEach(m => { sumByMonth[m] = 0; });
+    const approvedByMonth: Record<string, number> = {};
+    const countByMonth: Record<string, number> = {};
+    
+    months.forEach(m => { 
+      sumByMonth[m] = 0; 
+      approvedByMonth[m] = 0;
+      countByMonth[m] = 0;
+    });
 
     requisitions.forEach(req => {
       const dateStr = req.submittedAt || req.updatedAt;
@@ -58,25 +143,56 @@ const Dashboard: React.FC = () => {
         const monthName = months[d.getMonth()];
         if (monthName) {
           sumByMonth[monthName] += req.amount;
+          if (req.status === RequisitionStatus.APPROVED_L1 || req.status === RequisitionStatus.APPROVED_L2 || req.status === RequisitionStatus.DISBURSED) {
+            approvedByMonth[monthName] += req.amount;
+          }
+          countByMonth[monthName] += 1;
         }
       }
     });
 
-    const baseline: Record<string, number> = {
+    const baselineRequested: Record<string, number> = {
       Jan: 120000, Feb: 150000, Mar: 180000, Apr: 210000, May: 280000, Jun: 240000,
       Jul: 290000, Aug: 310500, Sep: 340000, Oct: 380000, Nov: 420000, Dec: 550000
     };
+    const baselineApproved: Record<string, number> = {
+      Jan: 102000, Feb: 135000, Mar: 150000, Apr: 178000, May: 240000, Jun: 195000,
+      Jul: 250000, Aug: 275000, Sep: 305000, Oct: 340000, Nov: 375000, Dec: 490000
+    };
+    const baselineCount: Record<string, number> = {
+      Jan: 10, Feb: 12, Mar: 15, Apr: 16, May: 22, Jun: 18,
+      Jul: 24, Aug: 25, Sep: 28, Oct: 30, Nov: 32, Dec: 42
+    };
 
-    return months.map(m => ({
-      name: m,
-      value: sumByMonth[m] > 0 ? sumByMonth[m] : baseline[m]
-    }));
+    return months.map(m => {
+      const isSeeded = requisitions.length > 0;
+      const requested = isSeeded ? sumByMonth[m] : baselineRequested[m];
+      const approved = isSeeded ? approvedByMonth[m] : baselineApproved[m];
+      const count = isSeeded ? countByMonth[m] : baselineCount[m];
+      const average = count > 0 ? Math.round(requested / count) : 0;
+
+      return {
+        name: m,
+        value: requested,
+        requested,
+        approved,
+        count,
+        average
+      };
+    });
   }, [requisitions]);
 
   const annualData = useMemo(() => {
     const years = ["2024", "2025", "2026", "2027"];
     const sumByYear: Record<string, number> = {};
-    years.forEach(y => { sumByYear[y] = 0; });
+    const approvedByYear: Record<string, number> = {};
+    const countByYear: Record<string, number> = {};
+    
+    years.forEach(y => { 
+      sumByYear[y] = 0; 
+      approvedByYear[y] = 0;
+      countByYear[y] = 0;
+    });
 
     requisitions.forEach(req => {
       const dateStr = req.submittedAt || req.updatedAt;
@@ -85,21 +201,40 @@ const Dashboard: React.FC = () => {
         const yStr = d.getFullYear().toString();
         if (years.includes(yStr)) {
           sumByYear[yStr] += req.amount;
+          if (req.status === RequisitionStatus.APPROVED_L1 || req.status === RequisitionStatus.APPROVED_L2 || req.status === RequisitionStatus.DISBURSED) {
+            approvedByYear[yStr] += req.amount;
+          }
+          countByYear[yStr] += 1;
         }
       }
     });
 
-    const baseline: Record<string, number> = {
-      "2024": 1200000,
-      "2025": 2400000,
-      "2026": 4800000,
-      "2027": 620000
+    const baselineRequested: Record<string, number> = {
+      "2024": 1200000, "2025": 2400000, "2026": 4800000, "2027": 620000
+    };
+    const baselineApproved: Record<string, number> = {
+      "2024": 1050000, "2025": 2150000, "2026": 4200000, "2027": 520000
+    };
+    const baselineCount: Record<string, number> = {
+      "2024": 98, "2025": 190, "2026": 380, "2027": 52
     };
 
-    return years.map(y => ({
-      name: y,
-      value: sumByYear[y] > 0 ? sumByYear[y] : baseline[y]
-    }));
+    return years.map(y => {
+      const isSeeded = requisitions.length > 0;
+      const requested = isSeeded ? sumByYear[y] : baselineRequested[y];
+      const approved = isSeeded ? approvedByYear[y] : baselineApproved[y];
+      const count = isSeeded ? countByYear[y] : baselineCount[y];
+      const average = count > 0 ? Math.round(requested / count) : 0;
+
+      return {
+        name: y,
+        value: requested,
+        requested,
+        approved,
+        count,
+        average
+      };
+    });
   }, [requisitions]);
 
   const currentVelocityData = useMemo(() => {
@@ -415,45 +550,163 @@ const Dashboard: React.FC = () => {
               </button>
             </div>
           </div>
-          <div className="p-2 md:p-6 h-[250px] md:h-[300px]">
+          
+          {/* Detailed Metric Toggle Layer */}
+          <div className="px-4 md:px-6 py-2.5 border-b border-slate-100 bg-slate-50/30 flex flex-wrap gap-2 items-center justify-between">
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Overlay Parameters:</span>
+            <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
+              <button
+                type="button"
+                onClick={() => setShowRequested(prev => !prev)}
+                className={cn(
+                  "px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border cursor-pointer",
+                  showRequested 
+                    ? "bg-blue-500/10 text-blue-700 border-blue-500/20 shadow-sm"
+                    : "bg-transparent text-slate-400 border-slate-200/60"
+                )}
+              >
+                <span className={cn("w-1.5 h-1.5 rounded-full", showRequested ? "bg-blue-600 animate-pulse" : "bg-slate-300")} />
+                Requested
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => setShowApproved(prev => !prev)}
+                className={cn(
+                  "px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border cursor-pointer",
+                  showApproved 
+                    ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/20 shadow-sm"
+                    : "bg-transparent text-slate-400 border-slate-200/60"
+                )}
+              >
+                <span className={cn("w-1.5 h-1.5 rounded-full", showApproved ? "bg-emerald-600 animate-pulse" : "bg-slate-300")} />
+                Approved
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => setShowAverage(prev => !prev)}
+                className={cn(
+                  "px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border cursor-pointer",
+                  showAverage 
+                    ? "bg-purple-500/10 text-purple-700 border-purple-500/20 shadow-sm"
+                    : "bg-transparent text-slate-400 border-slate-200/60"
+                )}
+              >
+                <span className={cn("w-1.5 h-1.5 rounded-full", showAverage ? "bg-purple-600" : "bg-slate-300")} />
+                Avg Size
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => setShowCount(prev => !prev)}
+                className={cn(
+                  "px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border cursor-pointer",
+                  showCount 
+                    ? "bg-orange-500/10 text-orange-700 border-orange-500/20 shadow-sm"
+                    : "bg-transparent text-slate-400 border-slate-200/60"
+                )}
+              >
+                <span className={cn("w-1.5 h-1.5 rounded-full", showCount ? "bg-orange-600" : "bg-slate-300")} />
+                Count ({velocityTimeframe === "DAILY" ? "Day" : velocityTimeframe === "MONTHLY" ? "Month" : "Year"})
+              </button>
+            </div>
+          </div>
+
+          <div className="p-2 md:p-6 h-[270px] md:h-[320px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={currentVelocityData}>
+              <ComposedChart data={currentVelocityData} margin={{ top: 10, right: showCount ? 5 : 0, left: -20, bottom: 0 }}>
                 <defs>
-                   <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#1e3a8a" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#1e3a8a" stopOpacity={0}/>
+                  <linearGradient id="colorRequested" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.15}/>
+                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0.01}/>
+                  </linearGradient>
+                  <linearGradient id="colorApproved" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.15}/>
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0.01}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                
                 <XAxis 
                   dataKey="name" 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }} 
+                  tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }} 
                 />
+                
                 <YAxis 
+                  yAxisId="left"
                   axisLine={false} 
                   tickLine={false} 
                   tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }}
                   tickFormatter={formatYAxis}
                 />
-                <Tooltip 
-                  contentStyle={{ 
-                    borderRadius: '12px', 
-                    border: '1px solid #e2e8f0', 
-                    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                  }} 
-                  formatter={(value: any) => [`Ksh ${Number(value).toLocaleString()}`, "Amount"]}
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="value" 
-                  stroke="#1e3a8a" 
-                  strokeWidth={3}
-                  fillOpacity={1} 
-                  fill="url(#colorValue)" 
-                />
-              </AreaChart>
+
+                {showCount && (
+                  <YAxis 
+                    yAxisId="right"
+                    orientation="right"
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: '#f97316', fontSize: 9, fontWeight: 700 }}
+                    tickFormatter={(val) => `${val} req`}
+                  />
+                )}
+
+                <Tooltip content={<CustomTooltip />} />
+                
+                {showRequested && (
+                  <Area 
+                    yAxisId="left"
+                    type="monotone" 
+                    dataKey="requested" 
+                    stroke="#2563eb" 
+                    strokeWidth={3}
+                    fillOpacity={1} 
+                    fill="url(#colorRequested)" 
+                    name="Requested"
+                  />
+                )}
+
+                {showApproved && (
+                  <Area 
+                    yAxisId="left"
+                    type="monotone" 
+                    dataKey="approved" 
+                    stroke="#10b981" 
+                    strokeWidth={2.5}
+                    fillOpacity={1} 
+                    fill="url(#colorApproved)" 
+                    name="Approved"
+                  />
+                )}
+
+                {showAverage && (
+                  <Line 
+                    yAxisId="left"
+                    type="monotone" 
+                    dataKey="average" 
+                    stroke="#8b5cf6" 
+                    strokeWidth={2.5}
+                    dot={{ r: 4, fill: "#8b5cf6", strokeWidth: 1 }}
+                    activeDot={{ r: 6 }}
+                    name="Average Size"
+                  />
+                )}
+
+                {showCount && (
+                  <Bar 
+                    yAxisId="right"
+                    dataKey="count" 
+                    fill="#f97316" 
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={30}
+                    opacity={0.45}
+                    name="Submissions"
+                  />
+                )}
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         </div>

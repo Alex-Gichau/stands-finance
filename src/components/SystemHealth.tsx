@@ -16,7 +16,7 @@ import {
   RefreshCw
 } from "lucide-react";
 
-export const SystemHealth: React.FC = () => {
+export const SystemHealth: React.FC<{ updateInterval?: number }> = ({ updateInterval = 2500 }) => {
   // Real-time fluctuating metrics
   const [cpuUsage, setCpuUsage] = useState(14.8);
   const [memoryUsage, setMemoryUsage] = useState(1.42); // in GB
@@ -39,18 +39,19 @@ export const SystemHealth: React.FC = () => {
         return Math.min(Math.max(next, 18), 60); // bounded between 18ms and 60ms
       });
 
-      setUptimeSeconds(prev => prev + 1);
-    }, 2500);
+      setUptimeSeconds(prev => prev + updateInterval / 1000);
+    }, updateInterval);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [updateInterval]);
 
   // Format uptime cleanly
   const formatUptime = (totalSeconds: number) => {
-    const days = Math.floor(totalSeconds / (3600 * 24));
-    const hours = Math.floor((totalSeconds % (3600 * 24)) / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
+    const rounded = Math.round(totalSeconds);
+    const days = Math.floor(rounded / (3600 * 24));
+    const hours = Math.floor((rounded % (3600 * 24)) / 3600);
+    const minutes = Math.floor((rounded % 3600) / 60);
+    const seconds = rounded % 60;
     
     return `${days}d ${hours}h ${minutes}m ${seconds}s`;
   };

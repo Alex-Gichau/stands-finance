@@ -26,7 +26,8 @@ import {
   UserCheck,
   Moon,
   Sun,
-  Palette
+  Palette,
+  Gauge
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { cn } from "../lib/utils";
@@ -35,6 +36,14 @@ import { SystemHealth } from "./SystemHealth";
 
 export const SettingsPanel: React.FC = () => {
   const { thresholds, updateThreshold, currentUser, updateUserProfile, biometricEnrolled, enrollBiometric, systemLogs, seedAllEcosystemData } = useRequisitions();
+
+  const [sliderIndex, setSliderIndex] = React.useState(1); // 0 = Aggressive, 1 = Balanced, 2 = Power Saver
+  const INTERVAL_MODES = [
+    { value: 500, label: "Aggressive", duration: "500ms" },
+    { value: 2500, label: "Balanced", duration: "2500ms" },
+    { value: 10000, label: "Power Saver", duration: "10s" }
+  ];
+  const updateInterval = INTERVAL_MODES[sliderIndex].value;
 
   const lastTenLogs = systemLogs.slice(0, 10);
 
@@ -114,8 +123,60 @@ export const SettingsPanel: React.FC = () => {
 
           {/* System Health Diagnostics Monitor */}
           {currentUser?.role === "ADMIN" && (
-            <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm p-8">
-              <SystemHealth />
+            <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm p-8 space-y-8">
+              {/* Telemetry Loop Speed Tuner Controls */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-border/60">
+                <div className="space-y-1">
+                  <h3 className="text-xs font-black text-foreground uppercase tracking-[0.2em] flex items-center gap-2">
+                    <Gauge size={16} className="text-primary" />
+                    Telemetry Speed Tuning
+                  </h3>
+                  <p className="text-[10px] text-muted font-medium italic">Adjust the background resource telemetry loop latency on the fly</p>
+                </div>
+                
+                <div className="w-full md:w-96 p-4 rounded-2xl bg-slate-500/5 border border-border/50">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-muted">Refresh Profile:</span>
+                    <span className="text-[10px] font-black font-mono text-primary bg-primary/10 px-2 py-0.5 rounded-md uppercase">
+                      {INTERVAL_MODES[sliderIndex].label} ({INTERVAL_MODES[sliderIndex].duration})
+                    </span>
+                  </div>
+                  
+                  <div className="relative pt-1">
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="2" 
+                      step="1" 
+                      value={sliderIndex}
+                      onChange={(e) => setSliderIndex(Number(e.target.value))}
+                      className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-primary bg-slate-200 dark:bg-slate-800"
+                    />
+                    <div className="flex justify-between text-[9px] font-extrabold text-muted mt-2">
+                      <button 
+                        onClick={() => setSliderIndex(0)} 
+                        className={cn("uppercase tracking-tighter transition-colors hover:text-foreground", sliderIndex === 0 ? "text-primary font-black" : "")}
+                      >
+                        Aggressive (500ms)
+                      </button>
+                      <button 
+                        onClick={() => setSliderIndex(1)} 
+                        className={cn("uppercase tracking-tighter transition-colors hover:text-foreground", sliderIndex === 1 ? "text-primary font-black" : "")}
+                      >
+                        Balanced (2.5s)
+                      </button>
+                      <button 
+                        onClick={() => setSliderIndex(2)} 
+                        className={cn("uppercase tracking-tighter transition-colors hover:text-foreground", sliderIndex === 2 ? "text-primary font-black" : "")}
+                      >
+                        Power Saver (10s)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <SystemHealth updateInterval={updateInterval} />
             </section>
           )}
 
