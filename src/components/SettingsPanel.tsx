@@ -31,6 +31,7 @@ import {
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { cn } from "../lib/utils";
 import { motion } from "motion/react";
+import { SystemHealth } from "./SystemHealth";
 
 export const SettingsPanel: React.FC = () => {
   const { thresholds, updateThreshold, currentUser, updateUserProfile, biometricEnrolled, enrollBiometric, systemLogs, seedAllEcosystemData } = useRequisitions();
@@ -110,6 +111,13 @@ export const SettingsPanel: React.FC = () => {
               </div>
             </div>
           </section>
+
+          {/* System Health Diagnostics Monitor */}
+          {currentUser?.role === "ADMIN" && (
+            <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm p-8">
+              <SystemHealth />
+            </section>
+          )}
 
           {/* Security & Access Thresholds */}
           {currentUser?.role === "ADMIN" && (
