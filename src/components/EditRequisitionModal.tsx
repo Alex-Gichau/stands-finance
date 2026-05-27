@@ -215,35 +215,19 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
               />
             </div>
 
-            {/* Recurrence & Budget Line info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Recurrence Protocol</label>
-                <div className="relative">
-                  <Repeat className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                  <select 
-                    value={recurrence}
-                    onChange={(e) => setRecurrence(e.target.value as RecurrenceType)}
-                    className="input-field pl-12 cursor-pointer font-bold uppercase tracking-widest text-[11px]"
-                  >
-                    <option value={RecurrenceType.NONE}>NO RECURRENCE</option>
-                    <option value={RecurrenceType.MONTHLY}>MONTHLY PROTOCOL</option>
-                    <option value={RecurrenceType.QUARTERLY}>QUARTERLY PROTOCOL</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Assigned Project Context</label>
+            {/* Recurrence protocol */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Recurrence Protocol</label>
+              <div className="relative">
+                <Repeat className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <select 
-                  value={projectId}
-                  onChange={(e) => setProjectId(e.target.value)}
-                  className="input-field cursor-pointer font-bold uppercase tracking-widest text-[11px]"
+                  value={recurrence}
+                  onChange={(e) => setRecurrence(e.target.value as RecurrenceType)}
+                  className="input-field pl-12 cursor-pointer font-bold uppercase tracking-widest text-[11px]"
                 >
-                  <option value="">NO SPECIFIED PROJECT</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={p.id} className="font-sans text-xs uppercase tracking-wider">{p.name}</option>
-                  ))}
+                  <option value={RecurrenceType.NONE}>NO RECURRENCE</option>
+                  <option value={RecurrenceType.MONTHLY}>MONTHLY PROTOCOL</option>
+                  <option value={RecurrenceType.QUARTERLY}>QUARTERLY PROTOCOL</option>
                 </select>
               </div>
             </div>

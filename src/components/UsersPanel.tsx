@@ -39,6 +39,7 @@ export const UsersPanel: React.FC = () => {
     updateUserProfile, 
     currentUser, 
     adminRegisterUser,
+    adminResetUserPassword,
     churchGroups,
     addChurchGroup,
     deleteChurchGroup
@@ -78,6 +79,21 @@ export const UsersPanel: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [editSuccess, setEditSuccess] = useState<string | null>(null);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+
+  const handleResetPassword = async (email: string) => {
+    setEditError(null);
+    setEditSuccess(null);
+    setIsResettingPassword(true);
+    try {
+      await adminResetUserPassword(email);
+      setEditSuccess(`Password reset email successfully sent to: ${email}`);
+    } catch (err: any) {
+      setEditError(err?.message || "Failed to trigger password reset email.");
+    } finally {
+      setIsResettingPassword(false);
+    }
+  };
 
   const startEditing = (user: UserProfile) => {
     setEditingUser(user);
@@ -677,6 +693,15 @@ export const UsersPanel: React.FC = () => {
                   <div className="bg-slate-50 rounded-2xl p-6 space-y-4 border border-slate-100">
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Administrative Actions</h4>
                     <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleResetPassword(editingUser.email)}
+                        disabled={isResettingPassword}
+                        className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-bold border border-blue-100 hover:bg-blue-100 transition-colors uppercase tracking-widest flex items-center justify-center gap-1.5"
+                      >
+                        {isResettingPassword ? <Loader2 size={13} className="animate-spin" /> : "Reset Password"}
+                      </button>
+
                       {!editingUser.isApproved ? (
                         <button
                           type="button"

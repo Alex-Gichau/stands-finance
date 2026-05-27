@@ -26,7 +26,8 @@ import {
   Loader2,
   Repeat,
   FileText,
-  ChevronDown
+  ChevronDown,
+  Users
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
@@ -220,7 +221,7 @@ export const RequisitionsPanel: React.FC = () => {
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-200 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">
                 <th className="px-4 md:px-6 py-3 md:py-4">ID & Title</th>
-                <th className="hidden lg:table-cell px-4 md:px-6 py-3 md:py-4">Ministry Group</th>
+                <th className="hidden lg:table-cell px-4 md:px-6 py-3 md:py-4">Transaction Ownership</th>
                 <th className="px-4 md:px-6 py-3 md:py-4 text-right">Amount</th>
                 <th className="px-4 md:px-6 py-3 md:py-4 text-center">Status</th>
                 <th className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4">Expiry</th>
@@ -232,6 +233,7 @@ export const RequisitionsPanel: React.FC = () => {
                 {filtered.map((req, i) => {
                   const isExpired = req.expiresAt && new Date(req.expiresAt) < new Date();
                   const hoursRemaining = req.expiresAt ? (new Date(req.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60) : null;
+                  const daysRemaining = req.expiresAt ? (new Date(req.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24) : null;
                   const isNearingExpiry = !isExpired && hoursRemaining !== null && hoursRemaining <= 24 && hoursRemaining > 0;
                   
                   const updateAge = now - new Date(req.updatedAt).getTime();
@@ -266,16 +268,21 @@ export const RequisitionsPanel: React.FC = () => {
                           </div>
                           <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mt-1">
                             <span className="text-[7.5px] md:text-[10px] font-mono text-slate-400 uppercase tracking-wider truncate shrink-0">{req.id}</span>
-                            <span className="inline-flex items-center px-1.5 py-0.5 bg-slate-100/80 border border-slate-200/50 text-slate-700 rounded-md text-[7.5px] md:text-[9px] font-extrabold uppercase tracking-wider leading-none w-fit">
-                              {req.groupName}
+                            <span className="inline-flex items-center px-1.5 py-0.5 bg-indigo-50/80 border border-indigo-200/50 text-indigo-700 rounded-md text-[7.5px] md:text-[9px] font-extrabold uppercase tracking-wider leading-none w-fit">
+                              💒 {req.groupName}
                             </span>
                           </div>
                         </div>
                       </td>
                       <td className="hidden lg:table-cell px-4 md:px-6 py-3 md:py-4">
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-primary/5 text-primary rounded-lg text-[10px] font-bold uppercase tracking-wide">
-                          {req.groupName}
-                        </span>
+                        <div className="flex flex-col">
+                          <span className="text-slate-900 font-bold text-[11px] md:text-xs">
+                            {req.requesterName}
+                          </span>
+                          <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest text-[8px]">
+                            {req.groupName}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-3 md:px-6 py-2.5 md:py-4 text-right">
                         <span className="font-mono font-bold text-slate-900 text-[10px] md:text-sm">{formatCurrency(req.amount)}</span>
@@ -298,7 +305,11 @@ export const RequisitionsPanel: React.FC = () => {
                               "text-[9px] md:text-[10px] font-mono font-bold uppercase tracking-tighter truncate",
                               isExpired ? "text-rose-500" : isNearingExpiry ? "text-amber-650 font-extrabold" : "text-slate-500"
                             )}>
-                              {isExpired ? "EXPIRED" : `${Math.ceil(hoursRemaining)}H REM`}
+                              {isExpired 
+                                ? "EXPIRED" 
+                                : daysRemaining !== null && daysRemaining >= 1 
+                                  ? `${Math.ceil(daysRemaining)} DAYS LEFT` 
+                                  : `${Math.ceil(hoursRemaining || 0)} HOURS LEFT`}
                             </span>
                           </div>
                         ) : (
@@ -714,6 +725,10 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
               <section className="pt-6 md:pt-8 border-t border-slate-200/60 space-y-4">
                  <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Metadata</h4>
                  <div className="space-y-3 md:space-y-4">
+                    <div className="flex items-center justify-between text-[10px] md:text-xs">
+                      <span className="text-slate-500 flex items-center gap-1.5"><Users size={13} className="text-primary shrink-0" /> Church Group</span>
+                      <span className="font-extrabold text-slate-800 bg-slate-100 hover:bg-slate-200/80 px-2 py-0.5 rounded transition-all uppercase tracking-wider text-[9px] truncate max-w-[150px]">{req.groupName || "N/A"}</span>
+                    </div>
                     <div className="flex items-center justify-between text-[10px] md:text-xs">
                       <span className="text-slate-500 flex items-center gap-1.5"><CalendarDays size={13} /> Submitted</span>
                       <span className="font-bold text-slate-700">{formatDate(req.submittedAt)}</span>

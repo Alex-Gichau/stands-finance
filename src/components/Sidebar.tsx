@@ -208,9 +208,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, not
       </div>
     </div>
 
-    {/* Mobile Bottom Navigation Bar */}
-    <div className="fixed bottom-0 left-0 right-0 h-16 bg-card/80 backdrop-blur-md border-t border-border flex md:hidden items-center justify-around px-2 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] selection:bg-transparent transition-colors duration-300">
-      <div className="flex items-center justify-around w-full max-w-md mx-auto">
+    {/* Modernized Floating Mobile Bottom Navigation Bar - Interactive Tactile Blob Dock */}
+    <div className="fixed bottom-5 left-4 right-4 max-w-md mx-auto h-16 bg-white/95 dark:bg-slate-900/90 border border-slate-200/50 dark:border-slate-800/80 flex md:hidden items-center justify-around px-2 z-40 shadow-[0_12px_35px_rgba(0,0,0,0.12)] rounded-3xl backdrop-blur-xl select-none transition-all duration-300 overflow-visible">
+      <div className="flex items-center justify-around w-full relative overflow-visible h-full">
         {(() => {
           const mobileItems = filteredItems.filter(item => item.id !== "notifications");
           const dashboardIdx = mobileItems.findIndex(i => i.id === "dashboard");
@@ -224,35 +224,36 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, not
           const Icon = item.icon;
           const isActive = currentView === item.id;
           return (
-            <button
+            <motion.button
               key={item.id}
               type="button"
+              whileTap={{ scale: 0.9 }}
               onClick={() => onViewChange(item.id)}
-              className={cn(
-                "flex flex-col items-center justify-center py-1 group relative transition-all duration-300",
-                "w-full h-full",
-                isActive ? "text-primary" : "text-slate-400 hover:text-slate-600"
-              )}
+              className="flex flex-col items-center justify-center w-14 h-14 relative transition-all duration-300 overflow-visible cursor-pointer"
             >
-              <div className={cn(
-                "relative flex items-center justify-center w-10 h-10 rounded-2xl transition-all duration-300",
-                isActive ? "bg-primary/5 -translate-y-1" : "bg-transparent"
-              )}>
-                <Icon size={isActive ? 20 : 18} strokeWidth={isActive ? 2.5 : 2} className="transition-all" />
-                {isActive && (
-                  <motion.div 
-                    layoutId="active-pill"
-                    className="absolute -bottom-1 w-1 h-1 rounded-full bg-primary"
-                  />
-                )}
-              </div>
-              <span className={cn(
-                "text-[8px] font-black uppercase tracking-[0.1em] mt-0.5 transition-all duration-300",
-                isActive ? "opacity-100 scale-100" : "opacity-0 scale-90 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0"
-              )}>
-                {item.label.split(" ")[0]}
-              </span>
-            </button>
+              {isActive ? (
+                <>
+                  {/* Modern Active Floating Circle */}
+                  <div className="absolute -top-7 w-12 h-12 rounded-full bg-primary text-white flex items-center justify-center shadow-lg shadow-primary/35 border-4 border-slate-50 dark:border-slate-950 transform transition-all duration-300 animate-float-subtle">
+                    <Icon size={18} strokeWidth={2.5} />
+                  </div>
+                  {/* Elegant active label */}
+                  <span className="absolute bottom-[-16px] text-[8px] font-black uppercase tracking-wider text-primary select-none transition-all duration-300">
+                    {item.label.split(" ")[0]}
+                  </span>
+                </>
+              ) : (
+                <>
+                  {/* Inactive Icon state */}
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-350 hover:bg-slate-100/50 dark:hover:bg-slate-800/30 transition-all duration-200">
+                    <Icon size={18} strokeWidth={2} />
+                  </div>
+                  <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mt-0.5 select-none">
+                    {item.label.split(" ")[0]}
+                  </span>
+                </>
+              )}
+            </motion.button>
           );
         })}
       </div>

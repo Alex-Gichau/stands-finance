@@ -49,7 +49,8 @@ import {
   signOut,
   onAuthStateChanged,
   User as FirebaseUser,
-  getAuth
+  getAuth,
+  sendPasswordResetEmail
 } from "firebase/auth";
 import { initializeApp, deleteApp } from "firebase/app";
 import firebaseConfig from "../../firebase-applet-config.json";
@@ -81,6 +82,7 @@ interface RequisitionContextType {
   updateUserRole: (id: string, role: UserRole) => Promise<void>;
   updateUserProfile: (id: string, updates: Partial<UserProfile>) => Promise<void>;
   adminRegisterUser: (email: string, pass: string, name: string, role: UserRole, group?: string, approverCode?: string) => Promise<void>;
+  adminResetUserPassword: (email: string) => Promise<void>;
   systemLogs: SystemLog[];
   addSystemLog: (action: string, details: string, metadata?: any) => Promise<void>;
   churchGroups: ChurchGroup[];
@@ -97,6 +99,7 @@ interface RequisitionContextType {
   removeToast: (id: string) => void;
   readNoticeIds: string[];
   toggleNoticeRead: (id: string, forceRead?: boolean) => void;
+  markAllNoticesRead: (ids: string[]) => void;
 }
 
 const RequisitionContext = createContext<RequisitionContextType | undefined>(undefined);
@@ -141,6 +144,20 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       } else {
         next = prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id];
       }
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("read_notification_ids", JSON.stringify(next));
+        } catch (err) {
+          console.error("Failed to save read notices", err);
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const markAllNoticesRead = useCallback((ids: string[]) => {
+    setReadNoticeIds(prev => {
+      const next = Array.from(new Set([...prev, ...ids]));
       if (typeof window !== "undefined") {
         try {
           localStorage.setItem("read_notification_ids", JSON.stringify(next));
@@ -763,7 +780,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             status: RequisitionStatus.DRAFT,
             submittedAt: now.toISOString(),
             updatedAt: now.toISOString(),
-            expiresAt: new Date(now.getTime() + 72 * 60 * 60 * 1000).toISOString(),
+            expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
             approvalHistory: [],
             recurrence: RecurrenceType.NONE, // Spawned ones are one-off
             lastRecurrenceGeneratedAt: undefined
@@ -1081,10 +1098,18 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [currentUser]);
 
+  const adminResetUserPassword = useCallback(async (email: string) => {
+    if (!currentUser || currentUser.role !== UserRole.ADMIN) {
+      throw new Error("Unauthorized: Only Admins can reset user passwords.");
+    }
+    await sendPasswordResetEmail(auth, email);
+    await addSystemLog("PASSWORD_RESET_TRIGGERED", `Admin triggered password reset email for user: ${email}`, { email });
+  }, [currentUser, addSystemLog]);
+
   const addRequisition = useCallback(async (reqData: any) => {
     const id = `req-${Math.random().toString(36).substr(2, 9)}`;
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + 72 * 60 * 60 * 1000); // 72 hours from now
+    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
 
     const newReq: Requisition = {
       ...reqData,
@@ -1305,6 +1330,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       updateUserRole,
       updateUserProfile,
       adminRegisterUser,
+      adminResetUserPassword,
       systemLogs,
       addSystemLog,
       seedAllEcosystemData,
@@ -1317,7 +1343,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       activeToasts,
       removeToast,
       readNoticeIds,
-      toggleNoticeRead
+      toggleNoticeRead,
+      markAllNoticesRead
     }}>
       {children}
     </RequisitionContext.Provider>

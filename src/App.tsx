@@ -262,7 +262,8 @@ function AppContent() {
     activeToasts,
     removeToast,
     readNoticeIds,
-    toggleNoticeRead
+    toggleNoticeRead,
+    markAllNoticesRead
   } = useRequisitions();
 
   const [showProfilePrompt, setShowProfilePrompt] = useState(false);
@@ -898,9 +899,9 @@ function AppContent() {
                 className="relative p-2 text-muted hover:text-primary transition-colors cursor-pointer"
               >
                 <Bell size={16} />
-                {notificationItems.length > 0 && (
+                {unreadNotificationsCount > 0 && (
                   <div className="absolute top-1 right-1 bg-rose-500 text-white font-black text-[7px] w-3.5 h-3.5 rounded-full flex items-center justify-center border-2 border-background transform translate-x-1 -translate-y-1">
-                    {notificationItems.length}
+                    {unreadNotificationsCount}
                   </div>
                 )}
               </button>
@@ -915,10 +916,16 @@ function AppContent() {
                     className="absolute right-0 mt-2 w-80 bg-card rounded-xl border border-border shadow-xl overflow-hidden z-50 text-left"
                   >
                     <div className="px-4 py-3 bg-background/50 border-b border-border flex items-center justify-between">
-                      <span className="text-xs font-bold text-foreground uppercase tracking-widest">Active Alerts ({notificationItems.length})</span>
-                      {notificationItems.length > 0 && (
+                      <span className="text-xs font-bold text-foreground uppercase tracking-widest">Active Alerts ({unreadNotificationsCount})</span>
+                      {unreadNotificationsCount > 0 && (
                         <button 
                           onClick={() => {
+                            const unreadIds = notificationItems
+                              .filter(item => !readNoticeIds.includes(item.id))
+                              .map(item => item.id);
+                            if (unreadIds.length > 0) {
+                              markAllNoticesRead(unreadIds);
+                            }
                             setShowReportReminder(false);
                             setIsNotificationsOpen(false);
                           }}
