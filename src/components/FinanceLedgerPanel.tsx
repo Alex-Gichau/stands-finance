@@ -782,7 +782,7 @@ export const FinanceLedgerPanel: React.FC = () => {
                           </div>
                         </div>
 
-                        {currentUser?.role === UserRole.ADMIN && (
+                        {(currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN) && (
                           <button
                             onClick={() => setAdjustingProject(project)}
                             className="px-2.5 py-1.5 bg-white border border-slate-200 hover:border-indigo-600 text-slate-700 hover:text-indigo-600 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer"

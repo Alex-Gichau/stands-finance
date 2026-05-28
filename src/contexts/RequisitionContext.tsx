@@ -18,7 +18,8 @@ import {
   ApprovalNote,
   RecurrenceType,
   ChurchGroup,
-  SearchFilter
+  SearchFilter,
+  PermissionConfig
 } from "../types";
 import { 
   auth, 
@@ -84,6 +85,7 @@ interface RequisitionContextType {
   updateUserProfile: (id: string, updates: Partial<UserProfile>) => Promise<void>;
   adminRegisterUser: (email: string, pass: string, name: string, role: UserRole, group?: string, approverCode?: string) => Promise<void>;
   adminResetUserPassword: (email: string) => Promise<void>;
+  deleteUser: (id: string) => Promise<void>;
   systemLogs: SystemLog[];
   addSystemLog: (action: string, details: string, metadata?: any) => Promise<void>;
   churchGroups: ChurchGroup[];
@@ -102,6 +104,10 @@ interface RequisitionContextType {
   readNoticeIds: string[];
   toggleNoticeRead: (id: string, forceRead?: boolean) => void;
   markAllNoticesRead: (ids: string[]) => void;
+  permissionConfigs: PermissionConfig[];
+  canAccess: (viewId: string) => boolean;
+  canPerform: (actionId: keyof PermissionConfig["actions"]) => boolean;
+  updateRolePermissions: (roleId: string, updates: any) => Promise<void>;
 }
 
 const RequisitionContext = createContext<RequisitionContextType | undefined>(undefined);
@@ -117,6 +123,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [systemLogs, setSystemLogs] = useState<SystemLog[]>([]);
   const [reports, setReports] = useState<SavedReport[]>([]);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [permissionConfigs, setPermissionConfigs] = useState<PermissionConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [biometricEnrolled, setBiometricEnrolled] = useState(false);
   const [globalSearchTerm, setGlobalSearchTerm] = useState("");
@@ -170,6 +177,53 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       return next;
     });
   }, []);
+
+  const canAccess = useCallback((viewId: string) => {
+    if (!currentUser) return false;
+    if (currentUser.role === UserRole.SUPER_ADMIN) return true;
+    
+    const config = permissionConfigs.find(c => c.role === currentUser.role);
+    if (!config) {
+      const defaults: Record<string, string[]> = {
+        [UserRole.CHURCH_GROUP]: ["dashboard", "requisitions", "notifications"],
+        [UserRole.APPROVER_L1]: ["dashboard", "approvals", "notifications"],
+        [UserRole.APPROVER_L2]: ["dashboard", "approvals", "notifications"],
+        [UserRole.FINANCE]: ["dashboard", "finance", "reports", "notifications", "settings", "auditTrail"],
+        [UserRole.ADMIN]: ["dashboard", "requisitions", "approvals", "finance", "reports", "users", "settings", "notifications", "auditTrail"],
+      };
+      return defaults[currentUser.role]?.includes(viewId) ?? false;
+    }
+    
+    return (config.access as any)[viewId] ?? false;
+  }, [currentUser, permissionConfigs]);
+
+  const canPerform = useCallback((actionId: keyof PermissionConfig["actions"]) => {
+    if (!currentUser) return false;
+    if (currentUser.role === UserRole.SUPER_ADMIN) return true;
+
+    const config = permissionConfigs.find(c => c.role === currentUser.role);
+    if (!config) {
+      if (actionId === 'canCreateRequisition') return currentUser.role === UserRole.CHURCH_GROUP || currentUser.role === UserRole.ADMIN;
+      if (actionId === 'canApproveL1') return currentUser.role === UserRole.APPROVER_L1 || currentUser.role === UserRole.ADMIN;
+      if (actionId === 'canApproveL2') return currentUser.role === UserRole.APPROVER_L2 || currentUser.role === UserRole.ADMIN;
+      if (actionId === 'canDisburse') return currentUser.role === UserRole.FINANCE || currentUser.role === UserRole.ADMIN;
+      if (actionId === 'canDeleteRequisition') return currentUser.role === UserRole.ADMIN;
+      if (actionId === 'canManageUsers') return currentUser.role === UserRole.ADMIN;
+      if (actionId === 'canManageSettings') return currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.FINANCE;
+      return false;
+    }
+
+    return config.actions[actionId] ?? false;
+  }, [currentUser, permissionConfigs]);
+
+  const updateRolePermissions = useCallback(async (roleId: string, updates: any) => {
+    try {
+      await setDoc(doc(db, "permissions", roleId), updates, { merge: true });
+      await addSystemLog("PERMISSIONS_UPDATED", `Access rights modified for role: ${roleId}`, { roleId, updates });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `permissions/${roleId}`);
+    }
+  }, [db]);
 
   const removeToast = useCallback((id: string) => {
     setActiveToasts(prev => prev.filter(t => t.id !== id));
@@ -331,7 +385,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
               const profile = userSnap.data() as UserProfile;
               
               const mockUsers = [
-                { name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.ADMIN },
+                { name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.SUPER_ADMIN },
                 { name: "Rev. Dr. Patrick Mutua", email: "minister@standrews.org", role: UserRole.APPROVER_L1, approverCode: "111111" },
                 { name: "Elder Mercy Wanjiku", email: "clerk@standrews.org", role: UserRole.APPROVER_L2, approverCode: "2222222" },
                 { name: "Deacon John Mwangi", email: "treasurer@standrews.org", role: UserRole.FINANCE },
@@ -353,10 +407,10 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                   ...(invitedCode && { approverCode: invitedCode }),
                   ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
                 }, { merge: true });
-              } else if (firebaseUser.email === "gichaumburu@gmail.com" && (!profile.isApproved || profile.role !== UserRole.ADMIN)) {
-                // Auto-promote bootstrap admin if info is missing or incorrect
+              } else if (firebaseUser.email === "gichaumburu@gmail.com" && (!profile.isApproved || profile.role !== UserRole.SUPER_ADMIN)) {
+                // Auto-promote bootstrap super admin
                 await setDoc(userRef, { 
-                  role: UserRole.ADMIN, 
+                  role: UserRole.SUPER_ADMIN, 
                   isApproved: true,
                   ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
                 }, { merge: true });
@@ -372,19 +426,19 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                   ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
                 }, { merge: true });
               } else {
+                // Background update for photoURL if needed, but don't block loading
                 if (firebaseUser.photoURL && profile.photoURL !== firebaseUser.photoURL) {
-                  await setDoc(userRef, { photoURL: firebaseUser.photoURL }, { merge: true });
-                } else {
-                  setCurrentUser(profile);
-                  setLoading(false);
+                  setDoc(userRef, { photoURL: firebaseUser.photoURL }, { merge: true }).catch(e => console.warn("Failed to sync photoURL", e));
                 }
+                setCurrentUser(profile);
+                setLoading(false);
               }
             } else {
               // Create new profile
-              const isAdmin = firebaseUser.email === "gichaumburu@gmail.com";
+              const isSuperAdmin = firebaseUser.email === "gichaumburu@gmail.com";
               
               const mockUsers = [
-                { name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.ADMIN },
+                { name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.SUPER_ADMIN },
                 { name: "Rev. Dr. Patrick Mutua", email: "minister@standrews.org", role: UserRole.APPROVER_L1, approverCode: "111111" },
                 { name: "Elder Mercy Wanjiku", email: "clerk@standrews.org", role: UserRole.APPROVER_L2, approverCode: "2222222" },
                 { name: "Deacon John Mwangi", email: "treasurer@standrews.org", role: UserRole.FINANCE },
@@ -401,9 +455,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 id: firebaseUser.uid,
                 name: firebaseUser.displayName || (matchedMock ? matchedMock.name : "Anonymous User"),
                 email: firebaseUser.email || "",
-                role: inviteConsumed && invitedRole ? invitedRole : (matchedMock ? matchedMock.role : (isAdmin ? UserRole.ADMIN : UserRole.CHURCH_GROUP)),
+                role: inviteConsumed && invitedRole ? invitedRole : (matchedMock ? matchedMock.role : (isSuperAdmin ? UserRole.SUPER_ADMIN : UserRole.CHURCH_GROUP)),
                 isActive: true,
-                isApproved: inviteConsumed ? true : (matchedMock ? true : isAdmin),
+                isApproved: inviteConsumed ? true : (matchedMock ? true : isSuperAdmin),
                 isSuspended: false,
                 ...(matchedMock?.group && { group: matchedMock.group }),
                 ...(matchedMock?.approverCode && { approverCode: matchedMock.approverCode }),
@@ -411,9 +465,10 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 ...(inviteConsumed && invitedCode && { approverCode: invitedCode }),
                 ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
               };
+              
               await setDoc(userRef, newProfile);
               
-              if (!isAdmin && !inviteConsumed && !matchedMock) {
+              if (!isSuperAdmin && !inviteConsumed && !matchedMock) {
                 fetch("/api/notify-slack", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -427,6 +482,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                   })
                 }).catch(err => console.warn("Slack Background Notify Failed:", err));
               }
+
+              setCurrentUser(newProfile);
+              setLoading(false);
             }
           }, (err) => {
             console.error("User profile sync failed", err);
@@ -447,11 +505,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const addSystemLog = useCallback(async (action: string, details: string, metadata?: any) => {
     try {
-      // Delay slightly if not fully authenticated yet to allow Firestore to sync the Auth token
-      // This prevents the "Missing or insufficient permissions" race condition on login.
-      if (!auth.currentUser) {
-        await new Promise(resolve => setTimeout(resolve, 800));
-      }
+      // Ensure we have a current user or auth state before attempting to write logs
+      // This prevents permission errors during early initialization
+      if (!auth.currentUser && !currentUser) return;
 
       const logId = `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const performedBy = currentUser ? `${currentUser.name} (${currentUser.role})` : (auth.currentUser?.email || "System");
@@ -549,7 +605,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       // Seed Users
       console.log("Seeding users...");
       const mockUsers = [
-        { id: "u-admin", name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.ADMIN, isActive: true, isApproved: true, isSuspended: false },
+        { id: "u-admin", name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.SUPER_ADMIN, isActive: true, isApproved: true, isSuspended: false },
         { id: "u-minister", name: "Rev. Dr. Patrick Mutua", email: "minister@standrews.org", role: UserRole.APPROVER_L1, approverCode: "111111", isActive: true, isApproved: true, isSuspended: false },
         { id: "u-clerk", name: "Elder Mercy Wanjiku", email: "clerk@standrews.org", role: UserRole.APPROVER_L2, approverCode: "2222222", isActive: true, isApproved: true, isSuspended: false },
         { id: "u-treasurer", name: "Deacon John Mwangi", email: "treasurer@standrews.org", role: UserRole.FINANCE, isActive: true, isApproved: true, isSuspended: false },
@@ -712,7 +768,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }, (err) => handleFirestoreError(err, OperationType.LIST, "reports"));
 
     let unsubLogs = () => {};
-    if (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.FINANCE) {
+    if (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.FINANCE) {
       unsubLogs = onSnapshot(query(collection(db, "system_logs"), orderBy("timestamp", "desc")), (snap) => {
         let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemLog));
         if (shouldFilter && filterGroup) data = data.filter(log => log.groupId === filterGroup || log.details.includes(filterGroup));
@@ -728,11 +784,19 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setUsers(data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, "users"));
 
+    const unsubPermissions = onSnapshot(collection(db, "permissions"), (snap) => {
+      setPermissionConfigs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionConfig)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, "permissions"));
+
     // Seed Data if empty (only for the first admin or as a system check)
     const seedInitialData = async () => {
-      const projectsSnap = await getDoc(doc(db, "projects", "p1"));
-      if (!projectsSnap.exists() && currentUser.role === UserRole.ADMIN) {
-        await seedAllEcosystemData();
+      try {
+        const projectsSnap = await getDoc(doc(db, "projects", "p1"));
+        if (!projectsSnap.exists() && (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.SUPER_ADMIN)) {
+          await seedAllEcosystemData();
+        }
+      } catch (err) {
+        console.warn("Seeding check failed (this is usually non-fatal):", err);
       }
     };
     seedInitialData();
@@ -759,7 +823,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   // Automated background expiry notifications watcher (Admin only for writing alerts)
   useEffect(() => {
-    if (!currentUser || currentUser.role !== UserRole.ADMIN || requisitions.length === 0 || thresholds.length === 0) return;
+    if (!currentUser || (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.SUPER_ADMIN) || requisitions.length === 0 || thresholds.length === 0) return;
 
     const checkExpiryAlerts = async () => {
       const expiryThreshold = thresholds.find(t => t.type === "EXPIRY_ALERT")?.threshold ?? 15;
@@ -955,7 +1019,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const loginWithEmail = async (email: string, pass: string) => {
     const mockUsers = [
-      { name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.ADMIN },
+      { name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.SUPER_ADMIN },
       { name: "Rev. Dr. Patrick Mutua", email: "minister@standrews.org", role: UserRole.APPROVER_L1, approverCode: "111111" },
       { name: "Elder Mercy Wanjiku", email: "clerk@standrews.org", role: UserRole.APPROVER_L2, approverCode: "2222222" },
       { name: "Deacon John Mwangi", email: "treasurer@standrews.org", role: UserRole.FINANCE },
@@ -1170,7 +1234,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   const addChurchGroup = useCallback(async (name: string, description?: string) => {
-    if (!currentUser || currentUser.role !== UserRole.ADMIN) {
+    if (!currentUser || (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.SUPER_ADMIN)) {
       throw new Error("Unauthorized: Only Admins can manage church groups.");
     }
     const id = `cg-${Math.random().toString(36).substr(2, 9)}`;
@@ -1189,7 +1253,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [currentUser, addSystemLog]);
 
   const deleteChurchGroup = useCallback(async (id: string) => {
-    if (!currentUser || currentUser.role !== UserRole.ADMIN) {
+    if (!currentUser || (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.SUPER_ADMIN)) {
       throw new Error("Unauthorized: Only Admins can manage church groups.");
     }
     try {
@@ -1302,7 +1366,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     group?: string,
     approverCode?: string
   ) => {
-    if (!currentUser || currentUser.role !== UserRole.ADMIN) {
+    if (!currentUser || (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.SUPER_ADMIN)) {
       throw new Error("Unauthorized: Only Admins can register new users.");
     }
 
@@ -1370,12 +1434,44 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [currentUser]);
 
   const adminResetUserPassword = useCallback(async (email: string) => {
-    if (!currentUser || currentUser.role !== UserRole.ADMIN) {
+    if (!currentUser || (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.SUPER_ADMIN)) {
       throw new Error("Unauthorized: Only Admins can reset user passwords.");
     }
     await sendPasswordResetEmail(auth, email);
     await addSystemLog("PASSWORD_RESET_TRIGGERED", `Admin triggered password reset email for user: ${email}`, { email });
   }, [currentUser, addSystemLog]);
+  
+  const deleteUser = useCallback(async (id: string) => {
+    if (!currentUser || (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.SUPER_ADMIN)) {
+      throw new Error("Unauthorized: Only Admins can delete users.");
+    }
+    
+    // Prevent self-deletion
+    if (currentUser.id === id) {
+      throw new Error("Cannot delete your own administrative account.");
+    }
+
+    const userToDelete = users.find(u => u.id === id);
+    if (!userToDelete) {
+      throw new Error("User not found.");
+    }
+
+    // Prevent deletion of Super Admins by regular Admins
+    if (userToDelete.role === UserRole.SUPER_ADMIN && currentUser.role !== UserRole.SUPER_ADMIN) {
+      throw new Error("Unauthorized: Only Super Admins can delete other Super Admins.");
+    }
+
+    try {
+      await deleteDoc(doc(db, "users", id));
+      await addSystemLog("USER_DELETED", `User deleted: ${userToDelete.email} (${userToDelete.role})`, { 
+        userId: id, 
+        email: userToDelete.email, 
+        role: userToDelete.role 
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `users/${id}`);
+    }
+  }, [currentUser, users, addSystemLog]);
 
   const addRequisition = useCallback(async (reqData: any) => {
     const id = `req-${Math.random().toString(36).substr(2, 9)}`;
@@ -1610,6 +1706,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       updateUserProfile,
       adminRegisterUser,
       adminResetUserPassword,
+      deleteUser,
       systemLogs,
       addSystemLog,
       seedAllEcosystemData,
@@ -1624,7 +1721,11 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       triggerToast,
       readNoticeIds,
       toggleNoticeRead,
-      markAllNoticesRead
+      markAllNoticesRead,
+      permissionConfigs,
+      canAccess,
+      canPerform,
+      updateRolePermissions
     }}>
       {children}
     </RequisitionContext.Provider>

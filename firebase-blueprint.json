@@ -133,6 +133,18 @@
         "itemCount": { "type": "number" }
       },
       "required": ["id", "title", "description", "generatedBy", "generatedById", "timestamp", "period", "stats", "filters", "itemCount"]
+    },
+    "ChurchGroup": {
+      "title": "ChurchGroup",
+      "description": "A ministry group within the church.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "createdAt"]
     }
   },
   "firestore": {
@@ -167,6 +179,10 @@
     "reports/{reportId}": {
       "schema": "SavedReport",
       "description": "Historical financial snapshots."
+    },
+    "church_groups/{groupId}": {
+      "schema": "ChurchGroup",
+      "description": "Primary church ministry organization records."
     }
   }
 }

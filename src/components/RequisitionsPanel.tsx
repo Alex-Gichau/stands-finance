@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Plus, 
   Search, 
@@ -28,7 +28,8 @@ import {
   FileText,
   ChevronDown,
   Users,
-  Flag
+  Flag,
+  TrendingUp
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
@@ -189,18 +190,59 @@ export const RequisitionsPanel: React.FC = () => {
     currentUser, 
     globalSearchTerm, 
     setGlobalSearchTerm,
-    searchFilter
+    searchFilter,
+    canPerform
   } = useRequisitions();
   const [isAdding, setIsAdding] = useState(false);
   const [viewingReq, setViewingReq] = useState<Requisition | null>(null);
   const [isGeneratingReceipt, setIsGeneratingReceipt] = useState<Requisition | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
+  const [filterPreset, setFilterPreset] = useState<"ALL" | "URGENT" | "FLAGGED" | "OVERDUE" | "L1_APPROVED">("ALL");
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   
   const [editingReq, setEditingReq] = useState<Requisition | null>(null);
   const [requisitionToDelete, setRequisitionToDelete] = useState<Requisition | null>(null);
   const [now, setNow] = useState(Date.now());
   
+  // Trending Searches Logic
+  const [trendingSearches, setTrendingSearches] = useState<{term: string, count: number}[]>([]);
+  const [showTrending, setShowTrending] = useState(false);
+
+  useEffect(() => {
+    // Load trending from localStorage on mount
+    const saved = localStorage.getItem('trending_requisition_searches');
+    if (saved) {
+      try {
+        setTrendingSearches(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse trending searches", e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!globalSearchTerm || globalSearchTerm.length < 3) return;
+
+    const timer = setTimeout(() => {
+      setTrendingSearches(prev => {
+        const term = globalSearchTerm.trim().toLowerCase();
+        const existing = prev.find(t => t.term === term);
+        let updated;
+        if (existing) {
+          updated = prev.map(t => t.term === term ? { ...t, count: t.count + 1 } : t);
+        } else {
+          updated = [...prev, { term, count: 1 }];
+        }
+        
+        const sorted = updated.sort((a, b) => b.count - a.count).slice(0, 5);
+        localStorage.setItem('trending_requisition_searches', JSON.stringify(sorted));
+        return sorted;
+      });
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [globalSearchTerm]);
+
   // Pagination state
   const [activePage, setActivePage] = useState(1);
   const [disbursedPage, setDisbursedPage] = useState(1);
@@ -237,9 +279,24 @@ export const RequisitionsPanel: React.FC = () => {
 
     const matchesStatus = filterStatus === "ALL" || req.status === filterStatus;
     
-    const canSee = currentUser?.role === UserRole.ADMIN || req.groupId === currentUser?.group;
+    const matchesPreset = () => {
+      if (filterPreset === "ALL") return true;
+      if (filterPreset === "FLAGGED") return req.flaggedForAudit === true;
+      if (filterPreset === "L1_APPROVED") return req.status === RequisitionStatus.APPROVED_L1;
+      if (filterPreset === "OVERDUE") {
+        const days = Math.ceil(Math.abs(Date.now() - new Date(req.submittedAt).getTime()) / (1000 * 60 * 60 * 24));
+        return days > 3 && (req.status === RequisitionStatus.SUBMITTED || req.status === RequisitionStatus.APPROVED_L1);
+      }
+      if (filterPreset === "URGENT") {
+        const hoursRemaining = req.expiresAt ? (new Date(req.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60) : null;
+        return (hoursRemaining !== null && hoursRemaining < 48 && hoursRemaining > 0) || req.amount > 20000;
+      }
+      return true;
+    };
+
+    const canSee = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN || req.groupId === currentUser?.group;
     
-    return matchesSearch && matchesStatus && canSee;
+    return matchesSearch && matchesStatus && matchesPreset() && canSee;
   }).sort((a, b) => {
     // Priority: submittedAt, then updatedAt, then 0
     const timeA = new Date(a.submittedAt || a.updatedAt || 0).getTime();
@@ -404,18 +461,83 @@ export const RequisitionsPanel: React.FC = () => {
             )}
           </div>
           
-          <button 
-            onClick={() => setIsAdding(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <Plus size={18} />
-            NEW REQUISITION
-          </button>
+          {canPerform('canCreateRequisition') && (
+            <button 
+              onClick={() => setIsAdding(true)}
+              className="btn-primary flex items-center gap-2"
+            >
+              <Plus size={18} />
+              NEW REQUISITION
+            </button>
+          )}
         </div>
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-white p-3 md:p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setFilterPreset("ALL")}
+            className={cn(
+              "px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all cursor-pointer",
+              filterPreset === "ALL" 
+                ? "bg-slate-900 text-white border-slate-900 shadow-sm" 
+                : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+            )}
+          >
+            Show All
+          </button>
+          <button
+            onClick={() => setFilterPreset("URGENT")}
+            className={cn(
+              "px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all cursor-pointer flex items-center gap-2",
+              filterPreset === "URGENT" 
+                ? "bg-amber-500 text-white border-amber-500 shadow-sm" 
+                : "bg-white text-amber-600 border-amber-200 hover:bg-amber-50"
+            )}
+          >
+            <AlertTriangle size={12} />
+            Urgent
+          </button>
+          <button
+            onClick={() => setFilterPreset("FLAGGED")}
+            className={cn(
+              "px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all cursor-pointer flex items-center gap-2",
+              filterPreset === "FLAGGED" 
+                ? "bg-rose-600 text-white border-rose-600 shadow-sm" 
+                : "bg-white text-rose-600 border-rose-200 hover:bg-rose-50"
+            )}
+          >
+            <Flag size={12} />
+            Flagged
+          </button>
+          <button
+            onClick={() => setFilterPreset("OVERDUE")}
+            className={cn(
+              "px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all cursor-pointer flex items-center gap-2",
+              filterPreset === "OVERDUE" 
+                ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" 
+                : "bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+            )}
+          >
+            <History size={12} />
+            Approvals Overdue
+          </button>
+          <button
+            onClick={() => setFilterPreset("L1_APPROVED")}
+            className={cn(
+              "px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all cursor-pointer flex items-center gap-2",
+              filterPreset === "L1_APPROVED" 
+                ? "bg-emerald-600 text-white border-emerald-600 shadow-sm" 
+                : "bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+            )}
+          >
+            <CheckCircle size={12} />
+            L1 Approved
+          </button>
+        </div>
+
+        <div className="bg-white p-3 md:p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
           <input 
@@ -424,7 +546,43 @@ export const RequisitionsPanel: React.FC = () => {
             className="w-full pl-11 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:border-primary/40 focus:ring-4 focus:ring-primary/5 outline-none transition-all"
             value={globalSearchTerm}
             onChange={(e) => setGlobalSearchTerm(e.target.value)}
+            onFocus={() => setShowTrending(true)}
+            onBlur={() => setTimeout(() => setShowTrending(false), 200)}
           />
+          
+          {/* Trending Searches Dropdown */}
+          <AnimatePresence>
+            {showTrending && trendingSearches.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="absolute left-0 right-0 top-full mt-2 bg-white rounded-xl shadow-xl border border-slate-100 z-50 overflow-hidden"
+              >
+                <div className="p-3 border-bottom border-slate-50 flex items-center gap-2">
+                  <TrendingUp size={12} className="text-emerald-500" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Trending Searches</span>
+                </div>
+                <div className="flex flex-col p-1">
+                  {trendingSearches.map((item, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setGlobalSearchTerm(item.term);
+                        setShowTrending(false);
+                      }}
+                      className="w-full px-3 py-2 text-left text-xs text-slate-600 hover:bg-slate-50 rounded-lg transition-colors flex items-center justify-between group"
+                    >
+                      <span className="font-medium">"{item.term}"</span>
+                      <span className="text-[9px] text-slate-400 group-hover:text-primary transition-colors bg-slate-50 px-1.5 py-0.5 rounded uppercase font-bold">
+                        {item.count} searches
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex-1 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
@@ -442,6 +600,7 @@ export const RequisitionsPanel: React.FC = () => {
           </div>
         </div>
       </div>
+    </div>
 
       {/* Main Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -597,7 +756,7 @@ export const RequisitionsPanel: React.FC = () => {
                           >
                             <Eye size={16} />
                           </button>
-                          {currentUser?.role === UserRole.ADMIN && (
+                          {canPerform('canDeleteRequisition') && (
                             <>
                               <button 
                                 onClick={(e) => {

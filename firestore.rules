@@ -16,7 +16,7 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
     }
 
     function incoming() {
@@ -33,24 +33,36 @@ service cloud.firestore {
 
     function hasRole(role) {
       return isSignedIn() && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == role && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isApproved', false) == true && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isSuspended', false) == false;
+             (isAdmin() || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == role && 
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isApproved', false) == true && 
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isSuspended', false) == false));
     }
 
     function isApprovedUser() {
       return isSignedIn() && 
-             (request.auth.token.email == 'bypass-node@standrews.org' ||
+             (request.auth.token.email == 'gichaumburu@gmail.com' ||
+              request.auth.token.email == 'admin@standrews.org' ||
+              request.auth.token.email == 'bypass-node@standrews.org' ||
               (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'CHURCH_GROUP') in ['CHURCH_GROUP', 'APPROVER_L1', 'APPROVER_L2', 'FINANCE', 'ADMIN'] && 
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'CHURCH_GROUP') in ['CHURCH_GROUP', 'APPROVER_L1', 'APPROVER_L2', 'FINANCE', 'ADMIN', 'SUPER_ADMIN'] && 
                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isApproved', false) == true && 
                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isSuspended', false) == false));
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && 
+             (request.auth.token.email == 'gichaumburu@gmail.com' ||
+              request.auth.token.email == 'admin@standrews.org' ||
+              (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'SUPER_ADMIN'));
     }
 
     function isAdmin() {
       return isSignedIn() && 
              (request.auth.token.email == 'gichaumburu@gmail.com' ||
+              request.auth.token.email == 'admin@standrews.org' ||
+              isSuperAdmin() ||
               request.auth.token.email == 'bypass-node@standrews.org' ||
               (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'ADMIN'));
@@ -67,12 +79,13 @@ service cloud.firestore {
              data.id is string && data.id.size() <= 128 &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
              data.email is string && data.email.size() <= 128 &&
-             data.role in ['CHURCH_GROUP', 'APPROVER_L1', 'APPROVER_L2', 'FINANCE', 'ADMIN'] &&
+             data.role in ['CHURCH_GROUP', 'APPROVER_L1', 'APPROVER_L2', 'FINANCE', 'ADMIN', 'SUPER_ADMIN'] &&
              data.isActive is bool &&
              data.isApproved is bool &&
              data.isSuspended is bool &&
-             (!data.keys().hasAny(['group']) || (data.group is string && data.group.size() <= 100)) &&
-             (!data.keys().hasAny(['approverCode']) || (data.approverCode is string && data.approverCode.size() <= 20));
+             (!('group' in data) || (data.group is string && data.group.size() <= 100)) &&
+             (!('approverCode' in data) || (data.approverCode is string && data.approverCode.size() <= 20)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 1000));
     }
 
     function isValidRequisition(data) {
@@ -82,16 +95,18 @@ service cloud.firestore {
              (data.amount is int || data.amount is float) && data.amount > 0 &&
              data.status in ['DRAFT', 'SUBMITTED', 'APPROVED_L1', 'APPROVED_L2', 'ESCALATED', 'DISBURSED', 'REJECTED', 'CANCELLED'] &&
              data.approvalHistory is list && data.approvalHistory.size() <= 20 &&
-             (!data.keys().hasAny(['amountWords']) || (data.amountWords is string)) &&
-             (!data.keys().hasAny(['receipts']) || (data.receipts is list && data.receipts.size() <= 50)) &&
-             (!data.keys().hasAny(['attachments']) || (data.attachments is list && data.attachments.size() <= 20)) &&
-             (!data.keys().hasAny(['projectId']) || (data.projectId is string && data.projectId.size() <= 128)) &&
-             (!data.keys().hasAny(['approvedAtL1']) || (data.approvedAtL1 is string)) &&
-             (!data.keys().hasAny(['approvedAtL2']) || (data.approvedAtL2 is string)) &&
-             (!data.keys().hasAny(['disbursedAt']) || (data.disbursedAt is string)) &&
-             (!data.keys().hasAny(['rejectReason']) || (data.rejectReason is string)) &&
-             (!data.keys().hasAny(['additionalInfo']) || (data.additionalInfo is string)) &&
-             (!data.keys().hasAny(['flaggedForAudit']) || (data.flaggedForAudit is bool));
+             (!('amountWords' in data) || (data.amountWords is string)) &&
+             (!('receipts' in data) || (data.receipts is list && data.receipts.size() <= 50)) &&
+             (!('attachments' in data) || (data.attachments is list && data.attachments.size() <= 20)) &&
+             (!('projectId' in data) || (data.projectId is string && data.projectId.size() <= 128)) &&
+             (!('approvedAtL1' in data) || (data.approvedAtL1 is string)) &&
+             (!('approvedAtL2' in data) || (data.approvedAtL2 is string)) &&
+             (!('disbursedAt' in data) || (data.disbursedAt is string)) &&
+             (!('rejectReason' in data) || (data.rejectReason is string)) &&
+             (!('additionalInfo' in data) || (data.additionalInfo is string)) &&
+             (!('flaggedForAudit' in data) || (data.flaggedForAudit is bool)) &&
+             (!('recurrence' in data) || (data.recurrence in ['NONE', 'MONTHLY', 'QUARTERLY'])) &&
+             (!('lastRecurrenceGeneratedAt' in data) || (data.lastRecurrenceGeneratedAt is string));
     }
 
     function isValidProject(data) {
@@ -99,7 +114,7 @@ service cloud.firestore {
              data.name is string && data.name.size() <= 100 &&
              (data.allocatedBudget is int || data.allocatedBudget is float) && 
              (data.spentAmount is int || data.spentAmount is float) &&
-             (!data.keys().hasAny(['color']) || data.color is string);
+             (!('color' in data) || data.color is string);
     }
 
     function isValidSystemLog(data) {
@@ -109,8 +124,8 @@ service cloud.firestore {
              data.details is string && data.details.size() <= 1000 &&
              data.performedBy is string && data.performedBy.size() <= 200 &&
              data.timestamp is string && data.timestamp.size() <= 100 &&
-             (!data.keys().hasAny(['groupId']) || (data.groupId is string)) &&
-             (!data.keys().hasAny(['metadata']) || (data.metadata is map || data.metadata is list));
+             (!('groupId' in data) || (data.groupId is string)) &&
+             (!('metadata' in data) || (data.metadata is map || data.metadata is list));
     }
 
     function isValidSavedReport(data) {
@@ -127,7 +142,7 @@ service cloud.firestore {
              data.message is string && data.message.size() <= 1500 &&
              data.timestamp is string &&
              data.isRead is bool &&
-             (!data.keys().hasAny(['targetRole']) || data.targetRole is string);
+             (!('targetRole' in data) || (data.targetRole is string));
     }
 
     // --- match Blocks ---
@@ -138,9 +153,10 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow get: if isSignedIn() && (isOwner(userId) || (isValidId(userId) && (isAdmin() || isApprovedUser())));
-      allow list: if isApprovedUser();
+      allow list: if isApprovedUser() || isAdmin();
       allow create: if isValidId(userId) && (isAdmin() || (isSignedIn() && isOwner(userId))) && isValidUserProfile(incoming());
       allow update: if isValidId(userId) && (isAdmin() || (isSignedIn() && isOwner(userId)));
+      allow delete: if isAdmin();
     }
 
     match /requisitions/{requisitionId} {
@@ -163,10 +179,10 @@ service cloud.firestore {
     }
 
     match /alerts/{alertId} {
-      allow get: if isValidId(alertId) && isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isValidId(alertId) && isSignedIn() && isValidAlert(incoming());
-      allow update: if isValidId(alertId) && isSignedIn() && 
+      allow get: if isValidId(alertId) && (isSignedIn() || isAdmin());
+      allow list: if isSignedIn() || isAdmin();
+      allow create: if isValidId(alertId) && (isSignedIn() || isAdmin()) && isValidAlert(incoming());
+      allow update: if isValidId(alertId) && (isSignedIn() || isAdmin()) && 
                       (incoming().diff(existing()).affectedKeys().hasOnly(['isRead']) || 
                        incoming().diff(existing()).affectedKeys().size() == 0);
       allow delete: if isValidId(alertId) && isAdmin();
@@ -200,6 +216,11 @@ service cloud.firestore {
     match /church_groups/{groupId} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    match /permissions/{roleId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
     }
   }
 }

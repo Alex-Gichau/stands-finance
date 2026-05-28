@@ -115,12 +115,11 @@ const PieTooltip = ({ active, payload }: any) => {
 };
 
 const Dashboard: React.FC = () => {
-  const { requisitions, projects, alerts, currentUser, seedAllEcosystemData, deleteRequisition, systemLogs } = useRequisitions();
+  const { requisitions, projects, alerts, currentUser, seedAllEcosystemData, deleteRequisition, systemLogs, canAccess } = useRequisitions();
 
   const hasAuditTrail = useMemo(() => {
-    if (!currentUser) return false;
-    return [UserRole.ADMIN, UserRole.FINANCE].includes(currentUser.role);
-  }, [currentUser]);
+    return canAccess("auditTrail");
+  }, [canAccess]);
 
   const [seeding, setSeeding] = useState(false);
   const [selectedRequisition, setSelectedRequisition] = useState<Requisition | null>(null);
@@ -309,7 +308,7 @@ const Dashboard: React.FC = () => {
   const recentRequisitions = requisitions.slice(0, 5);
   const activeAlerts = alerts.filter(a => {
     if (a.isRead) return false;
-    if (a.targetRole && currentUser?.role !== a.targetRole && currentUser?.role !== UserRole.ADMIN) return false;
+    if (a.targetRole && currentUser?.role !== a.targetRole && currentUser?.role !== UserRole.ADMIN && currentUser?.role !== UserRole.SUPER_ADMIN) return false;
     return true;
   });
 
@@ -428,7 +427,7 @@ const Dashboard: React.FC = () => {
     return Object.values(groupTotals).sort((a, b) => b.totalAmount - a.totalAmount);
   }, [requisitions]);
 
-  if (requisitions.length === 0 && currentUser?.role === UserRole.ADMIN) {
+  if (requisitions.length === 0 && (currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN)) {
     return (
       <div className="h-[80vh] flex flex-col items-center justify-center space-y-8 animate-in fade-in duration-1000">
         <div className="relative">

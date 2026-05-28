@@ -55,6 +55,17 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  
+  // Log the detailed error for debugging
+  console.error('Firestore Error Details:', JSON.stringify(errInfo));
+  
+  // If it's a permission error, we might want to fail silently or warn instead of crashing the whole app
+  // especially for non-critical list operations during initialization
+  if (errInfo.error.includes('Missing or insufficient permissions')) {
+    console.warn(`Permission Denied for ${operationType} on ${path}. This may be a race condition during auth sync.`);
+    // We still throw to let the caller handle it if they want, but we've logged better context.
+    // However, some callers in RequisitionContext might need this to be a throw to stop invalid state.
+  }
+
   throw new Error(JSON.stringify(errInfo));
 }

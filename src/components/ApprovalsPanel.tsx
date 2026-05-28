@@ -24,7 +24,7 @@ import { formatCurrency, formatDate, cn } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 
 export const ApprovalsPanel: React.FC = () => {
-  const { requisitions, updateRequisitionStatus, currentUser, globalSearchTerm } = useRequisitions();
+  const { requisitions, updateRequisitionStatus, currentUser, globalSearchTerm, canPerform } = useRequisitions();
   const [selectedReq, setSelectedReq] = useState<Requisition | null>(null);
   const [approvalStep, setApprovalStep] = useState<"DETAILS" | "CODE" | "SUCCESS">("DETAILS");
   const [authCode, setAuthCode] = useState("");
@@ -37,15 +37,12 @@ export const ApprovalsPanel: React.FC = () => {
                           req.id.toLowerCase().includes(globalSearchTerm.toLowerCase());
     if (!matchesSearch) return false;
 
-    if (currentUser?.role === UserRole.APPROVER_L1) {
-      return req.status === RequisitionStatus.SUBMITTED;
-    }
-    if (currentUser?.role === UserRole.APPROVER_L2) {
-      return req.status === RequisitionStatus.APPROVED_L1 || req.status === RequisitionStatus.ESCALATED;
-    }
-    if (currentUser?.role === UserRole.ADMIN) {
-      return [RequisitionStatus.SUBMITTED, RequisitionStatus.APPROVED_L1, RequisitionStatus.ESCALATED].includes(req.status);
-    }
+    const canDoL1 = canPerform('canApproveL1');
+    const canDoL2 = canPerform('canApproveL2');
+
+    if (canDoL1 && req.status === RequisitionStatus.SUBMITTED) return true;
+    if (canDoL2 && (req.status === RequisitionStatus.APPROVED_L1 || req.status === RequisitionStatus.ESCALATED)) return true;
+    
     return false;
   });
 

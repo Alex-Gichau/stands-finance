@@ -1,0 +1,323 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState } from "react";
+import { 
+  ShieldCheck, 
+  Eye, 
+  Zap, 
+  Save, 
+  ChevronRight, 
+  Lock,
+  Check,
+  AlertCircle
+} from "lucide-react";
+import { useRequisitions } from "../contexts/RequisitionContext";
+import { UserRole, PermissionConfig } from "../types";
+import { motion, AnimatePresence } from "motion/react";
+import { cn } from "../lib/utils";
+
+export const AccessControlPanel: React.FC = () => {
+  const { permissionConfigs, updateRolePermissions, currentUser } = useRequisitions();
+  const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.CHURCH_GROUP);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const roles = [
+    UserRole.CHURCH_GROUP,
+    UserRole.APPROVER_L1,
+    UserRole.APPROVER_L2,
+    UserRole.FINANCE,
+    UserRole.ADMIN,
+  ];
+
+  const currentConfig = permissionConfigs.find(c => c.role === selectedRole) || {
+    role: selectedRole,
+    access: {
+      dashboard: true,
+      requisitions: selectedRole === UserRole.CHURCH_GROUP || selectedRole === UserRole.ADMIN,
+      approvals: [UserRole.APPROVER_L1, UserRole.APPROVER_L2, UserRole.ADMIN].includes(selectedRole),
+      finance: selectedRole === UserRole.FINANCE || selectedRole === UserRole.ADMIN,
+      reports: selectedRole === UserRole.FINANCE || selectedRole === UserRole.ADMIN,
+      users: selectedRole === UserRole.ADMIN,
+      settings: selectedRole === UserRole.ADMIN || selectedRole === UserRole.FINANCE,
+      accessControl: false,
+      notifications: true,
+      auditTrail: [UserRole.ADMIN, UserRole.FINANCE].includes(selectedRole)
+    },
+    actions: {
+      canCreateRequisition: selectedRole === UserRole.CHURCH_GROUP || selectedRole === UserRole.ADMIN,
+      canApproveL1: selectedRole === UserRole.APPROVER_L1 || selectedRole === UserRole.ADMIN,
+      canApproveL2: selectedRole === UserRole.APPROVER_L2 || selectedRole === UserRole.ADMIN,
+      canDisburse: selectedRole === UserRole.FINANCE || selectedRole === UserRole.ADMIN,
+      canDeleteRequisition: selectedRole === UserRole.ADMIN,
+      canManageUsers: selectedRole === UserRole.ADMIN,
+      canManageSettings: selectedRole === UserRole.ADMIN || selectedRole === UserRole.FINANCE,
+    }
+  };
+
+  const handleToggleAccess = (viewId: string) => {
+    const newConfig = {
+      ...currentConfig,
+      access: {
+        ...currentConfig.access,
+        [viewId]: !(currentConfig.access as any)[viewId]
+      }
+    };
+    // Optimization: find and replace in local state if we want instant UI, 
+    // but here we just wait for DB sync or pass to update function
+  };
+
+  const handleToggleAction = (actionId: string) => {
+    const newConfig = {
+      ...currentConfig,
+      actions: {
+        ...currentConfig.actions,
+        [actionId]: !(currentConfig.actions as any)[actionId]
+      }
+    };
+  };
+
+  const saveConfig = async (config: any) => {
+    setIsSaving(true);
+    try {
+      await updateRolePermissions(selectedRole, config);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const viewPermissions = [
+    { id: "dashboard", label: "Dashboard Hub", description: "Main entry point and overview" },
+    { id: "requisitions", label: "Requisitions Tracker", description: "Submit and follow requisition status" },
+    { id: "approvals", label: "Authorization Hub", description: "Decision making for pending requests" },
+    { id: "finance", label: "Budgets & Ledger", description: "Financial management and disbursement" },
+    { id: "reports", label: "Impact Reports", description: "Analytics and historical snapshots" },
+    { id: "users", label: "User Management", description: "Control authentication and role assignments" },
+    { id: "settings", label: "System Triggers", description: "Security trace and system configuration" },
+    { id: "auditTrail", label: "Dashboard Audit Trail", description: "Visibility of the live activity feed on user dashboards" },
+  ];
+
+  const actionPermissions = [
+    { id: "canCreateRequisition", label: "Initiate Requisitions", description: "Permission to draft and submit new requests" },
+    { id: "canApproveL1", label: "Level 1 Approval Authority", description: "Permission to grant first-tier authorization" },
+    { id: "canApproveL2", label: "Level 2 Approval Authority", description: "Permission to grant final-tier authorization" },
+    { id: "canDisburse", label: "Disbursement Authority", description: "Permission to process final payouts" },
+    { id: "canDeleteRequisition", label: "Ledger Modification", description: "Permission to delete draft or error entries" },
+    { id: "canManageUsers", label: "Identity Control", description: "Permission to invite and suspend users" },
+    { id: "canManageSettings", label: "System Hardening", description: "Permission to modify audit policies" },
+  ];
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-50">
+      <div className="max-w-6xl mx-auto space-y-8">
+        
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
+            <ShieldCheck size={120} className="text-primary" />
+          </div>
+          
+          <div className="space-y-2 relative z-10">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary border border-primary/20">
+                <ShieldCheck size={24} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Sudo Control Core</h1>
+                <p className="text-[10px] text-primary font-black uppercase tracking-[0.2em]">Global Access Configuration</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 max-w-md font-medium leading-relaxed">
+              Define recursive access rights and operational boundaries for all system roles. Changes propagate across the ecosystem in real-time.
+            </p>
+          </div>
+
+          {currentUser?.role !== UserRole.SUPER_ADMIN && (
+             <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 p-4 rounded-2xl">
+                <Lock className="text-amber-500" size={18} />
+                <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider">Restricted Access: Super Admin Only</span>
+             </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          
+          {/* Role Selection Sidebar */}
+          <div className="lg:col-span-1 space-y-3">
+            <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2 mb-4">Select Target Role</h2>
+            {roles.map((role) => (
+              <button
+                key={role}
+                onClick={() => setSelectedRole(role)}
+                className={cn(
+                  "w-full flex items-center justify-between p-4 rounded-2xl transition-all border group",
+                  selectedRole === role 
+                    ? "bg-slate-900 border-slate-900 text-white shadow-xl shadow-slate-200" 
+                    : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                )}
+              >
+                <div className="flex flex-col items-start">
+                  <span className="text-[11px] font-black uppercase tracking-widest">{role.replace("_", " ")}</span>
+                  <span className={cn(
+                    "text-[8px] font-bold uppercase tracking-tighter mt-1",
+                    selectedRole === role ? "text-primary" : "text-slate-400"
+                  )}>Access Boundaries</span>
+                </div>
+                <ChevronRight size={14} className={cn(
+                  "transition-transform",
+                  selectedRole === role ? "translate-x-0" : "-translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0"
+                )} />
+              </button>
+            ))}
+
+            <div className="mt-8 p-6 bg-primary/5 border border-primary/10 rounded-[2rem] space-y-4">
+               <div className="flex items-center gap-2 text-primary">
+                  <Zap size={14} />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Real-time Sync</span>
+               </div>
+               <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
+                  Modification of these parameters will immediately affect all active sessions for the target role group.
+               </p>
+            </div>
+          </div>
+
+          {/* Permissions Grid */}
+          <div className="lg:col-span-3 space-y-8">
+            
+            {/* View Access */}
+            <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
+              <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Eye size={18} className="text-slate-400" />
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Structural Visibility</h3>
+                    <p className="text-[10px] text-slate-500 font-medium font-mono uppercase">Control view-level navigation access</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="divide-y divide-slate-50">
+                {viewPermissions.map((view) => {
+                  const isEnabled = (currentConfig.access as any)[view.id];
+                  return (
+                    <div key={view.id} className="p-6 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+                      <div className="space-y-1">
+                        <p className="text-[11px] font-black text-slate-800 uppercase tracking-widest">{view.label}</p>
+                        <p className="text-[10px] text-slate-500 font-medium">{view.description}</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const updated = {
+                            ...currentConfig,
+                            access: {
+                              ...currentConfig.access,
+                              [view.id]: !isEnabled
+                            }
+                          };
+                          saveConfig(updated);
+                        }}
+                        className={cn(
+                          "w-12 h-6 rounded-full relative transition-all duration-300",
+                          isEnabled ? "bg-emerald-500" : "bg-slate-200"
+                        )}
+                      >
+                        <div className={cn(
+                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm",
+                          isEnabled ? "left-7" : "left-1"
+                        )} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Action Matrix */}
+            <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
+              <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Zap size={18} className="text-slate-400" />
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Operational Powers</h3>
+                    <p className="text-[10px] text-slate-500 font-medium font-mono uppercase">Discrete execution rights per role</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="divide-y divide-slate-50">
+                {actionPermissions.map((action) => {
+                  const isEnabled = (currentConfig.actions as any)[action.id];
+                  return (
+                    <div key={action.id} className="p-6 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+                      <div className="space-y-1">
+                        <p className="text-[11px] font-black text-slate-800 uppercase tracking-widest">{action.label}</p>
+                        <p className="text-[10px] text-slate-500 font-medium">{action.description}</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const updated = {
+                            ...currentConfig,
+                            actions: {
+                              ...currentConfig.actions,
+                              [action.id]: !isEnabled
+                            }
+                          };
+                          saveConfig(updated);
+                        }}
+                        className={cn(
+                          "w-12 h-6 rounded-full relative transition-all duration-300",
+                          isEnabled ? "bg-primary" : "bg-slate-200"
+                        )}
+                      >
+                        <div className={cn(
+                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm",
+                          isEnabled ? "left-7" : "left-1"
+                        )} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Final Save Status Feedback */}
+            <AnimatePresence>
+              {isSaving && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  className="bg-slate-900 text-white px-6 py-4 rounded-2xl flex items-center justify-between shadow-2xl"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Synchronizing Core Parameters...</span>
+                  </div>
+                </motion.div>
+              )}
+              {saveSuccess && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  className="bg-emerald-500 text-white px-6 py-4 rounded-2xl flex items-center justify-between shadow-2xl shadow-emerald-500/20"
+                >
+                  <div className="flex items-center gap-3">
+                    <Check size={18} strokeWidth={3} />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Ecosystem Updated Successfully</span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};

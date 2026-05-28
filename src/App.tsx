@@ -20,7 +20,8 @@ import { WaitingRoom } from "./components/WaitingRoom";
 import { ProfilePrompt } from "./components/ProfilePrompt";
 import { ReportsPanel } from "./components/ReportsPanel";
 import { FinanceLedgerPanel } from "./components/FinanceLedgerPanel";
-import { UserRole, BudgetAlert, SearchFilter } from "./types";
+import { AccessControlPanel } from "./components/AccessControlPanel";
+import { UserRole, BudgetAlert, SearchFilter, PermissionConfig } from "./types";
 import { 
   Bell, 
   ArrowRight,
@@ -268,7 +269,9 @@ function AppContent() {
     removeToast,
     readNoticeIds,
     toggleNoticeRead,
-    markAllNoticesRead
+    markAllNoticesRead,
+    canAccess,
+    canPerform
   } = useRequisitions();
 
   // Idle Timeout Implementation
@@ -290,11 +293,39 @@ function AppContent() {
     }
   }, 15 * 60 * 1000);
 
-  // Global Interaction Tracking for Slack Alerts
-  useEffect(() => {
-    const handleGlobalClick = (e: MouseEvent) => {
-      if (!currentUser) return;
+  // Global Interaction Tracking for Slack Alerts (Batched every 5 mins)
+  const userActivityBuffer = useRef<{ type: string; detail: string; timestamp: number }[]>([]);
 
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // Timer to send summaries every 5 minutes
+    const summaryInterval = setInterval(() => {
+      if (userActivityBuffer.current.length === 0) return;
+
+      const activities = [...userActivityBuffer.current];
+      userActivityBuffer.current = []; // Clear buffer
+
+      const navigationCount = activities.filter(a => a.type === "NAV").length;
+      const buttonCount = activities.filter(a => a.type === "BTN").length;
+      
+      const details = activities
+        .slice(0, 10) // Show first 10 for brevity
+        .map(a => `・ ${a.detail}`)
+        .join("\n");
+
+      sendSlackNotification({
+        action: "User Activity Summary (5min)",
+        details: `Batched activity for ${currentUser.name || currentUser.email}:\n- Navigations: ${navigationCount}\n- Button Interactions: ${buttonCount}\n\nRecent Actions:\n${details}${activities.length > 10 ? `\n...and ${activities.length - 10} more` : ""}`,
+        performedBy: "SYSTEM_ACTIVITY_MONITOR",
+        metadata: {
+          totalActions: activities.length,
+          userId: currentUser.id
+        }
+      });
+    }, 5 * 60 * 1000);
+
+    const handleGlobalClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       const button = target.closest("button");
       const sidebarItem = target.closest("[data-sidebar-item]");
@@ -302,40 +333,33 @@ function AppContent() {
       // Case 1: Navbar/Sidebar Navigation interaction (Primary)
       if (sidebarItem) {
         const itemText = sidebarItem.getAttribute("data-sidebar-item") || sidebarItem.textContent || "Sidebar Item";
-        sendSlackNotification({
-          action: "Navbar Interaction",
-          details: `User navigated to: "${itemText.trim()}"`,
-          performedBy: currentUser.name || currentUser.email,
-          metadata: {
-            view: currentView,
-            targetSection: itemText.trim()
-          }
+        userActivityBuffer.current.push({
+          type: "NAV",
+          detail: `Navigated to ${itemText.trim()}`,
+          timestamp: Date.now()
         });
-        return; // Don't trigger a general button alert if it's a navbar item
+        return;
       }
 
       // Case 2: Standard Button interaction
       if (button) {
         const buttonText = button.innerText.trim() || button.title || button.ariaLabel || "Unnamed Button";
-        
-        // Filter out noise: common utility buttons that don't need alerts
         const noisyTexts = ["X", "Close", "Cancel", "Clear", ""];
         if (!noisyTexts.includes(buttonText)) {
-          sendSlackNotification({
-            action: "Button Pressed",
-            details: `User interacted with component: "${buttonText}"`,
-            performedBy: currentUser.name || currentUser.email,
-            metadata: {
-              currentView: currentView,
-              buttonClasses: button.className.substring(0, 50)
-            }
+          userActivityBuffer.current.push({
+            type: "BTN",
+            detail: `Pressed: ${buttonText}`,
+            timestamp: Date.now()
           });
         }
       }
     };
 
     window.addEventListener("click", handleGlobalClick);
-    return () => window.removeEventListener("click", handleGlobalClick);
+    return () => {
+      clearInterval(summaryInterval);
+      window.removeEventListener("click", handleGlobalClick);
+    };
   }, [currentUser, currentView]);
 
   const [showProfilePrompt, setShowProfilePrompt] = useState(false);
@@ -529,7 +553,7 @@ function AppContent() {
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="space-y-4 text-center">
           <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Synchronizing Transactions...</p>
+          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Initializing App...</p>
         </div>
       </div>
     );
@@ -745,8 +769,8 @@ function AppContent() {
     requisition?: any;
   }> = [];
 
-  // 1. Members awaiting approval (only for ADMIN)
-  if (currentUser?.role === UserRole.ADMIN) {
+  // 1. Members awaiting approval (only for ADMIN/SUPER_ADMIN)
+  if (currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN) {
     users.filter(u => !u.isApproved).forEach(u => {
       notificationItems.push({
         id: `user-await-${u.id}`,
@@ -793,8 +817,8 @@ function AppContent() {
     });
   });
 
-  // 3.5. Disbursements needed (specifically for FINANCE and ADMIN roles)
-  if (currentUser?.role === UserRole.FINANCE || currentUser?.role === UserRole.ADMIN) {
+  // 3.5. Disbursements needed (specifically for FINANCE, ADMIN, and SUPER_ADMIN roles)
+  if (currentUser?.role === UserRole.FINANCE || currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN) {
     requisitions.filter(r => r.status === "APPROVED_L2").forEach(r => {
       notificationItems.push({
         id: `finance-disb-req-${r.id}`,
@@ -833,19 +857,20 @@ function AppContent() {
   }
 
   const renderView = () => {
+    if (!canAccess(currentView)) {
+      return <Dashboard />;
+    }
+
     switch (currentView) {
       case "dashboard": return <Dashboard />;
       case "notifications": return <NotificationHub onSelectRequisition={(req) => setSelectedReqForNoticeDetail(req)} />;
       case "requisitions": return <RequisitionsPanel />;
       case "approvals": return <ApprovalsPanel />;
-      case "settings": 
-        if (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.FINANCE) {
-          return <SettingsPanel />;
-        }
-        return <Dashboard />;
+      case "settings": return <SettingsPanel />;
       case "users": return <UsersPanel />;
       case "reports": return <ReportsPanel />;
       case "finance": return <FinanceLedgerPanel />;
+      case "accessControl": return <AccessControlPanel />;
       default: return <Dashboard />;
     }
   };

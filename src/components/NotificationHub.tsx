@@ -63,7 +63,7 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ onSelectRequis
 
         // Only trigger toast if the requisition is SUBMITTED
         if (r.status === RequisitionStatus.SUBMITTED) {
-          const isUserAdmin = currentUser?.role === UserRole.ADMIN;
+          const isUserAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN;
           
           const toastMessage = isUserAdmin
             ? `New Requisition: "${r.title}" for KES ${r.amount.toLocaleString()} submitted by ${r.requesterName}`
@@ -96,8 +96,8 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ onSelectRequis
 
     const now = new Date().toISOString();
 
-    // 1. Members awaiting approval (only for ADMIN)
-    if (currentUser?.role === UserRole.ADMIN) {
+    // 1. Members awaiting approval (only for ADMIN/SUPER_ADMIN)
+    if (currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN) {
       users.filter(u => !u.isApproved).forEach(u => {
         items.push({
           id: `user-await-${u.id}`,
@@ -147,8 +147,8 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ onSelectRequis
       });
     });
 
-    // 3.5. Disbursements needed (specifically for FINANCE and ADMIN roles)
-    if (currentUser?.role === UserRole.FINANCE || currentUser?.role === UserRole.ADMIN) {
+    // 3.5. Disbursements needed (specifically for FINANCE, ADMIN, and SUPER_ADMIN roles)
+    if (currentUser?.role === UserRole.FINANCE || currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN) {
       requisitions.filter(r => r.status === RequisitionStatus.APPROVED_L2).forEach(r => {
         items.push({
           id: `finance-disb-req-${r.id}`,
@@ -168,7 +168,7 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ onSelectRequis
     // Include budget alerts that target this user's role
     alerts.filter(a => {
       if (a.isRead) return false;
-      if (a.targetRole && currentUser?.role !== a.targetRole && currentUser?.role !== UserRole.ADMIN) return false;
+      if (a.targetRole && currentUser?.role !== a.targetRole && currentUser?.role !== UserRole.ADMIN && currentUser?.role !== UserRole.SUPER_ADMIN) return false;
       return true;
     }).forEach(a => {
       // Find matching requisition if possible

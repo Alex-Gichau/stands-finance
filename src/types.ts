@@ -9,6 +9,7 @@ export enum UserRole {
   APPROVER_L2 = "APPROVER_L2",
   FINANCE = "FINANCE",
   ADMIN = "ADMIN",
+  SUPER_ADMIN = "SUPER_ADMIN",
 }
 
 export interface UserProfile {
@@ -190,5 +191,30 @@ export interface SavedReport {
     status?: string;
   };
   itemCount: number;
+}
+
+export interface PermissionConfig {
+  id: string;
+  role: UserRole;
+  access: {
+    dashboard: boolean;
+    requisitions: boolean;
+    approvals: boolean;
+    finance: boolean;
+    reports: boolean;
+    users: boolean;
+    settings: boolean;
+    accessControl: boolean;
+    auditTrail: boolean;
+  };
+  actions: {
+    canCreateRequisition: boolean;
+    canApproveL1: boolean;
+    canApproveL2: boolean;
+    canDisburse: boolean;
+    canDeleteRequisition: boolean;
+    canManageUsers: boolean;
+    canManageSettings: boolean;
+  };
 }
 

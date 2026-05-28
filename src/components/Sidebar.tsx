@@ -31,7 +31,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, notificationsCount = 0 }) => {
-  const { currentUser, logout } = useRequisitions();
+  const { currentUser, logout, canAccess } = useRequisitions();
   
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
 
@@ -54,19 +54,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, not
   };
 
   const menuItems = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, roles: [UserRole.CHURCH_GROUP, UserRole.APPROVER_L1, UserRole.APPROVER_L2, UserRole.FINANCE, UserRole.ADMIN] },
-    { id: "notifications", label: "Notification", icon: Bell, roles: [UserRole.CHURCH_GROUP, UserRole.APPROVER_L1, UserRole.APPROVER_L2, UserRole.FINANCE, UserRole.ADMIN] },
-    { id: "requisitions", label: "Requisitions", icon: FileText, roles: [UserRole.CHURCH_GROUP, UserRole.ADMIN] },
-    { id: "approvals", label: "Authorization Hub", icon: CheckCircle, roles: [UserRole.APPROVER_L1, UserRole.APPROVER_L2, UserRole.ADMIN] },
-    { id: "finance", label: "Finance Ledger", icon: Banknote, roles: [UserRole.FINANCE, UserRole.ADMIN] },
-    { id: "reports", label: "Impact Reports", icon: BarChart3, roles: [UserRole.FINANCE, UserRole.ADMIN] },
-    { id: "users", label: "Users", icon: UserCircle, roles: [UserRole.ADMIN] },
-    { id: "settings", label: "Audit Trails", icon: Settings, roles: [UserRole.ADMIN, UserRole.FINANCE], desktopOnly: true },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "notifications", label: "Notification", icon: Bell },
+    { id: "requisitions", label: "Requisitions", icon: FileText },
+    { id: "approvals", label: "Approvals", icon: CheckCircle },
+    { id: "finance", label: "Budgets", icon: Banknote },
+    { id: "reports", label: "Financial Reports", icon: BarChart3 },
+    { id: "users", label: "Users", icon: UserCircle },
+    { id: "accessControl", label: "Permissions", icon: ShieldCheck, desktopOnly: true },
+    { id: "settings", label: "Audit Logs", icon: Settings, desktopOnly: true },
   ];
 
-  const filteredItems = menuItems.filter(item => 
-    currentUser && item.roles.includes(currentUser.role)
-  );
+  const filteredItems = menuItems.filter(item => canAccess(item.id));
 
   return (
     <>

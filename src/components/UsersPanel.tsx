@@ -27,7 +27,8 @@ import {
   XCircle,
   ShieldCheck,
   Clock,
-  Download
+  Download,
+  Trash2
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -41,6 +42,7 @@ export const UsersPanel: React.FC = () => {
     currentUser, 
     adminRegisterUser,
     adminResetUserPassword,
+    deleteUser,
     churchGroups,
     addChurchGroup,
     deleteChurchGroup,
@@ -88,6 +90,7 @@ export const UsersPanel: React.FC = () => {
   const [showPasswordResetOptions, setShowPasswordResetOptions] = useState(false);
   const [passwordResetMethod, setPasswordResetMethod] = useState<"EMAIL" | "MANUAL">("EMAIL");
   const [customNewPassword, setCustomNewPassword] = useState("");
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
 
   const handleResetPassword = async (email: string) => {
     setEditError(null);
@@ -121,6 +124,15 @@ export const UsersPanel: React.FC = () => {
       setEditError(err?.message || "Failed to set custom password.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    try {
+      await deleteUser(id);
+      setConfirmingDeleteId(null);
+    } catch (err: any) {
+      alert(err.message || "Failed to delete user.");
     }
   };
 
@@ -266,7 +278,7 @@ export const UsersPanel: React.FC = () => {
     }
   };
 
-  if (currentUser?.role !== UserRole.ADMIN) {
+  if (currentUser?.role !== UserRole.ADMIN && currentUser?.role !== UserRole.SUPER_ADMIN) {
     return (
       <div className="h-full flex items-center justify-center p-12">
         <div className="text-center space-y-6 max-w-md animate-in fade-in transition-all">
@@ -384,7 +396,9 @@ export const UsersPanel: React.FC = () => {
               className="bg-transparent text-[11px] font-black uppercase tracking-widest text-slate-600 outline-none cursor-pointer"
             >
               <option value="ALL">ALL SECURITY ROLES</option>
-              {Object.values(UserRole).map(role => (
+              {Object.values(UserRole)
+                .filter(role => currentUser?.role === UserRole.SUPER_ADMIN || role !== UserRole.SUPER_ADMIN)
+                .map(role => (
                 <option key={role} value={role}>{role.replace('_', ' ')}</option>
               ))}
             </select>
@@ -496,6 +510,35 @@ export const UsersPanel: React.FC = () => {
                         >
                           <Edit size={14} className="md:w-4 md:h-4" />
                         </button>
+
+                        {confirmingDeleteId === user.id ? (
+                          <div className="flex items-center gap-1 animate-in slide-in-from-right-2">
+                            <button 
+                              onClick={() => handleDeleteUser(user.id)}
+                              className="px-2 py-1.5 bg-rose-600 text-white text-[9px] font-black uppercase rounded-lg shadow-lg shadow-rose-200"
+                            >
+                              Confirm
+                            </button>
+                            <button 
+                              onClick={() => setConfirmingDeleteId(null)}
+                              className="p-1.5 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200 transition-colors"
+                            >
+                              <XCircle size={14} />
+                            </button>
+                          </div>
+                        ) : (
+                          <button 
+                            onClick={() => setConfirmingDeleteId(user.id)}
+                            disabled={user.id === currentUser?.id}
+                            className={cn(
+                              "p-2 md:p-2.5 bg-white border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-100 rounded-lg md:rounded-xl transition-all",
+                              user.id === currentUser?.id && "opacity-20 cursor-not-allowed"
+                            )}
+                            title={user.id === currentUser?.id ? "Cannot delete self" : "Delete Member"}
+                          >
+                            <Trash2 size={14} className="md:w-4 md:h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </motion.tr>
@@ -752,7 +795,9 @@ export const UsersPanel: React.FC = () => {
                         onChange={(e) => isModalOpen ? setRole(e.target.value as UserRole) : setEditRole(e.target.value as UserRole)}
                         className="input-field bg-white font-bold uppercase tracking-widest cursor-pointer"
                       >
-                        {Object.values(UserRole).map((r) => (
+                        {Object.values(UserRole)
+                          .filter(r => currentUser?.role === UserRole.SUPER_ADMIN || r !== UserRole.SUPER_ADMIN)
+                          .map((r) => (
                           <option key={r} value={r}>{r.replace("_", " ")}</option>
                         ))}
                       </select>
