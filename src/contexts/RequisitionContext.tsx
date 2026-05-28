@@ -259,18 +259,48 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         const isBypass = firebaseUser.email === "bypass-node@standrews.org" && overrideEmail;
 
         if (isBypass && overrideEmail) {
-          const q = query(collection(db, "users"), where("email", "==", overrideEmail.toLowerCase()));
-          unsubUserDoc = onSnapshot(q, (querySnap) => {
-            if (!querySnap.empty) {
-              const profile = querySnap.docs[0].data() as UserProfile;
-              setCurrentUser(profile);
+          const setupBypassSync = (emailToSync: string) => {
+            const q = query(collection(db, "users"), where("email", "==", emailToSync.toLowerCase()));
+            unsubUserDoc = onSnapshot(q, (querySnap) => {
+              if (!querySnap.empty) {
+                const profile = querySnap.docs[0].data() as UserProfile;
+                setCurrentUser(profile);
+                setLoading(false);
+              } else {
+                setLoading(false);
+              }
+            }, (err) => {
+              console.error("Bypass user sync database error:", err);
               setLoading(false);
+            });
+          };
+
+          // Check/repair the bypass user profile doc first to avoid "Missing or insufficient permissions"
+          const bypassUid = firebaseUser.uid;
+          const bypassUserRef = doc(db, "users", bypassUid);
+          
+          getDoc(bypassUserRef).then((docSnap) => {
+            if (!docSnap.exists()) {
+              setDoc(bypassUserRef, {
+                id: bypassUid,
+                name: "Security Bypass Node",
+                email: "bypass-node@standrews.org",
+                role: UserRole.ADMIN,
+                isActive: true,
+                isApproved: true,
+                isSuspended: false
+              }).then(() => {
+                setupBypassSync(overrideEmail);
+              }).catch((e) => {
+                console.error("Failed to repair bypass node document on snapshot trigger:", e);
+                setLoading(false);
+              });
             } else {
-              setLoading(false);
+              setupBypassSync(overrideEmail);
             }
-          }, (err) => {
-            console.error("Bypass user sync database error:", err);
-            setLoading(false);
+          }).catch((err) => {
+            console.error("Failed to fetch bypass node document during checks:", err);
+            setupBypassSync(overrideEmail);
           });
         } else {
           const userRef = doc(db, "users", firebaseUser.uid);
@@ -921,6 +951,24 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
           try {
             await signInWithEmailAndPassword(auth, bypassEmail, bypassPass);
+            
+            // Repair or set up the bypass node user doc in Firestore if missing
+            if (auth.currentUser) {
+              const bypassUid = auth.currentUser.uid;
+              const bypassUserRef = doc(db, "users", bypassUid);
+              const docSnap = await getDoc(bypassUserRef);
+              if (!docSnap.exists()) {
+                await setDoc(bypassUserRef, {
+                  id: bypassUid,
+                  name: "Security Bypass Node",
+                  email: bypassEmail,
+                  role: UserRole.ADMIN,
+                  isActive: true,
+                  isApproved: true,
+                  isSuspended: false
+                });
+              }
+            }
             authenticatedAsBypass = true;
           } catch (bypassErr: any) {
             if (bypassErr.code === 'auth/invalid-credential' || bypassErr.code === 'auth/user-not-found') {

@@ -33,7 +33,9 @@ import {
   Settings,
   UserCircle,
   Mail,
-  CheckCircle
+  CheckCircle,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { auth } from "./lib/firebase";
@@ -223,6 +225,7 @@ function AppContent() {
   const [authMode, setAuthMode] = useState<"EMAIL_LOGIN" | "EMAIL_SIGNUP">("EMAIL_LOGIN");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -575,15 +578,25 @@ function AppContent() {
                     </button>
                   )}
                 </div>
-                <input 
-                  type="password"
-                  required
-                  maxLength={15}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-5 py-3 text-white text-xs font-bold focus:border-primary/50 outline-none transition-all placeholder:text-slate-700 font-mono"
-                  placeholder="••••••••"
-                />
+                <div className="relative">
+                  <input 
+                    type={showPassword ? "text" : "password"}
+                    required
+                    maxLength={15}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-5 pr-12 py-3 text-white text-xs font-bold focus:border-primary/50 outline-none transition-all placeholder:text-slate-700 font-mono"
+                    placeholder="••••••••"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-350 hover:scale-105 active:scale-95 transition-all focus:outline-none flex items-center justify-center p-1"
+                    title={showPassword ? "Hide Password" : "Show Password"}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
 
               <button 
