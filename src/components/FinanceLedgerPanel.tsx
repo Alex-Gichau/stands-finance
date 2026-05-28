@@ -433,6 +433,60 @@ export const FinanceLedgerPanel: React.FC = () => {
       {activeTab === "ledgers" && (
         <div className="space-y-6">
           
+          {/* Project Budget Quick-View Cards */}
+          <div className="flex gap-3 overflow-x-auto pb-4 pt-1 -mx-2 px-2 scrollbar-hide">
+            {projects.map((project) => {
+              const spendingRatio = (project.spentAmount / project.allocatedBudget) * 100;
+              const remainingAmount = project.allocatedBudget - project.spentAmount;
+              return (
+                <div 
+                  key={project.id} 
+                  className="min-w-[180px] md:min-w-[220px] bg-white p-3 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-2 group cursor-pointer"
+                  onClick={() => {
+                    setSelectedProjectId(project.id);
+                  }}
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="text-[10px] font-extrabold text-slate-700 uppercase tracking-tight group-hover:text-indigo-600 transition-colors truncate max-w-[140px]">
+                        {project.name}
+                      </h4>
+                      <p className="text-[8px] font-mono text-slate-400">Remaining: {formatCurrency(remainingAmount)}</p>
+                    </div>
+                    <span className={cn(
+                      "text-[8px] font-black px-1.5 py-0.5 rounded-full border",
+                      spendingRatio >= 90 
+                        ? "bg-rose-50 text-rose-600 border-rose-100" 
+                        : spendingRatio >= 75 
+                          ? "bg-amber-50 text-amber-600 border-amber-100" 
+                          : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                    )}>
+                      {spendingRatio.toFixed(0)}%
+                    </span>
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-100">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.min(spendingRatio, 100)}%` }}
+                        transition={{ duration: 1, ease: "easeOut" }}
+                        className={cn(
+                          "h-full rounded-full",
+                          spendingRatio >= 90 ? "bg-rose-500" : spendingRatio >= 75 ? "bg-amber-500" : "bg-indigo-600"
+                        )}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[7px] font-bold text-slate-400 tracking-tighter">
+                      <span>{formatCurrency(project.spentAmount)}</span>
+                      <span>{formatCurrency(project.allocatedBudget)}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
           {/* 4. Filter Panel */}
           <div className="flex flex-col lg:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
             <div className="flex flex-wrap gap-2 items-center w-full lg:w-auto">

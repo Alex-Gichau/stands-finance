@@ -58,6 +58,12 @@ export const RequisitionsPanel: React.FC = () => {
   const [editingReq, setEditingReq] = useState<Requisition | null>(null);
   const [requisitionToDelete, setRequisitionToDelete] = useState<Requisition | null>(null);
   const [now, setNow] = useState(Date.now());
+  
+  // Pagination state
+  const [activePage, setActivePage] = useState(1);
+  const [disbursedPage, setDisbursedPage] = useState(1);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const ITEMS_PER_PAGE = 15;
 
   React.useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -93,10 +99,90 @@ export const RequisitionsPanel: React.FC = () => {
     
     return matchesSearch && matchesStatus && canSee;
   }).sort((a, b) => {
+    // Priority: submittedAt, then updatedAt, then 0
     const timeA = new Date(a.submittedAt || a.updatedAt || 0).getTime();
     const timeB = new Date(b.submittedAt || b.updatedAt || 0).getTime();
-    return timeB - timeA;
+    return sortDirection === "desc" ? timeB - timeA : timeA - timeB;
   });
+
+  // Split into active and disbursed
+  const activeList = filtered.filter(r => r.status !== RequisitionStatus.DISBURSED);
+  const disbursedList = filtered.filter(r => r.status === RequisitionStatus.DISBURSED);
+
+  // Paginated slices
+  const activeItems = activeList.slice((activePage - 1) * ITEMS_PER_PAGE, activePage * ITEMS_PER_PAGE);
+  const disbursedItems = disbursedList.slice((disbursedPage - 1) * ITEMS_PER_PAGE, disbursedPage * ITEMS_PER_PAGE);
+
+  const activeTotalPages = Math.max(1, Math.ceil(activeList.length / ITEMS_PER_PAGE));
+  const disbursedTotalPages = Math.max(1, Math.ceil(disbursedList.length / ITEMS_PER_PAGE));
+
+  // Reset pages when filters change
+  React.useEffect(() => {
+    setActivePage(1);
+    setDisbursedPage(1);
+  }, [globalSearchTerm, filterStatus]);
+
+  const Pagination = ({ current, total, onChange }: { current: number, total: number, onChange: (p: number) => void }) => (
+    <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-slate-200 sm:px-6">
+      <div className="flex justify-between flex-1 sm:hidden">
+        <button
+          onClick={() => onChange(Math.max(1, current - 1))}
+          disabled={current === 1}
+          className="relative inline-flex items-center px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
+        >
+          Previous
+        </button>
+        <button
+          onClick={() => onChange(Math.min(total, current + 1))}
+          disabled={current === total}
+          className="relative ml-3 inline-flex items-center px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
+        >
+          Next
+        </button>
+      </div>
+      <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+            Showing <span className="text-slate-900">{Math.min(total === 0 ? 0 : (current - 1) * ITEMS_PER_PAGE + 1, activeList.length + disbursedList.length)}</span> to <span className="text-slate-900">{Math.min(current * ITEMS_PER_PAGE, total === 0 ? 0 : 99999)}</span> of <span className="text-slate-900">{total * ITEMS_PER_PAGE > 0 ? "..." : 0}</span> results
+          </p>
+        </div>
+        <div>
+          <nav className="inline-flex -space-x-px rounded-md shadow-sm isolate" aria-label="Pagination">
+            <button
+              onClick={() => onChange(Math.max(1, current - 1))}
+              disabled={current === 1}
+              className="relative inline-flex items-center px-2 py-2 text-slate-400 border border-slate-300 rounded-l-md hover:bg-slate-50 focus:z-20 disabled:opacity-30"
+            >
+              <span className="sr-only">Previous</span>
+              <ChevronDown className="w-4 h-4 rotate-90" />
+            </button>
+            {[...Array(total)].map((_, i) => (
+              <button
+                key={i}
+                onClick={() => onChange(i + 1)}
+                className={cn(
+                  "relative inline-flex items-center px-4 py-2 text-xs font-black uppercase tracking-widest border focus:z-20",
+                  current === i + 1
+                    ? "z-10 bg-indigo-600 border-indigo-600 text-white"
+                    : "bg-white border-slate-300 text-slate-500 hover:bg-slate-50"
+                )}
+              >
+                {i + 1}
+              </button>
+            ))}
+            <button
+              onClick={() => onChange(Math.min(total, current + 1))}
+              disabled={current === total}
+              className="relative inline-flex items-center px-2 py-2 text-slate-400 border border-slate-300 rounded-r-md hover:bg-slate-50 focus:z-20 disabled:opacity-30"
+            >
+              <span className="sr-only">Next</span>
+              <ChevronDown className="w-4 h-4 -rotate-90" />
+            </button>
+          </nav>
+        </div>
+      </div>
+    </div>
+  );
 
   const getStatusColor = (status: RequisitionStatus) => {
     switch (status) {
@@ -217,11 +303,30 @@ export const RequisitionsPanel: React.FC = () => {
 
       {/* Main Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
+          <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+            <Clock size={16} className="text-primary" />
+            Active Requisitions 
+            <span className="text-[10px] text-slate-400 normal-case font-medium ml-2">({activeList.length} total)</span>
+          </h3>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-200 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                <th className="px-4 md:px-6 py-3 md:py-4">ID & Title</th>
+                <th className="px-4 md:px-6 py-3 md:py-4">
+                  <div className="flex items-center gap-2">
+                    ID & Title
+                    <button 
+                      onClick={() => setSortDirection(prev => prev === "asc" ? "desc" : "asc")}
+                      className="p-1 hover:bg-slate-200 rounded-md transition-colors flex items-center gap-1 group text-primary whitespace-nowrap cursor-pointer"
+                      title={sortDirection === "desc" ? "Switch to Newest Last" : "Switch to Newest First"}
+                    >
+                      <ArrowUpDown size={12} className={cn("transition-transform", sortDirection === "asc" && "rotate-180")} />
+                      <span className="text-[7px] text-slate-400 font-bold group-hover:text-primary">{sortDirection === "desc" ? "DESC" : "ASC"}</span>
+                    </button>
+                  </div>
+                </th>
                 <th className="hidden lg:table-cell px-4 md:px-6 py-3 md:py-4">Transaction Ownership</th>
                 <th className="px-4 md:px-6 py-3 md:py-4 text-right">Amount</th>
                 <th className="px-4 md:px-6 py-3 md:py-4 text-center">Status</th>
@@ -231,7 +336,7 @@ export const RequisitionsPanel: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               <AnimatePresence mode="popLayout">
-                {filtered.map((req, i) => {
+                {activeItems.map((req, i) => {
                   const isExpired = req.expiresAt && new Date(req.expiresAt) < new Date();
                   const hoursRemaining = req.expiresAt ? (new Date(req.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60) : null;
                   const daysRemaining = req.expiresAt ? (new Date(req.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24) : null;
@@ -379,32 +484,178 @@ export const RequisitionsPanel: React.FC = () => {
                 })}
               </AnimatePresence>
             </tbody>
-            {filtered.length > 0 && (
+            {activeList.length > 0 && (
               <tfoot>
                 <tr className="bg-slate-100/50 border-t border-slate-200 font-bold text-slate-800">
                   <td className="px-6 py-4 text-xs font-black uppercase tracking-wider" colSpan={2}>
-                    Sum Total of Filtered Requisitions
+                    Total Active Requisitions
                   </td>
                   <td className="px-6 py-4 text-right font-mono text-xs text-rose-600 font-extrabold whitespace-nowrap">
-                    {formatCurrency(filtered.reduce((sum, r) => sum + r.amount, 0))}
+                    {formatCurrency(activeList.reduce((sum, r) => sum + r.amount, 0))}
                   </td>
                   <td colSpan={3} className="px-6 py-4 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                    ({filtered.length} requests in view)
+                    ({activeList.length} items total)
                   </td>
                 </tr>
               </tfoot>
             )}
           </table>
-          {filtered.length === 0 && (
+          {activeList.length === 0 && (
             <div className="py-24 text-center">
               <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
                 <Search size={24} className="text-slate-300" />
               </div>
-              <h3 className="text-sm font-bold text-slate-600 uppercase tracking-widest">No matching requisitions</h3>
+              <h3 className="text-sm font-bold text-slate-600 uppercase tracking-widest">No matching active requisitions</h3>
               <p className="text-xs text-slate-400 mt-2">Adjust your filters or initiate a new request transaction.</p>
             </div>
           )}
         </div>
+        {activeTotalPages > 1 && (
+          <Pagination 
+            current={activePage} 
+            total={activeTotalPages} 
+            onChange={setActivePage} 
+          />
+        )}
+      </div>
+
+      {/* Disbursed Table */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-blue-50/30">
+          <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+            <CheckCircle size={16} className="text-blue-600" />
+            Disbursed History
+            <span className="text-[10px] text-slate-400 normal-case font-medium ml-2">({disbursedList.length} total)</span>
+          </h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-slate-50/50 border-b border-slate-200 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                <th className="px-4 md:px-6 py-3 md:py-4">
+                  <div className="flex items-center gap-2">
+                    ID & Title
+                    <button 
+                      onClick={() => setSortDirection(prev => prev === "asc" ? "desc" : "asc")}
+                      className="p-1 hover:bg-slate-200 rounded-md transition-colors flex items-center gap-1 group text-blue-600 whitespace-nowrap cursor-pointer"
+                      title={sortDirection === "desc" ? "Switch to Newest Last" : "Switch to Newest First"}
+                    >
+                      <ArrowUpDown size={12} className={cn("transition-transform", sortDirection === "asc" && "rotate-180")} />
+                      <span className="text-[7px] text-slate-400 font-bold group-hover:text-blue-600">{sortDirection === "desc" ? "DESC" : "ASC"}</span>
+                    </button>
+                  </div>
+                </th>
+                <th className="hidden lg:table-cell px-4 md:px-6 py-3 md:py-4">Transaction Ownership</th>
+                <th className="px-4 md:px-6 py-3 md:py-4 text-right">Amount</th>
+                <th className="px-4 md:px-6 py-3 md:py-4 text-center">Status</th>
+                <th className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4">Date Disbursed</th>
+                <th className="px-4 md:px-6 py-3 md:py-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              <AnimatePresence mode="popLayout">
+                {disbursedItems.map((req, i) => (
+                  <motion.tr 
+                    key={req.id} 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setViewingReq(req)}
+                    className="transition-colors group cursor-pointer hover:bg-slate-50/80 border-l-2 border-l-transparent"
+                  >
+                    <td className="px-3 md:px-6 py-2.5 md:py-4">
+                      <div className="flex flex-col min-w-0 max-w-[120px] md:max-w-none">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900 text-[11px] md:text-sm truncate">{req.title}</span>
+                          {req.flaggedForAudit && (
+                            <span title="Flagged for Audit" className="inline-flex shrink-0">
+                              <Flag size={11} className="text-rose-500 fill-rose-500" />
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mt-1">
+                          <span className="text-[7.5px] md:text-[10px] font-mono text-slate-400 uppercase tracking-wider truncate shrink-0">{req.id}</span>
+                          <span className="inline-flex items-center px-1.5 py-0.5 bg-blue-50/80 border border-blue-200/50 text-blue-700 rounded-md text-[7.5px] md:text-[9px] font-extrabold uppercase tracking-wider leading-none w-fit">
+                            💒 {req.groupName}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="hidden lg:table-cell px-4 md:px-6 py-3 md:py-4">
+                      <div className="flex flex-col">
+                        <span className="text-slate-900 font-bold text-[11px] md:text-xs">
+                          {req.requesterName}
+                        </span>
+                        <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest text-[8px]">
+                          {req.groupName}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-3 md:px-6 py-2.5 md:py-4 text-right">
+                      <span className="font-mono font-bold text-slate-900 text-[10px] md:text-sm">{formatCurrency(req.amount)}</span>
+                    </td>
+                    <td className="px-3 md:px-6 py-2.5 md:py-4">
+                      <div className="flex justify-center">
+                        <span className="px-1.5 py-0.5 md:px-2.5 md:py-1 rounded-full border border-blue-100 bg-blue-50 text-blue-600 text-[7.5px] md:text-[9px] font-black uppercase tracking-[0.1em] md:tracking-[0.15em] shrink-0">
+                          {req.status}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4">
+                      <span className="text-[9px] md:text-[10px] font-mono font-bold text-slate-500">
+                        {formatDate(req.updatedAt)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setViewingReq(req);
+                          }}
+                          className="p-2 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 text-slate-400 hover:text-primary transition-all"
+                        >
+                          <Eye size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </motion.tr>
+                ))}
+              </AnimatePresence>
+            </tbody>
+            {disbursedList.length > 0 && (
+              <tfoot>
+                <tr className="bg-slate-100/50 border-t border-slate-200 font-bold text-slate-800">
+                  <td className="px-6 py-4 text-xs font-black uppercase tracking-wider" colSpan={2}>
+                    Total Disbursed Funds
+                  </td>
+                  <td className="px-6 py-4 text-right font-mono text-xs text-blue-600 font-extrabold whitespace-nowrap">
+                    {formatCurrency(disbursedList.reduce((sum, r) => sum + r.amount, 0))}
+                  </td>
+                  <td colSpan={3} className="px-6 py-4 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    ({disbursedList.length} items history)
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+          {disbursedList.length === 0 && (
+            <div className="py-24 text-center">
+              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
+                <History size={24} className="text-slate-300" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-600 uppercase tracking-widest">No disbursed requisitions</h3>
+              <p className="text-xs text-slate-400 mt-2">Disbursed items will appear here for historical archiving.</p>
+            </div>
+          )}
+        </div>
+        {disbursedTotalPages > 1 && (
+          <Pagination 
+            current={disbursedPage} 
+            total={disbursedTotalPages} 
+            onChange={setDisbursedPage} 
+          />
+        )}
       </div>
 
       {/* Modal for Adding */}
