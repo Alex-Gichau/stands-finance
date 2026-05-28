@@ -97,6 +97,7 @@ interface RequisitionContextType {
   setSearchFilter: (filter: SearchFilter) => void;
   activeToasts: BudgetAlert[];
   removeToast: (id: string) => void;
+  triggerToast: (toast: Omit<BudgetAlert, "id" | "isRead"> & { isRead?: boolean }) => void;
   readNoticeIds: string[];
   toggleNoticeRead: (id: string, forceRead?: boolean) => void;
   markAllNoticesRead: (ids: string[]) => void;
@@ -171,6 +172,16 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const removeToast = useCallback((id: string) => {
     setActiveToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  const triggerToast = useCallback((toast: Omit<BudgetAlert, "id" | "isRead"> & { isRead?: boolean }) => {
+    const id = `toast-${Math.random().toString(36).substr(2, 9)}`;
+    const newToast: BudgetAlert = {
+      ...toast,
+      id,
+      isRead: toast.isRead ?? false
+    };
+    setActiveToasts(prev => [newToast, ...prev].slice(0, 5));
   }, []);
 
   // Track which alerts have already been sent to activeToasts
@@ -270,6 +281,20 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
           if (userSnap.exists()) {
             const profile = userSnap.data() as UserProfile;
             
+            const mockUsers = [
+              { name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.ADMIN },
+              { name: "Rev. Dr. Patrick Mutua", email: "minister@standrews.org", role: UserRole.APPROVER_L1, approverCode: "111111" },
+              { name: "Elder Mercy Wanjiku", email: "clerk@standrews.org", role: UserRole.APPROVER_L2, approverCode: "2222222" },
+              { name: "Deacon John Mwangi", email: "treasurer@standrews.org", role: UserRole.FINANCE },
+              { name: "George Gichauri", email: "youth@standrews.org", role: UserRole.CHURCH_GROUP, group: "Youth Camp 2026" },
+              { name: "Sarah Kemunto", email: "worship@standrews.org", role: UserRole.CHURCH_GROUP, group: "Musical Instruments" },
+              { name: "Jane Doe", email: "guild@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sanctuary Renovation" },
+              { name: "David Kimani", email: "outreach@standrews.org", role: UserRole.CHURCH_GROUP, group: "Outreach Program" },
+              { name: "Mary Atieno", email: "ss@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sunday School Resources" },
+              { name: "Peter Omondi", email: "finance2@standrews.org", role: UserRole.FINANCE }
+            ];
+            const matchedMock = mockUsers.find(u => u.email.toLowerCase() === (firebaseUser.email || "").toLowerCase());
+
             if (inviteConsumed && invitedRole) {
               // Upgrade profile with invited attributes
               await setDoc(userRef, {
@@ -281,6 +306,16 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             } else if (firebaseUser.email === "gichaumburu@gmail.com" && (!profile.isApproved || profile.role !== UserRole.ADMIN)) {
               // Auto-promote bootstrap admin if info is missing or incorrect
               await setDoc(userRef, { role: UserRole.ADMIN, isApproved: true }, { merge: true });
+            } else if (matchedMock && (!profile.isApproved || profile.role !== matchedMock.role)) {
+              // Auto-approve and sync seeded system user matching this email
+              await setDoc(userRef, {
+                role: matchedMock.role,
+                isApproved: true,
+                isActive: true,
+                isSuspended: false,
+                ...(matchedMock.group && { group: matchedMock.group }),
+                ...(matchedMock.approverCode && { approverCode: matchedMock.approverCode })
+              }, { merge: true });
             } else {
               setCurrentUser(profile);
               setLoading(false);
@@ -288,20 +323,37 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
           } else {
             // Create new profile
             const isAdmin = firebaseUser.email === "gichaumburu@gmail.com";
+            
+            const mockUsers = [
+              { name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.ADMIN },
+              { name: "Rev. Dr. Patrick Mutua", email: "minister@standrews.org", role: UserRole.APPROVER_L1, approverCode: "111111" },
+              { name: "Elder Mercy Wanjiku", email: "clerk@standrews.org", role: UserRole.APPROVER_L2, approverCode: "2222222" },
+              { name: "Deacon John Mwangi", email: "treasurer@standrews.org", role: UserRole.FINANCE },
+              { name: "George Gichauri", email: "youth@standrews.org", role: UserRole.CHURCH_GROUP, group: "Youth Camp 2026" },
+              { name: "Sarah Kemunto", email: "worship@standrews.org", role: UserRole.CHURCH_GROUP, group: "Musical Instruments" },
+              { name: "Jane Doe", email: "guild@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sanctuary Renovation" },
+              { name: "David Kimani", email: "outreach@standrews.org", role: UserRole.CHURCH_GROUP, group: "Outreach Program" },
+              { name: "Mary Atieno", email: "ss@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sunday School Resources" },
+              { name: "Peter Omondi", email: "finance2@standrews.org", role: UserRole.FINANCE }
+            ];
+            const matchedMock = mockUsers.find(u => u.email.toLowerCase() === (firebaseUser.email || "").toLowerCase());
+
             const newProfile: UserProfile = {
               id: firebaseUser.uid,
-              name: firebaseUser.displayName || "Anonymous User",
+              name: firebaseUser.displayName || (matchedMock ? matchedMock.name : "Anonymous User"),
               email: firebaseUser.email || "",
-              role: inviteConsumed && invitedRole ? invitedRole : (isAdmin ? UserRole.ADMIN : UserRole.CHURCH_GROUP),
+              role: inviteConsumed && invitedRole ? invitedRole : (matchedMock ? matchedMock.role : (isAdmin ? UserRole.ADMIN : UserRole.CHURCH_GROUP)),
               isActive: true,
-              isApproved: inviteConsumed ? true : isAdmin,
+              isApproved: inviteConsumed ? true : (matchedMock ? true : isAdmin),
               isSuspended: false,
+              ...(matchedMock?.group && { group: matchedMock.group }),
+              ...(matchedMock?.approverCode && { approverCode: matchedMock.approverCode }),
               ...(inviteConsumed && invitedGroup && { group: invitedGroup }),
               ...(inviteConsumed && invitedCode && { approverCode: invitedCode }),
             };
             await setDoc(userRef, newProfile);
             
-            if (!isAdmin && !inviteConsumed) {
+            if (!isAdmin && !inviteConsumed && !matchedMock) {
               fetch("/api/notify-slack", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -1342,6 +1394,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setSearchFilter,
       activeToasts,
       removeToast,
+      triggerToast,
       readNoticeIds,
       toggleNoticeRead,
       markAllNoticesRead

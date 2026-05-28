@@ -162,8 +162,8 @@ service cloud.firestore {
     match /alerts/{alertId} {
       allow get: if isValidId(alertId) && (isApprovedUser() || isAdmin());
       allow list: if isApprovedUser() || isAdmin();
-      allow create: if isValidId(alertId) && (isApprovedUser() || isAdmin()) && isValidAlert(incoming());
-      allow update: if isValidId(alertId) && (isApprovedUser() || isAdmin()) && 
+      allow create: if isValidId(alertId) && isSignedIn() && isValidAlert(incoming());
+      allow update: if isValidId(alertId) && isSignedIn() && 
                       (incoming().diff(existing()).affectedKeys().hasOnly(['isRead']) || 
                        incoming().diff(existing()).affectedKeys().size() == 0);
       allow delete: if isValidId(alertId) && isAdmin();

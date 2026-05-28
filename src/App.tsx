@@ -51,7 +51,7 @@ interface ToastItemProps {
 const ToastItem: React.FC<ToastItemProps> = ({ toast, index, removeToast, setCurrentView }) => {
   const [progress, setProgress] = useState(100);
   const [isHovered, setIsHovered] = useState(false);
-  const duration = 7000; // 7 seconds before auto dismiss
+  const duration = toast.severity === "LOW" ? 3000 : 7000; // 3s for low severity, otherwise 7s
   const intervalTime = 40; // update scale dynamically
   const decrement = (intervalTime / duration) * 100;
 

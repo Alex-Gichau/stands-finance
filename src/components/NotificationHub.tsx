@@ -38,11 +38,47 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ onSelectRequis
     approveUser,
     alerts,
     readNoticeIds,
-    toggleNoticeRead
+    toggleNoticeRead,
+    triggerToast
   } = useRequisitions();
 
   const [filterType, setFilterType] = useState<"ALL" | "ACTIONS" | "ALERTS">("ALL");
   const [successId, setSuccessId] = useState<string | null>(null);
+
+  const seenRequisitionsRef = React.useRef<Set<string>>(new Set());
+  const isFirstMountRef = React.useRef(true);
+
+  React.useEffect(() => {
+    if (isFirstMountRef.current) {
+      // Mark all existing requisitions as seen on mount
+      requisitions.forEach(r => seenRequisitionsRef.current.add(r.id));
+      isFirstMountRef.current = false;
+      return;
+    }
+
+    // Check for newly added requisitions
+    requisitions.forEach(r => {
+      if (!seenRequisitionsRef.current.has(r.id)) {
+        seenRequisitionsRef.current.add(r.id);
+
+        // Only trigger toast if the requisition is SUBMITTED
+        if (r.status === RequisitionStatus.SUBMITTED) {
+          const isUserAdmin = currentUser?.role === UserRole.ADMIN;
+          
+          const toastMessage = isUserAdmin
+            ? `New Requisition: "${r.title}" for KES ${r.amount.toLocaleString()} submitted by ${r.requesterName}`
+            : `New Requisition Submitted: "${r.title}"`;
+
+          triggerToast({
+            type: "LARGE_REQUEST",
+            severity: "LOW", // LOW severity triggers 3s quick-dismiss
+            message: toastMessage,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+    });
+  }, [requisitions, currentUser, triggerToast]);
 
   // Re-compile notice list dynamically to match bell notifications
   const notificationItems = React.useMemo(() => {
