@@ -131,6 +131,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, not
             <button
               key={item.id}
               onClick={() => onViewChange(item.id)}
+              data-sidebar-item={item.label}
               className={cn(
                 "w-full flex items-center rounded-2xl transition-all duration-300 group text-[11px] font-black uppercase tracking-widest focus:outline-none relative",
                 isCollapsed ? "justify-center p-3" : "gap-4 px-4 py-3.5",
@@ -238,6 +239,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, not
               type="button"
               whileTap={{ scale: 0.9 }}
               onClick={() => onViewChange(item.id)}
+              data-sidebar-item={item.label}
               className="flex flex-col items-center justify-center w-14 h-14 relative transition-all duration-300 overflow-visible cursor-pointer"
             >
               {isActive ? (

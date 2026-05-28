@@ -8,6 +8,8 @@ import { RequisitionProvider, useRequisitions } from "./contexts/RequisitionCont
 import { cn } from "./lib/utils";
 import { Sidebar } from "./components/Sidebar";
 import Dashboard from "./components/Dashboard";
+import { useIdleTimeout } from "./hooks/useIdleTimeout";
+import { sendSlackNotification } from "./lib/utils";
 import { RequisitionsPanel, RequisitionDetailModal } from "./components/RequisitionsPanel";
 import { NotificationHub } from "./components/NotificationHub";
 import { ReceiptTemplateGenerator } from "./components/ReceiptTemplateGenerator";
@@ -268,6 +270,73 @@ function AppContent() {
     toggleNoticeRead,
     markAllNoticesRead
   } = useRequisitions();
+
+  // Idle Timeout Implementation
+  useIdleTimeout(() => {
+    if (currentUser) {
+      const userName = currentUser.name || currentUser.email;
+      sendSlackNotification({
+        action: "User Session Timeout",
+        details: `${userName} was automatically signed out due to inactivity.`,
+        performedBy: "SYSTEM_IDLE_MONITOR",
+        level: "normal",
+        metadata: {
+          userId: currentUser.id,
+          userEmail: currentUser.email,
+          timeoutPolicy: "15_MINUTES_IDLE"
+        }
+      });
+      logout();
+    }
+  }, 15 * 60 * 1000);
+
+  // Global Interaction Tracking for Slack Alerts
+  useEffect(() => {
+    const handleGlobalClick = (e: MouseEvent) => {
+      if (!currentUser) return;
+
+      const target = e.target as HTMLElement;
+      const button = target.closest("button");
+      const sidebarItem = target.closest("[data-sidebar-item]");
+
+      // Case 1: Navbar/Sidebar Navigation interaction (Primary)
+      if (sidebarItem) {
+        const itemText = sidebarItem.getAttribute("data-sidebar-item") || sidebarItem.textContent || "Sidebar Item";
+        sendSlackNotification({
+          action: "Navbar Interaction",
+          details: `User navigated to: "${itemText.trim()}"`,
+          performedBy: currentUser.name || currentUser.email,
+          metadata: {
+            view: currentView,
+            targetSection: itemText.trim()
+          }
+        });
+        return; // Don't trigger a general button alert if it's a navbar item
+      }
+
+      // Case 2: Standard Button interaction
+      if (button) {
+        const buttonText = button.innerText.trim() || button.title || button.ariaLabel || "Unnamed Button";
+        
+        // Filter out noise: common utility buttons that don't need alerts
+        const noisyTexts = ["X", "Close", "Cancel", "Clear", ""];
+        if (!noisyTexts.includes(buttonText)) {
+          sendSlackNotification({
+            action: "Button Pressed",
+            details: `User interacted with component: "${buttonText}"`,
+            performedBy: currentUser.name || currentUser.email,
+            metadata: {
+              currentView: currentView,
+              buttonClasses: button.className.substring(0, 50)
+            }
+          });
+        }
+      }
+    };
+
+    window.addEventListener("click", handleGlobalClick);
+    return () => window.removeEventListener("click", handleGlobalClick);
+  }, [currentUser, currentView]);
 
   const [showProfilePrompt, setShowProfilePrompt] = useState(false);
   const [hasPromptBeenShown, setHasPromptBeenShown] = useState(false);
