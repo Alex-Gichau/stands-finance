@@ -124,7 +124,7 @@ service cloud.firestore {
              data.message is string && data.message.size() <= 1500 &&
              data.timestamp is string &&
              data.isRead is bool &&
-             (!('targetRole' in data) || data.targetRole is string);
+             (!data.keys().hasAny(['targetRole']) || data.targetRole is string);
     }
 
     // --- match Blocks ---

@@ -116,6 +116,11 @@ const PieTooltip = ({ active, payload }: any) => {
 const Dashboard: React.FC = () => {
   const { requisitions, projects, alerts, currentUser, seedAllEcosystemData, deleteRequisition, systemLogs } = useRequisitions();
 
+  const hasAuditTrail = useMemo(() => {
+    if (!currentUser) return false;
+    return [UserRole.ADMIN, UserRole.FINANCE].includes(currentUser.role);
+  }, [currentUser]);
+
   const [seeding, setSeeding] = useState(false);
   const [selectedRequisition, setSelectedRequisition] = useState<Requisition | null>(null);
   const [isGeneratingReceipt, setIsGeneratingReceipt] = useState<Requisition | null>(null);
@@ -552,7 +557,10 @@ const Dashboard: React.FC = () => {
       {/* Main Grid View */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Weekly Volume Chart */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col shadow-sm">
+        <div className={cn(
+          hasAuditTrail ? "lg:col-span-2" : "lg:col-span-3",
+          "bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col shadow-sm"
+        )}>
           <div className="px-4 md:px-6 py-4 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <TrendingUp size={16} className="text-primary" />
@@ -759,70 +767,72 @@ const Dashboard: React.FC = () => {
         </div>
 
         {/* Activity Feed */}
-        <div className="bg-white rounded-2xl border border-slate-200 flex flex-col shadow-sm">
-          <div className="px-4 md:px-6 py-3 md:py-4 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Activity size={16} className="text-indigo-600" />
-              <h2 className="text-[10px] md:text-xs font-bold text-slate-800 uppercase tracking-widest">Audit Trail</h2>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[8px] md:text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest">LIVE</span>
-              <button className="text-[8px] md:text-[10px] text-primary font-black uppercase tracking-widest hover:underline transition-all">
-                View All
-              </button>
-            </div>
-          </div>
-          <div className="p-2 md:p-4 space-y-2 md:space-y-4 flex-1 overflow-y-auto max-h-[280px] scrollbar-hide">
-            {combinedTimeline.length > 0 ? (
-              combinedTimeline.map((item, idx) => {
-                const associatedRequisition = findRequisitionForLog(item.message);
-                
-                return (
-                  <div 
-                    key={item.id || idx} 
-                    onClick={() => {
-                      if (associatedRequisition) {
-                        setSelectedRequisition(associatedRequisition);
-                      }
-                    }}
-                    className={cn(
-                      "relative pl-6 pb-3 md:pb-4 border-l-2 border-slate-100 last:pb-0 group transition-colors",
-                      associatedRequisition ? "hover:bg-slate-50 cursor-pointer p-1.5 -ml-1.5 rounded-r-xl" : ""
-                    )}
-                  >
-                    <div className={cn(
-                      "absolute left-[-5px] top-1.5 md:top-2 w-2 h-2 rounded-full border border-white ring-4 ring-white",
-                      item.type === "ALERT" 
-                        ? (item.severity === "HIGH" ? "bg-rose-500" : "bg-amber-500")
-                        : (item.action?.includes("CREATE") ? "bg-blue-500" : item.action?.includes("APPROVE") ? "bg-emerald-500" : "bg-slate-400")
-                    )} />
-                    
-                    <p className="text-[10px] md:text-[11px] font-bold text-slate-800 leading-snug group-hover:text-indigo-950 transition-colors">
-                      {item.message}
-                    </p>
-                    
-                    <div className="flex items-center gap-2 mt-0.5 md:mt-1">
-                      <span className="text-[8px] md:text-[9px] text-slate-400 font-mono uppercase">
-                        {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                      <span className={cn(
-                        "px-1 py-0.5 rounded text-[7px] md:text-[8px] font-black tracking-widest uppercase border",
-                        item.type === "ALERT" ? "bg-rose-50/50 text-rose-600 border-rose-100" : "bg-slate-50 text-slate-500 border-slate-200"
-                      )}>
-                        {item.type === "ALERT" ? `Alert (${item.severity})` : item.action?.replace(/_/g, " ") || "AUDIT"}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-slate-300 py-10 opacity-50">
-                <Activity size={24} />
-                <p className="text-[8px] font-bold uppercase tracking-widest mt-2">No activity logs</p>
+        {hasAuditTrail && (
+          <div className="bg-white rounded-2xl border border-slate-200 flex flex-col shadow-sm">
+            <div className="px-4 md:px-6 py-3 md:py-4 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity size={16} className="text-indigo-600" />
+                <h2 className="text-[10px] md:text-xs font-bold text-slate-800 uppercase tracking-widest">Audit Trail</h2>
               </div>
-            )}
+              <div className="flex items-center gap-2">
+                <span className="text-[8px] md:text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest">LIVE</span>
+                <button className="text-[8px] md:text-[10px] text-primary font-black uppercase tracking-widest hover:underline transition-all">
+                  View All
+                </button>
+              </div>
+            </div>
+            <div className="p-2 md:p-4 space-y-2 md:space-y-4 flex-1 overflow-y-auto max-h-[280px] scrollbar-hide">
+              {combinedTimeline.length > 0 ? (
+                combinedTimeline.map((item, idx) => {
+                  const associatedRequisition = findRequisitionForLog(item.message);
+                  
+                  return (
+                    <div 
+                      key={item.id || idx} 
+                      onClick={() => {
+                        if (associatedRequisition) {
+                          setSelectedRequisition(associatedRequisition);
+                        }
+                      }}
+                      className={cn(
+                        "relative pl-6 pb-3 md:pb-4 border-l-2 border-slate-100 last:pb-0 group transition-colors",
+                        associatedRequisition ? "hover:bg-slate-50 cursor-pointer p-1.5 -ml-1.5 rounded-r-xl" : ""
+                      )}
+                    >
+                      <div className={cn(
+                        "absolute left-[-5px] top-1.5 md:top-2 w-2 h-2 rounded-full border border-white ring-4 ring-white",
+                        item.type === "ALERT" 
+                          ? (item.severity === "HIGH" ? "bg-rose-500" : "bg-amber-500")
+                          : (item.action?.includes("CREATE") ? "bg-blue-500" : item.action?.includes("APPROVE") ? "bg-emerald-500" : "bg-slate-400")
+                      )} />
+                      
+                      <p className="text-[10px] md:text-[11px] font-bold text-slate-800 leading-snug group-hover:text-indigo-950 transition-colors">
+                        {item.message}
+                      </p>
+                      
+                      <div className="flex items-center gap-2 mt-0.5 md:mt-1">
+                        <span className="text-[8px] md:text-[9px] text-slate-400 font-mono uppercase">
+                          {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <span className={cn(
+                          "px-1 py-0.5 rounded text-[7px] md:text-[8px] font-black tracking-widest uppercase border",
+                          item.type === "ALERT" ? "bg-rose-50/50 text-rose-600 border-rose-100" : "bg-slate-50 text-slate-500 border-slate-200"
+                        )}>
+                          {item.type === "ALERT" ? `Alert (${item.severity})` : item.action?.replace(/_/g, " ") || "AUDIT"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-slate-300 py-10 opacity-50">
+                  <Activity size={24} />
+                  <p className="text-[8px] font-bold uppercase tracking-widest mt-2">No activity logs</p>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Group Requests Breakdown Ledger & Dashboard Pie Chart Visualizer */}

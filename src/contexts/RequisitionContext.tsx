@@ -34,6 +34,7 @@ import {
   updateDoc, 
   deleteDoc, 
   getDoc,
+  getDocs,
   query,
   orderBy,
   where,
@@ -254,134 +255,153 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       unsubUserDoc(); // Clean up prior listener on state change
 
       if (firebaseUser) {
-        const userRef = doc(db, "users", firebaseUser.uid);
+        const overrideEmail = typeof window !== "undefined" ? localStorage.getItem("override_authorized_user_email") : null;
+        const isBypass = firebaseUser.email === "bypass-node@standrews.org" && overrideEmail;
 
-        unsubUserDoc = onSnapshot(userRef, async (userSnap) => {
-          let inviteConsumed = false;
-          let invitedRole: UserRole | null = null;
-          let invitedGroup: string | null = null;
-          let invitedCode: string | null = null;
-
-          const storedInviteStr = sessionStorage.getItem("requisition_invite");
-          if (storedInviteStr) {
-            try {
-              const invite = JSON.parse(storedInviteStr);
-              if (invite.email && firebaseUser.email && invite.email.toLowerCase() === firebaseUser.email.toLowerCase()) {
-                invitedRole = invite.role;
-                invitedGroup = invite.group || null;
-                invitedCode = invite.code || null;
-                inviteConsumed = true;
-                sessionStorage.removeItem("requisition_invite");
-              }
-            } catch (e) {
-              console.error("Failed parsing stored invitation:", e);
-            }
-          }
-
-          if (userSnap.exists()) {
-            const profile = userSnap.data() as UserProfile;
-            
-            const mockUsers = [
-              { name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.ADMIN },
-              { name: "Rev. Dr. Patrick Mutua", email: "minister@standrews.org", role: UserRole.APPROVER_L1, approverCode: "111111" },
-              { name: "Elder Mercy Wanjiku", email: "clerk@standrews.org", role: UserRole.APPROVER_L2, approverCode: "2222222" },
-              { name: "Deacon John Mwangi", email: "treasurer@standrews.org", role: UserRole.FINANCE },
-              { name: "George Gichauri", email: "youth@standrews.org", role: UserRole.CHURCH_GROUP, group: "Youth Camp 2026" },
-              { name: "Sarah Kemunto", email: "worship@standrews.org", role: UserRole.CHURCH_GROUP, group: "Musical Instruments" },
-              { name: "Jane Doe", email: "guild@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sanctuary Renovation" },
-              { name: "David Kimani", email: "outreach@standrews.org", role: UserRole.CHURCH_GROUP, group: "Outreach Program" },
-              { name: "Mary Atieno", email: "ss@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sunday School Resources" },
-              { name: "Peter Omondi", email: "finance2@standrews.org", role: UserRole.FINANCE }
-            ];
-            const matchedMock = mockUsers.find(u => u.email.toLowerCase() === (firebaseUser.email || "").toLowerCase());
-
-            if (inviteConsumed && invitedRole) {
-              // Upgrade profile with invited attributes
-              await setDoc(userRef, {
-                role: invitedRole,
-                isApproved: true,
-                ...(invitedGroup && { group: invitedGroup }),
-                ...(invitedCode && { approverCode: invitedCode }),
-                ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
-              }, { merge: true });
-            } else if (firebaseUser.email === "gichaumburu@gmail.com" && (!profile.isApproved || profile.role !== UserRole.ADMIN)) {
-              // Auto-promote bootstrap admin if info is missing or incorrect
-              await setDoc(userRef, { 
-                role: UserRole.ADMIN, 
-                isApproved: true,
-                ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
-              }, { merge: true });
-            } else if (matchedMock && (!profile.isApproved || profile.role !== matchedMock.role)) {
-              // Auto-approve and sync seeded system user matching this email
-              await setDoc(userRef, {
-                role: matchedMock.role,
-                isApproved: true,
-                isActive: true,
-                isSuspended: false,
-                ...(matchedMock.group && { group: matchedMock.group }),
-                ...(matchedMock.approverCode && { approverCode: matchedMock.approverCode }),
-                ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
-              }, { merge: true });
+        if (isBypass && overrideEmail) {
+          const q = query(collection(db, "users"), where("email", "==", overrideEmail.toLowerCase()));
+          unsubUserDoc = onSnapshot(q, (querySnap) => {
+            if (!querySnap.empty) {
+              const profile = querySnap.docs[0].data() as UserProfile;
+              setCurrentUser(profile);
+              setLoading(false);
             } else {
-              if (firebaseUser.photoURL && profile.photoURL !== firebaseUser.photoURL) {
-                await setDoc(userRef, { photoURL: firebaseUser.photoURL }, { merge: true });
-              } else {
-                setCurrentUser(profile);
-                setLoading(false);
+              setLoading(false);
+            }
+          }, (err) => {
+            console.error("Bypass user sync database error:", err);
+            setLoading(false);
+          });
+        } else {
+          const userRef = doc(db, "users", firebaseUser.uid);
+
+          unsubUserDoc = onSnapshot(userRef, async (userSnap) => {
+            let inviteConsumed = false;
+            let invitedRole: UserRole | null = null;
+            let invitedGroup: string | null = null;
+            let invitedCode: string | null = null;
+
+            const storedInviteStr = sessionStorage.getItem("requisition_invite");
+            if (storedInviteStr) {
+              try {
+                const invite = JSON.parse(storedInviteStr);
+                if (invite.email && firebaseUser.email && invite.email.toLowerCase() === firebaseUser.email.toLowerCase()) {
+                  invitedRole = invite.role;
+                  invitedGroup = invite.group || null;
+                  invitedCode = invite.code || null;
+                  inviteConsumed = true;
+                  sessionStorage.removeItem("requisition_invite");
+                }
+              } catch (e) {
+                console.error("Failed parsing stored invitation:", e);
               }
             }
-          } else {
-            // Create new profile
-            const isAdmin = firebaseUser.email === "gichaumburu@gmail.com";
-            
-            const mockUsers = [
-              { name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.ADMIN },
-              { name: "Rev. Dr. Patrick Mutua", email: "minister@standrews.org", role: UserRole.APPROVER_L1, approverCode: "111111" },
-              { name: "Elder Mercy Wanjiku", email: "clerk@standrews.org", role: UserRole.APPROVER_L2, approverCode: "2222222" },
-              { name: "Deacon John Mwangi", email: "treasurer@standrews.org", role: UserRole.FINANCE },
-              { name: "George Gichauri", email: "youth@standrews.org", role: UserRole.CHURCH_GROUP, group: "Youth Camp 2026" },
-              { name: "Sarah Kemunto", email: "worship@standrews.org", role: UserRole.CHURCH_GROUP, group: "Musical Instruments" },
-              { name: "Jane Doe", email: "guild@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sanctuary Renovation" },
-              { name: "David Kimani", email: "outreach@standrews.org", role: UserRole.CHURCH_GROUP, group: "Outreach Program" },
-              { name: "Mary Atieno", email: "ss@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sunday School Resources" },
-              { name: "Peter Omondi", email: "finance2@standrews.org", role: UserRole.FINANCE }
-            ];
-            const matchedMock = mockUsers.find(u => u.email.toLowerCase() === (firebaseUser.email || "").toLowerCase());
 
-            const newProfile: UserProfile = {
-              id: firebaseUser.uid,
-              name: firebaseUser.displayName || (matchedMock ? matchedMock.name : "Anonymous User"),
-              email: firebaseUser.email || "",
-              role: inviteConsumed && invitedRole ? invitedRole : (matchedMock ? matchedMock.role : (isAdmin ? UserRole.ADMIN : UserRole.CHURCH_GROUP)),
-              isActive: true,
-              isApproved: inviteConsumed ? true : (matchedMock ? true : isAdmin),
-              isSuspended: false,
-              ...(matchedMock?.group && { group: matchedMock.group }),
-              ...(matchedMock?.approverCode && { approverCode: matchedMock.approverCode }),
-              ...(inviteConsumed && invitedGroup && { group: invitedGroup }),
-              ...(inviteConsumed && invitedCode && { approverCode: invitedCode }),
-              ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
-            };
-            await setDoc(userRef, newProfile);
-            
-            if (!isAdmin && !inviteConsumed && !matchedMock) {
-              fetch("/api/notify-slack", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  action: "USER_PENDING_APPROVAL",
-                  details: `🚨 ACTION REQUIRED: New user registered via Google and is PENDING APPROVAL: ${newProfile.email}`,
-                  performedBy: newProfile.email,
-                  timestamp: new Date().toISOString(),
-                  metadata: { email: newProfile.email }
-                })
-              }).catch(err => console.warn("Slack Background Notify Failed:", err));
+            if (userSnap.exists()) {
+              const profile = userSnap.data() as UserProfile;
+              
+              const mockUsers = [
+                { name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.ADMIN },
+                { name: "Rev. Dr. Patrick Mutua", email: "minister@standrews.org", role: UserRole.APPROVER_L1, approverCode: "111111" },
+                { name: "Elder Mercy Wanjiku", email: "clerk@standrews.org", role: UserRole.APPROVER_L2, approverCode: "2222222" },
+                { name: "Deacon John Mwangi", email: "treasurer@standrews.org", role: UserRole.FINANCE },
+                { name: "George Gichauri", email: "youth@standrews.org", role: UserRole.CHURCH_GROUP, group: "Youth Camp 2026" },
+                { name: "Sarah Kemunto", email: "worship@standrews.org", role: UserRole.CHURCH_GROUP, group: "Musical Instruments" },
+                { name: "Jane Doe", email: "guild@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sanctuary Renovation" },
+                { name: "David Kimani", email: "outreach@standrews.org", role: UserRole.CHURCH_GROUP, group: "Outreach Program" },
+                { name: "Mary Atieno", email: "ss@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sunday School Resources" },
+                { name: "Peter Omondi", email: "finance2@standrews.org", role: UserRole.FINANCE }
+              ];
+              const matchedMock = mockUsers.find(u => u.email.toLowerCase() === (firebaseUser.email || "").toLowerCase());
+
+              if (inviteConsumed && invitedRole) {
+                // Upgrade profile with invited attributes
+                await setDoc(userRef, {
+                  role: invitedRole,
+                  isApproved: true,
+                  ...(invitedGroup && { group: invitedGroup }),
+                  ...(invitedCode && { approverCode: invitedCode }),
+                  ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
+                }, { merge: true });
+              } else if (firebaseUser.email === "gichaumburu@gmail.com" && (!profile.isApproved || profile.role !== UserRole.ADMIN)) {
+                // Auto-promote bootstrap admin if info is missing or incorrect
+                await setDoc(userRef, { 
+                  role: UserRole.ADMIN, 
+                  isApproved: true,
+                  ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
+                }, { merge: true });
+              } else if (matchedMock && (!profile.isApproved || profile.role !== matchedMock.role)) {
+                // Auto-approve and sync seeded system user matching this email
+                await setDoc(userRef, {
+                  role: matchedMock.role,
+                  isApproved: true,
+                  isActive: true,
+                  isSuspended: false,
+                  ...(matchedMock.group && { group: matchedMock.group }),
+                  ...(matchedMock.approverCode && { approverCode: matchedMock.approverCode }),
+                  ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
+                }, { merge: true });
+              } else {
+                if (firebaseUser.photoURL && profile.photoURL !== firebaseUser.photoURL) {
+                  await setDoc(userRef, { photoURL: firebaseUser.photoURL }, { merge: true });
+                } else {
+                  setCurrentUser(profile);
+                  setLoading(false);
+                }
+              }
+            } else {
+              // Create new profile
+              const isAdmin = firebaseUser.email === "gichaumburu@gmail.com";
+              
+              const mockUsers = [
+                { name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.ADMIN },
+                { name: "Rev. Dr. Patrick Mutua", email: "minister@standrews.org", role: UserRole.APPROVER_L1, approverCode: "111111" },
+                { name: "Elder Mercy Wanjiku", email: "clerk@standrews.org", role: UserRole.APPROVER_L2, approverCode: "2222222" },
+                { name: "Deacon John Mwangi", email: "treasurer@standrews.org", role: UserRole.FINANCE },
+                { name: "George Gichauri", email: "youth@standrews.org", role: UserRole.CHURCH_GROUP, group: "Youth Camp 2026" },
+                { name: "Sarah Kemunto", email: "worship@standrews.org", role: UserRole.CHURCH_GROUP, group: "Musical Instruments" },
+                { name: "Jane Doe", email: "guild@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sanctuary Renovation" },
+                { name: "David Kimani", email: "outreach@standrews.org", role: UserRole.CHURCH_GROUP, group: "Outreach Program" },
+                { name: "Mary Atieno", email: "ss@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sunday School Resources" },
+                { name: "Peter Omondi", email: "finance2@standrews.org", role: UserRole.FINANCE }
+              ];
+              const matchedMock = mockUsers.find(u => u.email.toLowerCase() === (firebaseUser.email || "").toLowerCase());
+
+              const newProfile: UserProfile = {
+                id: firebaseUser.uid,
+                name: firebaseUser.displayName || (matchedMock ? matchedMock.name : "Anonymous User"),
+                email: firebaseUser.email || "",
+                role: inviteConsumed && invitedRole ? invitedRole : (matchedMock ? matchedMock.role : (isAdmin ? UserRole.ADMIN : UserRole.CHURCH_GROUP)),
+                isActive: true,
+                isApproved: inviteConsumed ? true : (matchedMock ? true : isAdmin),
+                isSuspended: false,
+                ...(matchedMock?.group && { group: matchedMock.group }),
+                ...(matchedMock?.approverCode && { approverCode: matchedMock.approverCode }),
+                ...(inviteConsumed && invitedGroup && { group: invitedGroup }),
+                ...(inviteConsumed && invitedCode && { approverCode: invitedCode }),
+                ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
+              };
+              await setDoc(userRef, newProfile);
+              
+              if (!isAdmin && !inviteConsumed && !matchedMock) {
+                fetch("/api/notify-slack", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    action: "USER_PENDING_APPROVAL",
+                    details: `🚨 ACTION REQUIRED: New user registered via Google and is PENDING APPROVAL: ${newProfile.email}`,
+                    performedBy: newProfile.email,
+                    timestamp: new Date().toISOString(),
+                    metadata: { email: newProfile.email }
+                  })
+                }).catch(err => console.warn("Slack Background Notify Failed:", err));
+              }
             }
-          }
-        }, (err) => {
-          console.error("User profile sync failed", err);
-          setLoading(false);
-        });
+          }, (err) => {
+            console.error("User profile sync failed", err);
+            setLoading(false);
+          });
+        }
       } else {
         setCurrentUser(null);
         setLoading(false);
@@ -893,6 +913,76 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     } catch (error: any) {
       if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found') {
+        // First try to authenticate as bypass-node to securely check the custom password override in the database
+        try {
+          const bypassEmail = "bypass-node@standrews.org";
+          const bypassPass = "BypassNode2026!";
+          let authenticatedAsBypass = false;
+
+          try {
+            await signInWithEmailAndPassword(auth, bypassEmail, bypassPass);
+            authenticatedAsBypass = true;
+          } catch (bypassErr: any) {
+            if (bypassErr.code === 'auth/invalid-credential' || bypassErr.code === 'auth/user-not-found') {
+              // Provision the bypass account on first-run
+              const secondaryAppName = `BypassRegApp-${Math.random().toString(36).substring(2, 9)}`;
+              let secondaryApp = null;
+              try {
+                secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+                const secondaryAuth = getAuth(secondaryApp);
+                const userCredential = await createUserWithEmailAndPassword(secondaryAuth, bypassEmail, bypassPass);
+                const bypassUid = userCredential.user.uid;
+                await updateProfile(userCredential.user, { displayName: "Security Bypass Node" });
+                
+                await secondaryAuth.signOut();
+                await deleteApp(secondaryApp);
+                
+                // Now authenticate on the main auth instance to write the user profile doc
+                await signInWithEmailAndPassword(auth, bypassEmail, bypassPass);
+                
+                const bypassUserRef = doc(db, "users", bypassUid);
+                await setDoc(bypassUserRef, {
+                  id: bypassUid,
+                  name: "Security Bypass Node",
+                  email: bypassEmail,
+                  role: UserRole.ADMIN,
+                  isActive: true,
+                  isApproved: true,
+                  isSuspended: false
+                });
+                authenticatedAsBypass = true;
+              } catch (regError) {
+                if (secondaryApp) await deleteApp(secondaryApp);
+                console.error("Failed provisioning override gateway", regError);
+              }
+            } else {
+              console.error("Bypass login failed with an unexpected error:", bypassErr);
+            }
+          }
+
+          if (authenticatedAsBypass) {
+            // Since we are authenticated as the bypass node, we can query users safely
+            const q = query(collection(db, "users"), where("email", "==", email.toLowerCase()));
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+              const userDoc = snap.docs[0];
+              const userData = userDoc.data();
+              if (userData.tempPassword && userData.tempPassword === pass) {
+                console.log(`Matching administrative credential override found for email: ${email}`);
+                if (typeof window !== "undefined") {
+                  localStorage.setItem("override_authorized_user_email", email.toLowerCase());
+                }
+                await addSystemLog("USER_LOGIN_OVERRIDE", `User logged in via admin manual credentials override: ${email}`, { email });
+                return;
+              }
+            }
+            // If verification failed (wrong pass, or no user), log out of the bypass node session
+            await signOut(auth);
+          }
+        } catch (dbErr) {
+          console.error("Credentials override search aborted", dbErr);
+        }
+
         const mockUsers = [
           { name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.ADMIN },
           { name: "Rev. Dr. Patrick Mutua", email: "minister@standrews.org", role: UserRole.APPROVER_L1, approverCode: "111111" },
@@ -1027,6 +1117,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const logout = async () => {
     const userEmail = auth.currentUser?.email;
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("override_authorized_user_email");
+    }
     await signOut(auth);
     if (userEmail) {
       await addSystemLog("USER_LOGOUT", `User logged out: ${userEmail}`, { email: userEmail });

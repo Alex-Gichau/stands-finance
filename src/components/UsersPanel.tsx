@@ -26,7 +26,8 @@ import {
   Building2,
   XCircle,
   ShieldCheck,
-  Clock
+  Clock,
+  Download
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -42,7 +43,8 @@ export const UsersPanel: React.FC = () => {
     adminResetUserPassword,
     churchGroups,
     addChurchGroup,
-    deleteChurchGroup
+    deleteChurchGroup,
+    addSystemLog
   } = useRequisitions();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState<string>("ALL");
@@ -81,6 +83,12 @@ export const UsersPanel: React.FC = () => {
   const [editSuccess, setEditSuccess] = useState<string | null>(null);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
 
+  // Custom states for group selection & admin password reset overrides
+  const [selectedGroupForMembers, setSelectedGroupForMembers] = useState<any | null>(null);
+  const [showPasswordResetOptions, setShowPasswordResetOptions] = useState(false);
+  const [passwordResetMethod, setPasswordResetMethod] = useState<"EMAIL" | "MANUAL">("EMAIL");
+  const [customNewPassword, setCustomNewPassword] = useState("");
+
   const handleResetPassword = async (email: string) => {
     setEditError(null);
     setEditSuccess(null);
@@ -92,6 +100,83 @@ export const UsersPanel: React.FC = () => {
       setEditError(err?.message || "Failed to trigger password reset email.");
     } finally {
       setIsResettingPassword(false);
+    }
+  };
+
+  const handleCustomPasswordOverride = async (userId: string, newPass: string) => {
+    setEditError(null);
+    setEditSuccess(null);
+    if (!newPass.trim() || newPass.length < 8) {
+      setEditError("Password must be at least 8 characters long.");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await updateUserProfile(userId, { tempPassword: newPass.trim() });
+      await addSystemLog("ADMIN_PASSWORD_OVERRIDE", `Admin directly saved override temporary password for user ID: ${userId}`, { userId });
+      setEditSuccess(`Temporary override password successfully applied!`);
+      setShowPasswordResetOptions(false);
+      setCustomNewPassword("");
+    } catch (err: any) {
+      setEditError(err?.message || "Failed to set custom password.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleExportCSV = (groupNameFilter?: string) => {
+    // Select all user profiles with role === UserRole.CHURCH_GROUP
+    let membersToExport = users.filter(u => u.role === UserRole.CHURCH_GROUP);
+    
+    // Narrow down by specific church group if specified
+    if (groupNameFilter) {
+      membersToExport = membersToExport.filter(u => u.group === groupNameFilter);
+    }
+
+    if (membersToExport.length === 0) {
+      alert(groupNameFilter 
+        ? `No church group members found for group: "${groupNameFilter}".` 
+        : "No church group members found to export."
+      );
+      return;
+    }
+
+    // Prepare CSV Header and Data Rows
+    const headers = ["ID", "Name", "Email", "Role", "Church Group", "Status", "Suspended"];
+    const rows = membersToExport.map(u => [
+      u.id,
+      `"${u.name.replace(/"/g, '""')}"`,
+      u.email,
+      u.role,
+      `"${(u.group || "").replace(/"/g, '""')}"`,
+      !u.isApproved ? "PENDING" : u.isSuspended ? "SUSPENDED" : "ACTIVE",
+      u.isSuspended ? "YES" : "NO"
+    ]);
+
+    const csvContent = [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    
+    const filename = groupNameFilter 
+      ? `church_members_${groupNameFilter.toLowerCase().replace(/[^a-z0-9]+/g, "_")}.csv`
+      : "all_church_group_members.csv";
+      
+    link.setAttribute("download", filename);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    // Record system log for audit trail purposes
+    if (addSystemLog) {
+      addSystemLog(
+        "EXPORT_CHURCH_MEMBERS_CSV", 
+        `Admin exported church group members CSV${groupNameFilter ? ` for church group: ${groupNameFilter}` : ""}`, 
+        { groupNameFilter, count: membersToExport.length }
+      );
     }
   };
 
@@ -140,7 +225,7 @@ export const UsersPanel: React.FC = () => {
         password,
         name.trim(),
         role,
-        role === UserRole.CHURCH_GROUP ? group.trim() : undefined,
+        group.trim() || undefined,
         (role === UserRole.APPROVER_L1 || role === UserRole.APPROVER_L2) ? approverCode.trim() : undefined
       );
 
@@ -169,7 +254,7 @@ export const UsersPanel: React.FC = () => {
       await updateUserProfile(editingUser.id, {
         name: editName.trim(),
         role: editRole,
-        group: editRole === UserRole.CHURCH_GROUP ? editGroup.trim() : undefined,
+        group: editGroup.trim() || undefined,
         approverCode: (editRole === UserRole.APPROVER_L1 || editRole === UserRole.APPROVER_L2) ? editApproverCode.trim() : undefined
       });
       setEditSuccess("Profile updated successfully!");
@@ -225,7 +310,16 @@ export const UsersPanel: React.FC = () => {
           <p className="text-xs md:text-sm text-slate-500">Manage user directory and organizational structure.</p>
         </div>
         
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <button 
+            onClick={() => handleExportCSV()}
+            className="w-full md:w-auto bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-950 border border-slate-200 hover:border-slate-300 flex items-center justify-center gap-2 px-6 py-3 md:py-2.5 rounded-xl transition-all"
+            title="Export all Church Group Members as CSV"
+          >
+            <Download size={18} className="text-slate-600" />
+            <span className="text-[10px] md:text-xs uppercase tracking-widest font-black">EXPORT MEMBERS CSV</span>
+          </button>
+          
           {activeTab === "groups" && (
             <button 
               onClick={() => setIsGroupModalOpen(true)}
@@ -356,23 +450,22 @@ export const UsersPanel: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 md:px-8 py-3 md:py-5 hidden md:table-cell">
-                      {user.role === UserRole.CHURCH_GROUP ? (
+                      <div className="flex flex-col gap-1.5 justify-center">
                         <div className="flex items-center gap-1.5 text-slate-600">
                           <Building2 size={12} className="text-slate-300" />
                           <span className="text-[10px] font-bold uppercase tracking-tight italic">
                             {user.group || "INDEPENDENT"}
                           </span>
                         </div>
-                      ) : (user.role === UserRole.APPROVER_L1 || user.role === UserRole.APPROVER_L2) ? (
-                        <div className="flex items-center gap-1.5 text-primary">
-                          <Fingerprint size={12} className="text-primary/40" />
-                          <span className="text-[10px] font-mono font-bold tracking-widest bg-primary/5 px-2 py-0.5 rounded-lg border border-primary/10">
-                            {user.approverCode || "TRANSACTION_PENDING"}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">SYSTEM_CORE</span>
-                      )}
+                        {(user.role === UserRole.APPROVER_L1 || user.role === UserRole.APPROVER_L2) && (
+                          <div className="flex items-center gap-1.5 text-primary">
+                            <Fingerprint size={12} className="text-primary/40" />
+                            <span className="text-[10px] font-mono font-bold tracking-widest bg-primary/5 px-2 py-0.5 rounded-lg border border-primary/10">
+                              {user.approverCode || "TRANSACTION_PENDING"}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 md:px-8 py-3 md:py-5">
                       <div className="flex items-center gap-2">
@@ -414,7 +507,7 @@ export const UsersPanel: React.FC = () => {
       </div>
       </>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           <AnimatePresence mode="popLayout">
             {churchGroups.map((group) => (
               <motion.div
@@ -423,41 +516,50 @@ export const UsersPanel: React.FC = () => {
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm group hover:border-primary/20 transition-all"
+                onClick={() => setSelectedGroupForMembers(group)}
+                className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm group hover:border-primary/50 hover:shadow-md transition-all cursor-pointer hover:scale-[1.01]"
               >
-                <div className="flex justify-between items-start mb-4">
-                  <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-primary/10 group-hover:text-primary transition-all">
-                    <Building2 size={24} />
+                <div className="flex justify-between items-start mb-3">
+                  <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-primary/10 group-hover:text-primary transition-all">
+                    <Building2 size={20} />
                   </div>
                   <button 
-                    onClick={() => deleteChurchGroup(group.id)}
-                    className="p-2 text-slate-300 hover:text-rose-500 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteChurchGroup(group.id);
+                    }}
+                    className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-all"
+                    title="Delete Group"
                   >
-                    <XCircle size={18} />
+                    <XCircle size={16} />
                   </button>
                 </div>
-                <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight mb-1">{group.name}</h3>
-                <p className="text-xs text-slate-500 leading-relaxed min-h-[3rem]">{group.description || "No description provided."}</p>
-                <div className="mt-6 pt-6 border-t border-slate-50 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Users size={14} className="text-slate-300" />
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                <h3 className="text-xs font-black text-slate-900 uppercase tracking-tight mb-1 truncate" title={group.name}>
+                  {group.name}
+                </h3>
+                <p className="text-[11px] text-slate-500 leading-relaxed min-h-[2.5rem] line-clamp-2" title={group.description || "No description provided."}>
+                  {group.description || "No description provided."}
+                </p>
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Users size={12} className="text-slate-400" />
+                    <span className="text-[9px] font-black text-primary uppercase tracking-widest bg-primary/5 px-1.5 py-0.5 rounded-md">
                       {users.filter(u => u.group === group.name).length} MEMBERS
                     </span>
                   </div>
-                  <span className="text-[9px] font-mono text-slate-300">{group.id}</span>
+                  <span className="text-[8px] font-mono text-slate-300" title={group.id}>#{group.id.toUpperCase().substring(0, 5)}</span>
                 </div>
               </motion.div>
             ))}
           </AnimatePresence>
           <button 
             onClick={() => setIsGroupModalOpen(true)}
-            className="border-2 border-dashed border-slate-200 p-6 rounded-[2rem] flex flex-col items-center justify-center gap-3 text-slate-400 hover:border-primary/40 hover:text-primary transition-all group"
+            className="border-2 border-dashed border-slate-200 p-4.5 rounded-2xl flex flex-col items-center justify-center gap-2 text-slate-400 hover:border-primary/40 hover:text-primary transition-all group min-h-[142px]"
           >
-            <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Building2 size={24} />
+            <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Building2 size={20} />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-[0.2em]">REGISTER NEW GROUP</span>
+            <span className="text-[9px] font-black uppercase tracking-[0.15em]">REGISTER NEW GROUP</span>
           </button>
         </div>
       )}
@@ -656,26 +758,24 @@ export const UsersPanel: React.FC = () => {
                       </select>
                     </div>
 
-                    {(isModalOpen ? role : editRole) === UserRole.CHURCH_GROUP && (
-                      <div className="space-y-1.5 animate-in slide-in-from-top-2 duration-300">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Ministry Group Affiliation</label>
-                        <div className="relative">
-                          <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                          <select
-                            required
-                            value={isModalOpen ? group : editGroup}
-                            onChange={(e) => isModalOpen ? setGroup(e.target.value) : setEditGroup(e.target.value)}
-                            className="input-field pl-11 bg-white font-bold text-slate-600 uppercase tracking-widest"
-                          >
-                            <option value="">SELECT GROUP</option>
-                            {churchGroups.map(cg => (
-                              <option key={cg.id} value={cg.name}>{cg.name}</option>
-                            ))}
-                            <option value="INDEPENDENT">INDEPENDENT / OTHER</option>
-                          </select>
-                        </div>
+                    <div className="space-y-1.5 animate-in slide-in-from-top-2 duration-300">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Ministry Group Affiliation</label>
+                      <div className="relative">
+                        <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                        <select
+                          required={(isModalOpen ? role : editRole) === UserRole.CHURCH_GROUP}
+                          value={isModalOpen ? group : editGroup}
+                          onChange={(e) => isModalOpen ? setGroup(e.target.value) : setEditGroup(e.target.value)}
+                          className="input-field pl-11 bg-white font-bold text-slate-600 uppercase tracking-widest"
+                        >
+                          <option value="">SELECT GROUP</option>
+                          {churchGroups.map(cg => (
+                            <option key={cg.id} value={cg.name}>{cg.name}</option>
+                          ))}
+                          <option value="INDEPENDENT">INDEPENDENT / OTHER</option>
+                        </select>
                       </div>
-                    )}
+                    </div>
 
                     {((isModalOpen ? role : editRole) === UserRole.APPROVER_L1 || (isModalOpen ? role : editRole) === UserRole.APPROVER_L2) && (
                       <div className="space-y-1.5 animate-in slide-in-from-top-2 duration-300">
@@ -699,51 +799,149 @@ export const UsersPanel: React.FC = () => {
                 </div>
 
                 {!isModalOpen && editingUser && (
-                  <div className="bg-slate-50 rounded-2xl p-6 space-y-4 border border-slate-100">
+                  <div className="bg-slate-50 rounded-2xl p-6 space-y-4 border border-slate-100 text-left">
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Administrative Actions</h4>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleResetPassword(editingUser.email)}
-                        disabled={isResettingPassword}
-                        className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-bold border border-blue-100 hover:bg-blue-100 transition-colors uppercase tracking-widest flex items-center justify-center gap-1.5"
-                      >
-                        {isResettingPassword ? <Loader2 size={13} className="animate-spin" /> : "Reset Password"}
-                      </button>
+                    
+                    {showPasswordResetOptions ? (
+                      <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                          <span className="text-[10px] font-black text-slate-800 uppercase tracking-wider">Pass-key Override Protocols</span>
+                          <button 
+                            type="button" 
+                            onClick={() => setShowPasswordResetOptions(false)}
+                            className="text-[9px] font-black text-rose-500 uppercase hover:underline"
+                          >
+                            Back
+                          </button>
+                        </div>
 
-                      {!editingUser.isApproved ? (
+                        <div className="flex bg-slate-100 p-1 rounded-lg gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setPasswordResetMethod("EMAIL")}
+                            className={cn(
+                              "flex-1 text-center py-1.5 rounded-md text-[10px] uppercase font-black tracking-wide transition-all",
+                              passwordResetMethod === "EMAIL" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                            )}
+                          >
+                            Send Reset Email
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPasswordResetMethod("MANUAL")}
+                            className={cn(
+                              "flex-1 text-center py-1.5 rounded-md text-[10px] uppercase font-black tracking-wide transition-all",
+                              passwordResetMethod === "MANUAL" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                            )}
+                          >
+                            Set Manual Password
+                          </button>
+                        </div>
+
+                        {passwordResetMethod === "EMAIL" ? (
+                          <div className="space-y-3">
+                            <p className="text-[10px] text-slate-500 leading-normal">
+                              Sends a secure standard password reset link directly to the user's register: <strong className="font-bold text-slate-700">{editingUser.email}</strong>.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => handleResetPassword(editingUser.email)}
+                              disabled={isResettingPassword}
+                              className="w-full py-2 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black border border-blue-100 hover:bg-blue-100 transition-colors uppercase tracking-widest flex items-center justify-center gap-1.5"
+                            >
+                              {isResettingPassword ? <Loader2 size={12} className="animate-spin" /> : "Send Reset Email Link"}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Type Custom Access Password</label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={customNewPassword}
+                                  onChange={(e) => setCustomNewPassword(e.target.value)}
+                                  placeholder="Min 8 characters"
+                                  className="flex-1 input-field py-1.5 px-3 text-xs font-mono"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const chars = "ABCDEFGHJKLMNOPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+                                    let rand = "";
+                                    for (let i = 0; i < 8; i++) {
+                                      rand += chars.charAt(Math.floor(Math.random() * chars.length));
+                                    }
+                                    setCustomNewPassword("Sa" + rand + "9!");
+                                  }}
+                                  className="px-3 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors"
+                                >
+                                  Auto-Gen
+                                </button>
+                              </div>
+                            </div>
+                            <p className="text-[9px] text-slate-400 leading-normal">
+                              Saves an override access credential key onto the user profile document, bypassable on direct email sign in attempts.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => handleCustomPasswordOverride(editingUser.id, customNewPassword)}
+                              disabled={isSaving}
+                              className="w-full py-2 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black border border-emerald-100 hover:bg-emerald-100 transition-colors uppercase tracking-widest flex items-center justify-center gap-1.5"
+                            >
+                              {isSaving ? <Loader2 size={12} className="animate-spin" /> : "Commit Custom Override"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
-                          onClick={async () => {
-                            await approveUser(editingUser.id);
-                            setEditingUser({ ...editingUser, isApproved: true });
+                          onClick={() => {
+                            setShowPasswordResetOptions(true);
+                            setCustomNewPassword("");
+                            setPasswordResetMethod("EMAIL");
                           }}
-                          className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-bold border border-emerald-100 hover:bg-emerald-100 transition-colors uppercase tracking-widest"
+                          className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-bold border border-blue-100 hover:bg-blue-100 transition-colors uppercase tracking-widest flex items-center justify-center gap-1.5"
                         >
-                          Approve Account
+                          Change / Reset Password
                         </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            await suspendUser(editingUser.id, !editingUser.isSuspended);
-                            setEditingUser({ ...editingUser, isSuspended: !editingUser.isSuspended });
-                          }}
-                          className={cn(
-                            "px-4 py-2 rounded-xl text-xs font-bold border transition-colors uppercase tracking-widest flex items-center justify-center gap-2",
-                            editingUser.isSuspended 
-                              ? "bg-slate-800 text-white hover:bg-slate-900 border-slate-700" 
-                              : "bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-100"
-                          )}
-                        >
-                          {editingUser.isSuspended ? (
-                            <><ShieldCheck size={14} /> Restore Connectivity</>
-                          ) : (
-                            <><UserX size={14} /> Suspend Transaction</>
-                          )}
-                        </button>
-                      )}
-                    </div>
+
+                        {!editingUser.isApproved ? (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await approveUser(editingUser.id);
+                              setEditingUser({ ...editingUser, isApproved: true });
+                            }}
+                            className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-bold border border-emerald-100 hover:bg-emerald-100 transition-colors uppercase tracking-widest"
+                          >
+                            Approve Account
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await suspendUser(editingUser.id, !editingUser.isSuspended);
+                              setEditingUser({ ...editingUser, isSuspended: !editingUser.isSuspended });
+                            }}
+                            className={cn(
+                              "px-4 py-2 rounded-xl text-xs font-bold border transition-colors uppercase tracking-widest flex items-center justify-center gap-2",
+                              editingUser.isSuspended 
+                                ? "bg-slate-800 text-white hover:bg-slate-900 border-slate-700" 
+                                : "bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-100"
+                            )}
+                          >
+                            {editingUser.isSuspended ? (
+                              <><ShieldCheck size={14} /> Restore Connectivity</>
+                            ) : (
+                              <><UserX size={14} /> Suspend Transaction</>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -843,6 +1041,139 @@ export const UsersPanel: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Group Members Viewer Modal */}
+      <AnimatePresence>
+        {selectedGroupForMembers && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="bg-white rounded-[2rem] w-full max-w-2xl shadow-2xl overflow-hidden border border-slate-200"
+            >
+              <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                <div>
+                  <h3 className="text-xs font-black text-slate-950 uppercase tracking-[0.2em] flex items-center gap-2">
+                    <Building2 size={16} className="text-primary" />
+                    <span>{selectedGroupForMembers.name}</span>
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-mono tracking-widest mt-1">
+                    {users.filter(u => u.group === selectedGroupForMembers.name).length} REGISTERED MEMBERS
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {users.filter(u => u.group === selectedGroupForMembers.name).length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleExportCSV(selectedGroupForMembers.name)}
+                      className="px-3.5 py-2 bg-primary/10 hover:bg-primary/25 text-primary border border-primary/20 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5"
+                      title="Export members of this church group as CSV"
+                    >
+                      <Download size={12} />
+                      <span>EXPORT GROUP CSV</span>
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => setSelectedGroupForMembers(null)} 
+                    className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+                  >
+                    <XCircle size={18} className="text-slate-500" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-8 max-h-[30rem] overflow-y-auto space-y-4">
+                {selectedGroupForMembers.description && (
+                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-2">
+                    <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Group Purview</h4>
+                    <p className="text-xs text-slate-600 leading-relaxed">{selectedGroupForMembers.description}</p>
+                  </div>
+                )}
+
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Members List</h4>
+                
+                {users.filter(u => u.group === selectedGroupForMembers.name).length === 0 ? (
+                  <div className="py-12 text-center rounded-2xl border-2 border-dashed border-slate-101 p-6">
+                    <Users size={32} className="mx-auto text-slate-300 mb-3" />
+                    <p className="text-sm font-medium text-slate-500">No members registered under this group.</p>
+                    <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+                      Go to the Users Directory tab to associate users with this church group.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100 border border-slate-100 rounded-2xl overflow-hidden">
+                    {users.filter(u => u.group === selectedGroupForMembers.name).map((user) => (
+                      <div key={user.id} className="p-4 flex items-center justify-between gap-4 bg-white hover:bg-slate-50 transition-colors">
+                        <div className="flex items-center gap-3">
+                          {user.photoURL ? (
+                            <img
+                              src={user.photoURL}
+                              alt={user.name}
+                              referrerPolicy="no-referrer"
+                              className="w-10 h-10 rounded-xl object-cover border border-slate-200"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 font-black text-sm border border-slate-200">
+                              {user.name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <div className="text-xs font-black text-slate-900 uppercase tracking-tight">{user.name}</div>
+                            <div className="text-[10px] text-slate-400 font-mono">{user.email}</div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <span className="text-[9px] font-black px-2 py-0.5 bg-slate-100 text-slate-600 rounded-lg">
+                            {user.role}
+                          </span>
+                          
+                          {user.isSuspended ? (
+                            <span className="text-[8px] font-black px-2 py-0.5 bg-rose-50 text-rose-600 rounded-md border border-rose-100">
+                              SUSPENDED
+                            </span>
+                          ) : !user.isApproved ? (
+                            <span className="text-[8px] font-black px-2 py-0.5 bg-amber-50 text-amber-600 rounded-md border border-amber-100">
+                              PENDING
+                            </span>
+                          ) : (
+                            <span className="text-[8px] font-black px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100">
+                              ACTIVE
+                            </span>
+                          )}
+
+                          <button
+                            onClick={() => {
+                              setSelectedGroupForMembers(null);
+                              startEditing(user);
+                              setActiveTab("users"); // Switch tab to users where editing takes place
+                            }}
+                            className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-primary hover:bg-primary/5 rounded-lg border border-primary/20 transition-all flex items-center gap-1"
+                          >
+                            <Edit size={10} />
+                            <span>MANAGE</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="px-8 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setSelectedGroupForMembers(null)}
+                  className="px-6 py-2.5 bg-white border border-slate-200 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 hover:border-slate-300 transition-all"
+                >
+                  CLOSE VIEWPORT
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

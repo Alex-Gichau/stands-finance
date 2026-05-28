@@ -26,6 +26,7 @@ export interface UserProfile {
   phone?: string;
   department?: string;
   photoURL?: string;
+  tempPassword?: string;
 }
 
 export type SearchFilter = "ALL" | "TITLE" | "GROUP" | "REQUESTER";
