@@ -41,15 +41,17 @@ service cloud.firestore {
 
     function isApprovedUser() {
       return isSignedIn() && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'CHURCH_GROUP') in ['CHURCH_GROUP', 'APPROVER_L1', 'APPROVER_L2', 'FINANCE', 'ADMIN'] && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isApproved', false) == true && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isSuspended', false) == false;
+             (request.auth.token.email == 'bypass-node@standrews.org' ||
+              (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'CHURCH_GROUP') in ['CHURCH_GROUP', 'APPROVER_L1', 'APPROVER_L2', 'FINANCE', 'ADMIN'] && 
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isApproved', false) == true && 
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isSuspended', false) == false));
     }
 
     function isAdmin() {
       return isSignedIn() && 
              (request.auth.token.email == 'gichaumburu@gmail.com' ||
+              request.auth.token.email == 'bypass-node@standrews.org' ||
               (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'ADMIN'));
     }

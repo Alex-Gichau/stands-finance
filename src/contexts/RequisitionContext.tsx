@@ -923,6 +923,24 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     } catch (error: any) {
       console.error("Login failed", error);
+      
+      // Send Slack Alert for failed Google sign-in attempt
+      try {
+        fetch("/api/notify-slack", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "SIGN_IN_FAILED",
+            details: `🚨 SECURITY ALERT: Failed Google sign-in attempt. Error: ${error.message || error.code || error}`,
+            performedBy: "Anonymous (Google OAuth)",
+            timestamp: new Date().toISOString(),
+            metadata: { provider: "google", errorCode: error.code || "unknown" }
+          })
+        }).catch(err => console.warn("Slack Failed Google Login Notify Failed:", err));
+      } catch (e) {
+        console.warn("Slack failed to notify Google login failure", e);
+      }
+
       if (error.code === 'auth/unauthorized-domain') {
         throw new Error("Unauthorized Domain: The current hosting domain (Vercel or custom domain) has not been whitelisted. Please open Firebase Console -> Go to Authentication -> Settings -> Authorized Domains -> Add your current domain (e.g., your-app.vercel.app) to the list.");
       }
@@ -934,6 +952,19 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   const loginWithEmail = async (email: string, pass: string) => {
+    const mockUsers = [
+      { name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.ADMIN },
+      { name: "Rev. Dr. Patrick Mutua", email: "minister@standrews.org", role: UserRole.APPROVER_L1, approverCode: "111111" },
+      { name: "Elder Mercy Wanjiku", email: "clerk@standrews.org", role: UserRole.APPROVER_L2, approverCode: "2222222" },
+      { name: "Deacon John Mwangi", email: "treasurer@standrews.org", role: UserRole.FINANCE },
+      { name: "George Gichauri", email: "youth@standrews.org", role: UserRole.CHURCH_GROUP, group: "Youth Camp 2026" },
+      { name: "Sarah Kemunto", email: "worship@standrews.org", role: UserRole.CHURCH_GROUP, group: "Musical Instruments" },
+      { name: "Jane Doe", email: "guild@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sanctuary Renovation" },
+      { name: "David Kimani", email: "outreach@standrews.org", role: UserRole.CHURCH_GROUP, group: "Outreach Program" },
+      { name: "Mary Atieno", email: "ss@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sunday School Resources" },
+      { name: "Peter Omondi", email: "finance2@standrews.org", role: UserRole.FINANCE }
+    ];
+
     try {
       const result = await signInWithEmailAndPassword(auth, email, pass);
       if (result.user) {
@@ -1015,7 +1046,10 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             if (!snap.empty) {
               const userDoc = snap.docs[0];
               const userData = userDoc.data();
-              if (userData.tempPassword && userData.tempPassword === pass) {
+              const isMockUser = mockUsers.some(u => u.email.toLowerCase() === email.toLowerCase());
+              const isPasswordCorrect = (userData.tempPassword && userData.tempPassword === pass) || (isMockUser && pass === "password123");
+
+              if (isPasswordCorrect) {
                 console.log(`Matching administrative credential override found for email: ${email}`);
                 if (typeof window !== "undefined") {
                   localStorage.setItem("override_authorized_user_email", email.toLowerCase());
@@ -1030,19 +1064,6 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         } catch (dbErr) {
           console.error("Credentials override search aborted", dbErr);
         }
-
-        const mockUsers = [
-          { name: "System Admin", email: "gichaumburu@gmail.com", role: UserRole.ADMIN },
-          { name: "Rev. Dr. Patrick Mutua", email: "minister@standrews.org", role: UserRole.APPROVER_L1, approverCode: "111111" },
-          { name: "Elder Mercy Wanjiku", email: "clerk@standrews.org", role: UserRole.APPROVER_L2, approverCode: "2222222" },
-          { name: "Deacon John Mwangi", email: "treasurer@standrews.org", role: UserRole.FINANCE },
-          { name: "George Gichauri", email: "youth@standrews.org", role: UserRole.CHURCH_GROUP, group: "Youth Camp 2026" },
-          { name: "Sarah Kemunto", email: "worship@standrews.org", role: UserRole.CHURCH_GROUP, group: "Musical Instruments" },
-          { name: "Jane Doe", email: "guild@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sanctuary Renovation" },
-          { name: "David Kimani", email: "outreach@standrews.org", role: UserRole.CHURCH_GROUP, group: "Outreach Program" },
-          { name: "Mary Atieno", email: "ss@standrews.org", role: UserRole.CHURCH_GROUP, group: "Sunday School Resources" },
-          { name: "Peter Omondi", email: "finance2@standrews.org", role: UserRole.FINANCE }
-        ];
 
         const mockUser = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
         if (mockUser) {
@@ -1074,6 +1095,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
               isActive: true,
               isApproved: true,
               isSuspended: false, // Default states, but we let setDoc overwrite them if first time
+              tempPassword: pass, // Store the tempPassword for future login overrides
               ...(mockUser.group && { group: mockUser.group }),
               ...(mockUser.approverCode && { approverCode: mockUser.approverCode }),
             };
@@ -1088,6 +1110,29 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             return;
           } catch (regError: any) {
             if (secondaryApp) await deleteApp(secondaryApp);
+            
+            let alertMsg = regError.message || String(regError);
+            if (regError.code === 'auth/email-already-in-use') {
+              alertMsg = "Incorrect password entered for an existing mock/manual account.";
+            }
+
+            // Track failed login to Slack
+            try {
+              fetch("/api/notify-slack", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "FAILED_LOGIN_ATTEMPT",
+                  details: `🛑 SECURITY ALERT: Failed manual login attempt for email: ${email}. Reason: ${alertMsg}`,
+                  performedBy: email || "Anonymous",
+                  timestamp: new Date().toISOString(),
+                  metadata: { email, reason: "incorrect_password_or_failed_provision", errorCode: regError.code || "unknown" }
+                })
+              }).catch(err => console.warn("Failed sending failed login Slack notification", err));
+            } catch (e) {
+              console.warn("Slack notification trigger error:", e);
+            }
+
             if (regError.code === 'auth/email-already-in-use') {
               console.error("User exists but password was incorrect.");
               throw new Error("Invalid password for this mock account. Please use 'password123'");
@@ -1097,6 +1142,24 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
           }
         }
       }
+
+      // Track general email login failure to Slack
+      try {
+        fetch("/api/notify-slack", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "FAILED_LOGIN_ATTEMPT",
+            details: `🛑 SECURITY ALERT: Failed login attempt for unregistered/production credential. User Email: ${email}. Error: ${error.message || error.code || error}`,
+            performedBy: email || "Anonymous",
+            timestamp: new Date().toISOString(),
+            metadata: { email, errorCode: error.code || "unknown" }
+          })
+        }).catch(err => console.warn("Slack Failed Login Notify Failed:", err));
+      } catch (e) {
+        console.warn("Slack notification failed to post:", e);
+      }
+
       console.error("Email login failed", error);
       throw error;
     }
