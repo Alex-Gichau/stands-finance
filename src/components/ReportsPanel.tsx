@@ -24,7 +24,8 @@ import {
   ShieldCheck,
   PieChart,
   LayoutGrid,
-  ChevronDown
+  ChevronDown,
+  Flag
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition, SavedReport } from "../types";
@@ -502,7 +503,14 @@ export const ReportsPanel: React.FC = () => {
                     </td>
                     <td className="px-8 py-5">
                       <div>
-                        <p className="text-sm font-bold text-slate-900 leading-tight group-hover:text-primary transition-colors">{req.title}</p>
+                        <p className="text-sm font-bold text-slate-900 leading-tight group-hover:text-primary transition-colors flex items-center gap-1.5">
+                          <span>{req.title}</span>
+                          {req.flaggedForAudit && (
+                            <span title="Flagged for Audit" className="inline-flex shrink-0">
+                              <Flag size={11} className="text-rose-500 fill-rose-500" />
+                            </span>
+                          )}
+                        </p>
                         <p className="text-[10px] text-slate-400 mt-1 font-medium truncate max-w-xs">{req.description || "NO_DESCRIPTION_PROVIDED"}</p>
                       </div>
                     </td>

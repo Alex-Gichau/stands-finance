@@ -18,7 +18,7 @@ async function startServer() {
 
   // API Route for Slack Notifications
   app.post("/api/notify-slack", async (req, res) => {
-    const { action, details, performedBy, timestamp, metadata } = req.body;
+    const { action, details, performedBy, timestamp, metadata, level = "normal" } = req.body;
     const webhookUrl = process.env.SLACK_WEBHOOK_URL;
 
     if (!webhookUrl) {
@@ -27,42 +27,48 @@ async function startServer() {
     }
 
     try {
+      const color = level === "normal" ? "#36a64f" : "#ff0000";
       const slackBody = {
-        blocks: [
+        attachments: [
           {
-            type: "header",
-            text: {
-              type: "plain_text",
-              text: "🚨 System Ledger Alert",
-              emoji: true
-            }
-          },
-          {
-            type: "section",
-            fields: [
+            color: color,
+            blocks: [
               {
-                type: "mrkdwn",
-                text: `*Action:*\n${action}`
+                type: "header",
+                text: {
+                  type: "plain_text",
+                  text: "🚨 System Ledger Alert",
+                  emoji: true
+                }
               },
               {
-                type: "mrkdwn",
-                text: `*User:*\n${performedBy}`
-              }
-            ]
-          },
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `*Details:* ${details}`
-            }
-          },
-          {
-            type: "context",
-            elements: [
+                type: "section",
+                fields: [
+                  {
+                    type: "mrkdwn",
+                    text: `*Action:*\n${action}`
+                  },
+                  {
+                    type: "mrkdwn",
+                    text: `*User:*\n${performedBy}`
+                  }
+                ]
+              },
               {
-                type: "mrkdwn",
-                text: `*Timestamp:* ${timestamp}`
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: `*Details:* ${details}`
+                }
+              },
+              {
+                type: "context",
+                elements: [
+                  {
+                    type: "mrkdwn",
+                    text: `*Timestamp:* ${timestamp}`
+                  }
+                ]
               }
             ]
           }
@@ -71,7 +77,7 @@ async function startServer() {
 
       // Add metadata if present (like requisition amount, etc)
       if (metadata && Object.keys(metadata).length > 0) {
-         slackBody.blocks.push({
+         slackBody.attachments[0].blocks.push({
            type: "section",
            text: {
              type: "mrkdwn",

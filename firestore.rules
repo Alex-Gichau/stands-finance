@@ -90,7 +90,8 @@ service cloud.firestore {
              (!data.keys().hasAny(['approvedAtL2']) || (data.approvedAtL2 is string)) &&
              (!data.keys().hasAny(['disbursedAt']) || (data.disbursedAt is string)) &&
              (!data.keys().hasAny(['rejectReason']) || (data.rejectReason is string)) &&
-             (!data.keys().hasAny(['additionalInfo']) || (data.additionalInfo is string));
+             (!data.keys().hasAny(['additionalInfo']) || (data.additionalInfo is string)) &&
+             (!data.keys().hasAny(['flaggedForAudit']) || (data.flaggedForAudit is bool));
     }
 
     function isValidProject(data) {

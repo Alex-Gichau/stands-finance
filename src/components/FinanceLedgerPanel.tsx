@@ -24,7 +24,8 @@ import {
   Printer,
   ChevronDown,
   ChevronUp,
-  Database
+  Database,
+  Flag
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition, Project } from "../types";
@@ -517,7 +518,14 @@ export const FinanceLedgerPanel: React.FC = () => {
                   <div key={req.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-3">
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
-                        <span className="text-[9px] font-mono uppercase text-slate-400 font-bold">#{req.id.substr(0, 8)}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] font-mono uppercase text-slate-400 font-bold">#{req.id.substr(0, 8)}</span>
+                          {req.flaggedForAudit && (
+                            <span title="Flagged for Audit" className="inline-flex shrink-0">
+                              <Flag size={10} className="text-rose-500 fill-rose-500" />
+                            </span>
+                          )}
+                        </div>
                         <span className="text-xs font-extrabold text-[#4f46e5]">{formatCurrency(req.amount)}</span>
                       </div>
                       <h4 className="text-xs font-bold text-slate-800 leading-snug line-clamp-1">{req.title}</h4>
@@ -577,7 +585,14 @@ export const FinanceLedgerPanel: React.FC = () => {
                               <div className="text-[9px] text-slate-400 uppercase tracking-wider">Acc: {codeInfo.code}</div>
                             </td>
                             <td className="py-4 px-4">
-                              <div className="font-bold text-slate-800 line-clamp-1">{req.title}</div>
+                              <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                                <span className="line-clamp-1">{req.title}</span>
+                                {req.flaggedForAudit && (
+                                  <span title="Flagged for Audit" className="inline-flex shrink-0">
+                                    <Flag size={11} className="text-rose-500 fill-rose-500" />
+                                  </span>
+                                )}
+                              </div>
                               <div className="text-[10px] text-slate-500 flex items-center gap-1.5">
                                 <span className="font-bold text-indigo-600">{req.groupName}</span>
                                 <span>•</span>

@@ -422,7 +422,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                     details: `🚨 ACTION REQUIRED: New user registered via Google and is PENDING APPROVAL: ${newProfile.email}`,
                     performedBy: newProfile.email,
                     timestamp: new Date().toISOString(),
-                    metadata: { email: newProfile.email }
+                    metadata: { email: newProfile.email },
+                    level: "normal"
                   })
                 }).catch(err => console.warn("Slack Background Notify Failed:", err));
               }
@@ -934,7 +935,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             details: `🚨 SECURITY ALERT: Failed Google sign-in attempt. Error: ${error.message || error.code || error}`,
             performedBy: "Anonymous (Google OAuth)",
             timestamp: new Date().toISOString(),
-            metadata: { provider: "google", errorCode: error.code || "unknown" }
+            metadata: { provider: "google", errorCode: error.code || "unknown" },
+            level: "abnormal"
           })
         }).catch(err => console.warn("Slack Failed Google Login Notify Failed:", err));
       } catch (e) {
@@ -1126,7 +1128,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                   details: `🛑 SECURITY ALERT: Failed manual login attempt for email: ${email}. Reason: ${alertMsg}`,
                   performedBy: email || "Anonymous",
                   timestamp: new Date().toISOString(),
-                  metadata: { email, reason: "incorrect_password_or_failed_provision", errorCode: regError.code || "unknown" }
+                  metadata: { email, reason: "incorrect_password_or_failed_provision", errorCode: regError.code || "unknown" },
+                  level: "abnormal"
                 })
               }).catch(err => console.warn("Failed sending failed login Slack notification", err));
             } catch (e) {
@@ -1153,7 +1156,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             details: `🛑 SECURITY ALERT: Failed login attempt for unregistered/production credential. User Email: ${email}. Error: ${error.message || error.code || error}`,
             performedBy: email || "Anonymous",
             timestamp: new Date().toISOString(),
-            metadata: { email, errorCode: error.code || "unknown" }
+            metadata: { email, errorCode: error.code || "unknown" },
+            level: "abnormal"
           })
         }).catch(err => console.warn("Slack Failed Login Notify Failed:", err));
       } catch (e) {
@@ -1387,6 +1391,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       expiresAt: expiresAt.toISOString(),
       escalationLevel: 0,
       approvalHistory: [],
+      flaggedForAudit: reqData.amount > 100000,
     };
     try {
       await setDoc(doc(db, "requisitions", id), newReq);
@@ -1500,16 +1505,23 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const updateRequisition = useCallback(async (id: string, updates: Partial<Requisition>) => {
     try {
       const reqRef = doc(db, "requisitions", id);
+      const reqSnap = await getDoc(reqRef);
+      if (!reqSnap.exists()) return;
+      const currentReq = reqSnap.data() as Requisition;
+      
+      const newAmount = updates.amount !== undefined ? updates.amount : currentReq.amount;
       const cleanedUpdates = {
         ...updates,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        flaggedForAudit: newAmount > 100000 ? true : (updates.flaggedForAudit !== undefined ? updates.flaggedForAudit : currentReq.flaggedForAudit)
       };
+      
       await updateDoc(reqRef, cleanedUpdates);
-      await addSystemLog("REQUISITION_EDITED", `Requisition '${id}' updated by Administrator`, { requisitionId: id, updates });
+      await addSystemLog("REQUISITION_EDITED", `Requisition '${id}' updated`, { requisitionId: id, updates });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `requisitions/${id}`);
     }
-  }, [addSystemLog]);
+  }, [addSystemLog, db]);
 
   const uploadReceipts = useCallback(async (id: string, newReceipts: string[]) => {
     try {

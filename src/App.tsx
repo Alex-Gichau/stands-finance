@@ -442,6 +442,19 @@ function AppContent() {
     }
   };
 
+  const handleGoogleLogin = async () => {
+    setError("");
+    setSuccess("");
+    setIsSubmitting(true);
+    try {
+      await login();
+    } catch (err: any) {
+      setError(err?.message || "Failed to authenticate with Google. Please ensure popups are allowed and authorized domains are configured in your Firebase Console.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -496,8 +509,10 @@ function AppContent() {
           
           <div className="space-y-6">
             <button 
-              onClick={login}
-              className="w-full flex items-center justify-center gap-3 py-3.5 bg-white hover:bg-slate-50 text-slate-950 rounded-2xl transition-all font-black text-xs shadow-xl active:scale-95 group mb-6"
+              type="button"
+              onClick={handleGoogleLogin}
+              disabled={isSubmitting}
+              className="w-full flex items-center justify-center gap-3 py-3.5 bg-white hover:bg-slate-50 text-slate-950 rounded-2xl transition-all font-black text-xs shadow-xl active:scale-95 group mb-6 disabled:opacity-50 disabled:pointer-events-none"
             >
               <svg className="w-4 h-4 transition-transform group-hover:scale-110" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -505,7 +520,7 @@ function AppContent() {
                 <path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z"/>
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
               </svg>
-              Sign in with Google
+              {isSubmitting ? "Authenticating with Google..." : "Sign in with Google"}
             </button>
 
             <div className="flex items-center gap-4">

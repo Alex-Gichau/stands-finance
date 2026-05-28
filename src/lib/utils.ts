@@ -21,3 +21,8 @@ export function formatDate(dateString: string) {
     minute: "2-digit",
   });
 }
+
+export function getDaysSinceSubmission(submittedAt: string) {
+  const diffTime = Math.abs(new Date().getTime() - new Date(submittedAt).getTime());
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+}

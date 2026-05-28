@@ -89,6 +89,9 @@ export interface Requisition {
   additionalInfo?: string;
   attachments?: string[];
   receipts?: string[];
+  flaggedForAudit?: boolean;
+  inProcurement?: boolean;
+  requiresMoreInfo?: boolean;
 }
 
 export interface Budget {

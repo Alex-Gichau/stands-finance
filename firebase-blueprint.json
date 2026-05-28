@@ -44,7 +44,8 @@
         "rejectReason": { "type": "string" },
         "additionalInfo": { "type": "string" },
         "attachments": { "type": "array" },
-        "receipts": { "type": "array" }
+        "receipts": { "type": "array" },
+        "flaggedForAudit": { "type": "boolean", "description": "Indicates if the requisition is flagged for audit by an admin user" }
       },
       "required": ["id", "title", "description", "amount", "groupId", "groupName", "requesterId", "requesterName", "status", "submittedAt", "updatedAt", "approvalHistory"]
     },

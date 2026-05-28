@@ -9,7 +9,7 @@ import { numberToWords } from "../utils/numberUtils";
 import { formatCurrency, cn } from "../lib/utils";
 import { X, Loader2, DollarSign, FileText, Repeat, Users, PlusCircle, Save } from "lucide-react";
 import { motion } from "motion/react";
-import { RecurrenceType, Requisition } from "../types";
+import { RecurrenceType, Requisition, UserRole } from "../types";
 
 interface EditRequisitionModalProps {
   req: Requisition;
@@ -17,7 +17,7 @@ interface EditRequisitionModalProps {
 }
 
 export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req, onClose }) => {
-  const { updateRequisition, projects, churchGroups, addChurchGroup } = useRequisitions();
+  const { updateRequisition, projects, churchGroups, addChurchGroup, currentUser } = useRequisitions();
   
   const [title, setTitle] = useState(req.title);
   const [description, setDescription] = useState(req.description);
@@ -26,6 +26,8 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
   const [recurrence, setRecurrence] = useState<RecurrenceType>(req.recurrence || RecurrenceType.NONE);
   const [selectedGroup, setSelectedGroup] = useState(req.groupName);
   const [projectId, setProjectId] = useState(req.projectId || "");
+  const [inProcurement, setInProcurement] = useState(req.inProcurement || false);
+  const [requiresMoreInfo, setRequiresMoreInfo] = useState(req.requiresMoreInfo || false);
   
   const [showNewGroupInput, setShowNewGroupInput] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
@@ -75,7 +77,9 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
         recurrence,
         groupId: selectedGroup,
         groupName: selectedGroup,
-        projectId: finalProjectId
+        projectId: finalProjectId,
+        inProcurement,
+        requiresMoreInfo
       });
       onClose();
     } catch (error) {
@@ -257,6 +261,34 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
                 </div>
               )}
             </div>
+            
+            {(currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.FINANCE) && (
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-150 space-y-4">
+                 <h4 className="text-[10px] font-black text-slate-600 uppercase tracking-widest block mb-2">Workflow Status</h4>
+                 <div className="flex items-center justify-between gap-4">
+                   {currentUser.role === UserRole.ADMIN && (
+                     <label className="flex items-center gap-2 cursor-pointer">
+                       <input 
+                         type="checkbox"
+                         checked={inProcurement}
+                         onChange={(e) => setInProcurement(e.target.checked)}
+                         className="rounded text-primary focus:ring-primary h-4 w-4"
+                       />
+                       <span className="text-xs font-bold text-slate-700">In Procurement</span>
+                     </label>
+                   )}
+                   <label className="flex items-center gap-2 cursor-pointer">
+                     <input 
+                       type="checkbox"
+                       checked={requiresMoreInfo}
+                       onChange={(e) => setRequiresMoreInfo(e.target.checked)}
+                       className="rounded text-primary focus:ring-primary h-4 w-4"
+                     />
+                     <span className="text-xs font-bold text-slate-700">Requires More Info</span>
+                   </label>
+                 </div>
+              </div>
+            )}
           </div>
 
           {/* Action buttons */}

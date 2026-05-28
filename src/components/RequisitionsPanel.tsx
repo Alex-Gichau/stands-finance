@@ -27,11 +27,12 @@ import {
   Repeat,
   FileText,
   ChevronDown,
-  Users
+  Users,
+  Flag
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
-import { formatCurrency, formatDate, cn } from "../lib/utils";
+import { formatCurrency, formatDate, cn, getDaysSinceSubmission } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { printRequisitions, downloadRequisitionsHtml, downloadRequisitionsCsv, downloadRequisitionsPdf } from "../utils/exportUtils";
 import { NewRequisitionForm } from "./NewRequisitionForm";
@@ -262,6 +263,26 @@ export const RequisitionsPanel: React.FC = () => {
                         <div className="flex flex-col min-w-0 max-w-[120px] md:max-w-none">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-slate-900 text-[11px] md:text-sm truncate">{req.title}</span>
+                            {req.status !== RequisitionStatus.DISBURSED && (
+                              <span className="ml-2 text-[8px] md:text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded uppercase tracking-tight">
+                                {getDaysSinceSubmission(req.submittedAt)}d
+                              </span>
+                            )}
+                            {req.flaggedForAudit && (
+                              <span title="Flagged for Audit" className="inline-flex shrink-0">
+                                <Flag size={11} className="text-rose-500 fill-rose-500" />
+                              </span>
+                            )}
+                            {req.inProcurement && (
+                              <span className="text-[8px] md:text-[9px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded uppercase tracking-tight">
+                                PROCUREMENT
+                              </span>
+                            )}
+                            {req.requiresMoreInfo && (
+                              <span className="text-[8px] md:text-[9px] font-bold text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded uppercase tracking-tight">
+                                INFO REQ
+                              </span>
+                            )}
                             {req.recurrence && req.recurrence !== "NONE" && (
                               <Repeat size={10} className="text-primary animate-pulse shrink-0" />
                             )}
@@ -487,11 +508,21 @@ export interface DetailModalProps {
 }
 
 export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClose, onDelete, onGenerateReceipt, onEdit }) => {
-  const { currentUser, updateRequisitionStatus } = useRequisitions();
+  const { currentUser, updateRequisitionStatus, updateRequisition } = useRequisitions();
   const [decisionNote, setDecisionNote] = useState("");
   const [approvalCode, setApprovalCode] = useState("");
   const [showDecisionForm, setShowDecisionForm] = useState<"APPROVE" | "REJECT" | "ESCALATE" | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const handleToggleAuditFlag = async () => {
+    try {
+      await updateRequisition(req.id, {
+        flaggedForAudit: !req.flaggedForAudit
+      });
+    } catch (error) {
+      console.error("Failed to toggle audit flag:", error);
+    }
+  };
 
   const canAct = () => {
     if (!currentUser) return false;
@@ -547,7 +578,15 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
               <ShieldCheck size={18} className="md:w-5 md:h-5" />
             </span>
             <div className="min-w-0">
-              <h3 className="text-[12px] md:text-sm font-black text-slate-900 uppercase tracking-[0.1em] truncate">{req.title}</h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-[12px] md:text-sm font-black text-slate-900 uppercase tracking-[0.1em] truncate">{req.title}</h3>
+                {req.flaggedForAudit && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-rose-50 border border-rose-200 text-rose-600 rounded text-[8px] md:text-[9px] font-black uppercase tracking-[0.1em]">
+                    <Flag size={10} className="fill-current" />
+                    Audit Flagged
+                  </span>
+                )}
+              </div>
               <p className="text-[8px] md:text-[10px] font-mono text-slate-400 uppercase tracking-widest">{req.id}</p>
             </div>
           </div>
@@ -768,6 +807,21 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                 title="Edit Requisition details"
               >
                 <Pencil size={16} />
+              </button>
+            )}
+            {currentUser?.role === UserRole.ADMIN && (
+              <button 
+                onClick={handleToggleAuditFlag}
+                className={cn(
+                  "p-2.5 rounded-xl transition-all border border-slate-100 md:border-0 flex items-center gap-1.5 font-bold text-[10px] uppercase tracking-wider",
+                  req.flaggedForAudit 
+                    ? "bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100" 
+                    : "bg-slate-50 border-slate-100 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                )}
+                title={req.flaggedForAudit ? "Remove Flag for Audit" : "Flag for Audit"}
+              >
+                <Flag size={16} className={req.flaggedForAudit ? "fill-rose-600" : ""} />
+                <span className="hidden sm:inline">{req.flaggedForAudit ? "Flagged" : "Flag for Audit"}</span>
               </button>
             )}
             <button 

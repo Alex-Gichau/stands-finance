@@ -7,8 +7,8 @@ import React, { useMemo, useState } from "react";
 import { ComposedChart, Area, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
-import { formatCurrency, cn } from "../lib/utils";
-import { AlertTriangle, TrendingUp, Layout, Activity, ClipboardList, CheckCircle, Wallet, Users, X, Eye, Repeat, Clock, ArrowUpRight, Search, Trash2, Printer, FileText, ShieldCheck, CalendarRange } from "lucide-react";
+import { formatCurrency, cn, getDaysSinceSubmission } from "../lib/utils";
+import { AlertTriangle, TrendingUp, Layout, Activity, ClipboardList, CheckCircle, Wallet, Users, X, Eye, Repeat, Clock, ArrowUpRight, Search, Trash2, Printer, FileText, ShieldCheck, CalendarRange, Flag } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { RequisitionDetailModal } from "./RequisitionsPanel";
 import { ReceiptTemplateGenerator } from "./ReceiptTemplateGenerator";
@@ -1022,7 +1022,29 @@ const Dashboard: React.FC = () => {
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-between gap-4">
                       <div>
-                        <div className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors">{req.title}</div>
+                        <div className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors flex items-center gap-1.5 flex-wrap">
+                          <span>{req.title}</span>
+                          {req.status !== RequisitionStatus.DISBURSED && (
+                            <span className="text-[8px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded uppercase tracking-tight">
+                              {getDaysSinceSubmission(req.submittedAt)}d
+                            </span>
+                          )}
+                          {req.flaggedForAudit && (
+                            <span title="Flagged for Audit" className="inline-flex shrink-0">
+                              <Flag size={11} className="text-rose-500 fill-rose-500" />
+                            </span>
+                          )}
+                          {req.inProcurement && (
+                            <span className="text-[8px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded uppercase tracking-tight">
+                              PROCUREMENT
+                            </span>
+                          )}
+                          {req.requiresMoreInfo && (
+                            <span className="text-[8px] font-bold text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded uppercase tracking-tight">
+                              INFO REQ
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[10px] text-slate-400 font-mono">#{req.id.slice(-8).toUpperCase()}</div>
                       </div>
                       <span className="text-[9px] text-indigo-600 bg-indigo-50 opacity-0 group-hover:opacity-100 px-2 py-0.5 rounded font-black tracking-widest uppercase transition-all">
@@ -1158,8 +1180,15 @@ const Dashboard: React.FC = () => {
                             <td className="px-6 py-4 font-mono text-xs text-slate-500 font-bold uppercase">
                               #{req.id.substr(0, 8).toUpperCase()}
                             </td>
-                            <td className="px-6 py-4">
-                              <div className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors">{req.title}</div>
+                            <td className="px-6 py-4 border-slate-100">
+                              <div className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors flex items-center gap-1.5">
+                                <span>{req.title}</span>
+                                {req.flaggedForAudit && (
+                                  <span title="Flagged for Audit" className="inline-flex shrink-0">
+                                    <Flag size={11} className="text-rose-500 fill-rose-500" />
+                                  </span>
+                                )}
+                              </div>
                               <div className="text-[10px] text-slate-400 truncate max-w-sm mt-0.5">{req.description}</div>
                             </td>
                             <td className="px-6 py-4 text-xs text-slate-500 font-medium font-mono">
