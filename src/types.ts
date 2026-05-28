@@ -25,6 +25,7 @@ export interface UserProfile {
   theme?: "light" | "dark";
   phone?: string;
   department?: string;
+  photoURL?: string;
 }
 
 export type SearchFilter = "ALL" | "TITLE" | "GROUP" | "REQUESTER";

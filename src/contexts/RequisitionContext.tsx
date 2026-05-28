@@ -302,10 +302,15 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 isApproved: true,
                 ...(invitedGroup && { group: invitedGroup }),
                 ...(invitedCode && { approverCode: invitedCode }),
+                ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
               }, { merge: true });
             } else if (firebaseUser.email === "gichaumburu@gmail.com" && (!profile.isApproved || profile.role !== UserRole.ADMIN)) {
               // Auto-promote bootstrap admin if info is missing or incorrect
-              await setDoc(userRef, { role: UserRole.ADMIN, isApproved: true }, { merge: true });
+              await setDoc(userRef, { 
+                role: UserRole.ADMIN, 
+                isApproved: true,
+                ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
+              }, { merge: true });
             } else if (matchedMock && (!profile.isApproved || profile.role !== matchedMock.role)) {
               // Auto-approve and sync seeded system user matching this email
               await setDoc(userRef, {
@@ -314,11 +319,16 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 isActive: true,
                 isSuspended: false,
                 ...(matchedMock.group && { group: matchedMock.group }),
-                ...(matchedMock.approverCode && { approverCode: matchedMock.approverCode })
+                ...(matchedMock.approverCode && { approverCode: matchedMock.approverCode }),
+                ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
               }, { merge: true });
             } else {
-              setCurrentUser(profile);
-              setLoading(false);
+              if (firebaseUser.photoURL && profile.photoURL !== firebaseUser.photoURL) {
+                await setDoc(userRef, { photoURL: firebaseUser.photoURL }, { merge: true });
+              } else {
+                setCurrentUser(profile);
+                setLoading(false);
+              }
             }
           } else {
             // Create new profile
@@ -350,6 +360,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
               ...(matchedMock?.approverCode && { approverCode: matchedMock.approverCode }),
               ...(inviteConsumed && invitedGroup && { group: invitedGroup }),
               ...(inviteConsumed && invitedCode && { approverCode: invitedCode }),
+              ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
             };
             await setDoc(userRef, newProfile);
             

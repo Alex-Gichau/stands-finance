@@ -171,8 +171,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, not
           isCollapsed ? "flex flex-col items-center gap-4" : "flex items-center gap-4 px-4"
         )}>
            <div className="relative">
-            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-white/10 flex items-center justify-center text-primary font-bold shadow-inner">
-              {currentUser?.name.charAt(0)}
+            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-white/10 overflow-hidden flex items-center justify-center text-primary font-bold shadow-inner">
+              {currentUser?.photoURL ? (
+                <img 
+                  src={currentUser.photoURL} 
+                  alt={currentUser.name} 
+                  className="w-full h-full object-cover" 
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                currentUser?.name.charAt(0)
+              )}
             </div>
             <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-slate-900 rounded-full animate-pulse" />
           </div>

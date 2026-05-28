@@ -4,7 +4,7 @@
  */
 
 import React, { useMemo, useState } from "react";
-import { ComposedChart, Area, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { ComposedChart, Area, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
 import { formatCurrency, cn } from "../lib/utils";
@@ -59,6 +59,53 @@ const CustomTooltip = ({ active, payload, label }: any) => {
               {approvalRate}%
             </span>
           </div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
+const PIE_COLORS = [
+  "#4f46e5", // Indigo-600
+  "#06b6d4", // Cyan-500
+  "#10b981", // Emerald-500
+  "#f59e0b", // Amber-500
+  "#ec4899", // Pink-500
+  "#8b5cf6", // Violet-500
+  "#f43f5e", // Rose-500
+  "#64748b", // Slate-500
+];
+
+const PieTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    
+    return (
+      <div className="bg-white/95 backdrop-blur-md border border-slate-200 p-3.5 rounded-2xl shadow-xl space-y-1.5 text-xs text-slate-700 min-w-[220px]">
+        <div className="font-extrabold text-slate-900 border-b border-slate-100 pb-1 flex justify-between items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wider text-slate-500 truncate max-w-[150px]">
+            {data.groupName}
+          </span>
+          <span className="text-[8px] font-mono bg-indigo-50 px-1.5 py-0.5 rounded-md uppercase text-indigo-500 font-bold font-sans">
+            Ledger Share
+          </span>
+        </div>
+        <div className="pt-1 text-[11px] space-y-1">
+          <div className="flex justify-between">
+            <span className="text-slate-500">Submitted count:</span>
+            <span className="font-mono font-bold text-slate-900">{data.count} reqs</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Value (KES):</span>
+            <span className="font-mono font-black text-slate-900">Ksh {data.totalAmount?.toLocaleString()}</span>
+          </div>
+          {data.disbursedAmount > 0 && (
+            <div className="flex justify-between text-emerald-600">
+              <span>Disbursed (KES):</span>
+              <span className="font-mono font-bold">Ksh {data.disbursedAmount?.toLocaleString()}</span>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -778,78 +825,161 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Group Request Totals Ledger Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-4 md:px-6 py-3 md:py-4 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
-          <div>
-            <h2 className="text-[10px] md:text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
-              <Users size={16} className="text-indigo-600" />
-              Ministry Group Requests
-            </h2>
-            <p className="text-[8px] md:text-[10px] text-slate-400 mt-0.5 uppercase font-mono">Consolidated Financial Exposure</p>
+      {/* Group Requests Breakdown Ledger & Dashboard Pie Chart Visualizer */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Table representation (Ministry Group Requests) */}
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-4 md:px-6 py-3 md:py-4 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between font-sans">
+            <div>
+              <h2 className="text-[10px] md:text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                <Users size={16} className="text-indigo-600" />
+                Ministry Group Requests
+              </h2>
+              <p className="text-[8px] md:text-[10px] text-slate-400 mt-0.5 uppercase font-mono">Consolidated Financial Exposure</p>
+            </div>
+            <span className="text-[8px] md:text-[10px] font-mono text-slate-400">TOTAL: {requestedPerGroup.length}</span>
           </div>
-          <span className="text-[8px] md:text-[10px] font-mono text-slate-400">TOTAL: {requestedPerGroup.length}</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-50/30">
-                <th className="px-4 md:px-6 py-2 md:py-3 text-[7px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Ministry Group</th>
-                <th className="px-4 md:px-6 py-2 md:py-3 text-[7px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Transactions</th>
-                <th className="hidden sm:table-cell px-4 md:px-6 py-2 md:py-3 text-[7px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Pend</th>
-                <th className="px-4 md:px-6 py-2 md:py-3 text-[7px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Sum (Ksh)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {requestedPerGroup.map((val, i) => (
-                <tr 
-                  key={i} 
-                  onClick={() => setSelectedGroupDetails(val)}
-                  className="hover:bg-indigo-50/20 transition-all cursor-pointer group"
-                >
-                  <td className="px-3 md:px-6 py-2.5 md:py-4">
-                    <div className="flex flex-col">
-                      <span className="font-bold text-slate-800 text-[11px] md:text-sm uppercase group-hover:text-indigo-600 transition-colors truncate max-w-[100px] md:max-w-none">{val.groupName}</span>
-                    </div>
-                  </td>
-                  <td className="px-3 md:px-6 py-2.5 md:py-4 text-center">
-                    <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] md:text-[11px] font-mono font-bold bg-slate-100 text-slate-700">
-                      {val.count}
-                    </span>
-                  </td>
-                  <td className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4 text-center">
-                    <span className={cn(
-                      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] md:text-[11px] font-mono font-bold",
-                      val.pendingCount > 0 ? "bg-amber-50 text-amber-600" : "bg-slate-50 text-slate-400"
-                    )}>
-                      {val.pendingCount}
-                    </span>
-                  </td>
-                  <td className="px-3 md:px-6 py-2.5 md:py-4 text-right">
-                    <span className="font-mono font-black text-slate-900 text-[11px] md:text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left font-sans">
+              <thead>
+                <tr className="bg-slate-50/30">
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-[7px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Ministry Group</th>
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-[7px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Transactions</th>
+                  <th className="hidden sm:table-cell px-4 md:px-6 py-2 md:py-3 text-[7px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Pend</th>
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-[7px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Sum (Ksh)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {requestedPerGroup.map((val, i) => (
+                  <tr 
+                    key={i} 
+                    onClick={() => setSelectedGroupDetails(val)}
+                    className="hover:bg-indigo-50/20 transition-all cursor-pointer group"
+                  >
+                    <td className="px-3 md:px-6 py-2.5 md:py-4">
+                      <div className="flex flex-col">
+                        <span className="font-bold text-slate-800 text-[11px] md:text-sm uppercase group-hover:text-indigo-600 transition-colors truncate max-w-[100px] md:max-w-none">{val.groupName}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 md:px-6 py-2.5 md:py-4 text-center">
+                      <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] md:text-[11px] font-mono font-bold bg-slate-100 text-slate-700">
+                        {val.count}
+                      </span>
+                    </td>
+                    <td className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4 text-center">
+                      <span className={cn(
+                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] md:text-[11px] font-mono font-bold",
+                        val.pendingCount > 0 ? "bg-amber-50 text-amber-600" : "bg-slate-50 text-slate-400"
+                      )}>
+                        {val.pendingCount}
+                      </span>
+                    </td>
+                    <td className="px-3 md:px-6 py-2.5 md:py-4 text-right font-mono font-black text-slate-900 text-[11px] md:text-sm">
                       {formatCurrency(val.totalAmount)}
+                    </td>
+                  </tr>
+                ))}
+                {requestedPerGroup.length > 0 && (
+                  <tr className="bg-slate-50 border-t border-slate-200 font-bold">
+                    <td className="px-4 md:px-6 py-3 md:py-4 text-[10px] md:text-xs font-black uppercase text-slate-800">
+                      Grand Total
+                    </td>
+                    <td className="px-4 md:px-6 py-3 md:py-4 text-center font-mono text-[10px] md:text-xs text-slate-500">
+                      {requestedPerGroup.reduce((acc, x) => acc + x.count, 0)}
+                    </td>
+                    <td className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4 text-center font-mono text-[10px] md:text-xs text-slate-500">
+                      {requestedPerGroup.reduce((acc, x) => acc + x.pendingCount, 0)}
+                    </td>
+                    <td className="px-4 md:px-6 py-3 md:py-4 text-right font-mono text-xs md:text-sm text-primary">
+                      {formatCurrency(requestedPerGroup.reduce((acc, x) => acc + x.totalAmount, 0))}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Visual value distribution chart */}
+        <div className="lg:col-span-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col font-sans">
+          <div className="px-4 md:px-6 py-3 md:py-4 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
+            <h2 className="text-[10px] md:text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-1.5">
+              <TrendingUp size={16} className="text-primary" />
+              Allocation Breakdown
+            </h2>
+            <span className="text-[8px] md:text-[10px] font-black bg-primary/10 text-primary px-2.5 py-0.5 rounded-full uppercase tracking-widest">Share %</span>
+          </div>
+
+          <div className="p-4 flex flex-col items-center justify-center flex-1 space-y-4">
+            {requestedPerGroup.length > 0 ? (
+              <>
+                <div className="w-full h-[185px] relative flex items-center justify-center">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={requestedPerGroup}
+                        nameKey="groupName"
+                        dataKey="totalAmount"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={55}
+                        outerRadius={75}
+                        paddingAngle={3}
+                      >
+                        {requestedPerGroup.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<PieTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  
+                  {/* Center metrics summary overlay */}
+                  <div className="absolute text-center flex flex-col items-center pointer-events-none">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Gross value</span>
+                    <span className="text-sm font-black text-slate-900 font-mono mt-0.5">
+                      Ksh {(requestedPerGroup.reduce((acc, x) => acc + x.totalAmount, 0) / 1000).toFixed(0)}k
                     </span>
-                  </td>
-                </tr>
-              ))}
-              {requestedPerGroup.length > 0 && (
-                <tr className="bg-slate-50 border-t border-slate-200 font-bold">
-                  <td className="px-4 md:px-6 py-3 md:py-4 text-[10px] md:text-xs font-black uppercase text-slate-800">
-                    Grand Total
-                  </td>
-                  <td className="px-4 md:px-6 py-3 md:py-4 text-center font-mono text-[10px] md:text-xs text-slate-500">
-                    {requestedPerGroup.reduce((acc, x) => acc + x.count, 0)}
-                  </td>
-                  <td className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4 text-center font-mono text-[10px] md:text-xs text-slate-500">
-                    {requestedPerGroup.reduce((acc, x) => acc + x.pendingCount, 0)}
-                  </td>
-                  <td className="px-4 md:px-6 py-3 md:py-4 text-right font-mono text-xs md:text-sm text-primary">
-                    {formatCurrency(requestedPerGroup.reduce((acc, x) => acc + x.totalAmount, 0))}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                  </div>
+                </div>
+
+                {/* Highly readable color-coded descriptive legends */}
+                <div className="w-full space-y-1 overflow-y-auto max-h-[155px] pr-1">
+                  {(() => {
+                    const totalVal = requestedPerGroup.reduce((acc, x) => acc + x.totalAmount, 0);
+                    return requestedPerGroup.map((g, idx) => {
+                      const color = PIE_COLORS[idx % PIE_COLORS.length];
+                      const pct = totalVal > 0 ? ((g.totalAmount / totalVal) * 100).toFixed(1) : "0";
+                      return (
+                        <div 
+                          key={g.groupId} 
+                          onClick={() => setSelectedGroupDetails(g)}
+                          className="flex items-center justify-between text-[11px] p-2 hover:bg-slate-50 rounded-xl transition-all cursor-pointer group/item"
+                        >
+                          <div className="flex items-center gap-2 truncate max-w-[65%]">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                            <span className="font-bold text-slate-700 uppercase tracking-tight truncate group-hover/item:text-primary transition-colors text-[10px]">
+                              {g.groupName}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 font-mono text-[10px] font-bold text-slate-800 shrink-0">
+                            <span>{pct}%</span>
+                            <span className="text-slate-400">|</span>
+                            <span>Ksh {g.totalAmount.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </>
+            ) : (
+              <div className="h-[200px] flex flex-col items-center justify-center text-slate-300 py-10 opacity-50">
+                <TrendingUp size={30} />
+                <p className="text-[8px] font-bold uppercase tracking-widest mt-2">No allocation available</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

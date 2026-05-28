@@ -326,8 +326,17 @@ export const UsersPanel: React.FC = () => {
                   >
                     <td className="px-3 md:px-8 py-2 md:py-5">
                       <div className="flex items-center gap-2.5 md:gap-4">
-                        <div className="w-7 h-7 md:w-10 md:h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px] md:text-sm border border-primary/5 shrink-0">
-                          {user.name.charAt(0)}
+                        <div className="w-7 h-7 md:w-10 md:h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px] md:text-sm border border-primary/5 shrink-0 overflow-hidden">
+                          {user.photoURL ? (
+                            <img 
+                              src={user.photoURL} 
+                              alt={user.name} 
+                              className="w-full h-full object-cover" 
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            user.name.charAt(0)
+                          )}
                         </div>
                         <div className="min-w-0">
                           <p className="text-[11px] md:text-sm font-bold text-slate-800 leading-tight truncate">{user.name}</p>

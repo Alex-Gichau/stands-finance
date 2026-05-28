@@ -1060,8 +1060,17 @@ function AppContent() {
                   <span className="text-[10px] font-black text-slate-900 uppercase tracking-tight">{currentUser.name.split(' ')[0]}</span>
                   <span className="text-[8px] text-primary font-bold uppercase tracking-widest leading-none">{currentUser.role.split('_')[0]}</span>
                 </div>
-                <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-black text-[10px] shadow-sm group-hover:scale-105 transition-transform">
-                  {currentUser.name.charAt(0)}
+                <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-black text-[10px] shadow-sm group-hover:scale-105 transition-transform overflow-hidden">
+                  {currentUser.photoURL ? (
+                    <img
+                      src={currentUser.photoURL}
+                      alt={currentUser.name}
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    currentUser.name.charAt(0)
+                  )}
                 </div>
               </button>
 
