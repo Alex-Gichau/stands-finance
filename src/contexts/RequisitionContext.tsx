@@ -1513,7 +1513,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const cleanedUpdates = {
         ...updates,
         updatedAt: new Date().toISOString(),
-        flaggedForAudit: newAmount > 100000 ? true : (updates.flaggedForAudit !== undefined ? updates.flaggedForAudit : currentReq.flaggedForAudit)
+        flaggedForAudit: newAmount > 100000 ? true : (updates.flaggedForAudit !== undefined ? updates.flaggedForAudit : (currentReq.flaggedForAudit || false))
       };
       
       await updateDoc(reqRef, cleanedUpdates);

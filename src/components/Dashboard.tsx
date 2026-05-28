@@ -12,6 +12,7 @@ import { AlertTriangle, TrendingUp, Layout, Activity, ClipboardList, CheckCircle
 import { motion, AnimatePresence } from "motion/react";
 import { RequisitionDetailModal } from "./RequisitionsPanel";
 import { ReceiptTemplateGenerator } from "./ReceiptTemplateGenerator";
+import { printSystemLogs } from "../utils/exportUtils";
 
 // Custom high-detail chart tooltip
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -774,8 +775,15 @@ const Dashboard: React.FC = () => {
                 <Activity size={16} className="text-indigo-600" />
                 <h2 className="text-[10px] md:text-xs font-bold text-slate-800 uppercase tracking-widest">Audit Trail</h2>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[8px] md:text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest">LIVE</span>
+              <div className="flex items-center gap-3">
+                <span className="hidden md:inline text-[8px] md:text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest">LIVE</span>
+                <button 
+                  onClick={() => printSystemLogs(systemLogs, "System Audit Ledger", currentUser)}
+                  className="flex items-center gap-1.5 text-[8px] md:text-[10px] text-slate-500 font-black uppercase tracking-widest hover:text-primary transition-all group"
+                >
+                  <Printer size={12} className="group-hover:scale-110 transition-transform" />
+                  Print Logs
+                </button>
                 <button className="text-[8px] md:text-[10px] text-primary font-black uppercase tracking-widest hover:underline transition-all">
                   View All
                 </button>

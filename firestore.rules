@@ -163,8 +163,8 @@ service cloud.firestore {
     }
 
     match /alerts/{alertId} {
-      allow get: if isValidId(alertId) && (isApprovedUser() || isAdmin());
-      allow list: if isApprovedUser() || isAdmin();
+      allow get: if isValidId(alertId) && isSignedIn();
+      allow list: if isSignedIn();
       allow create: if isValidId(alertId) && isSignedIn() && isValidAlert(incoming());
       allow update: if isValidId(alertId) && isSignedIn() && 
                       (incoming().diff(existing()).affectedKeys().hasOnly(['isRead']) || 

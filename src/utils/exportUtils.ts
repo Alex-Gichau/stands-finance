@@ -3,10 +3,280 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Requisition } from "../types";
+import { Requisition, SystemLog } from "../types";
 import { formatCurrency, formatDate } from "../lib/utils";
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
+
+/**
+ * Generates high-fidelity, printer-friendly HTML ledger for System Audit Logs.
+ */
+export function generatePrintableLogsHtml(
+  logs: SystemLog[],
+  reportTitle: string,
+  currentUser: any
+): string {
+  const fileDate = new Date().toLocaleDateString("en-KE", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const fileTime = new Date().toLocaleTimeString("en-KE", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const tableRowsHtml = logs.map((log, index) => {
+    return `
+      <tr>
+        <td style="text-align: center; color: #64748b; font-weight: bold;">${index + 1}</td>
+        <td style="font-family: monospace; font-size: 8.5px; color: #475569;">
+          ${formatDate(log.timestamp)}
+          <div style="font-size: 7px; color: #94a3b8; margin-top: 2px;">
+            ${new Date(log.timestamp).toLocaleTimeString()}
+          </div>
+        </td>
+        <td>
+          <div style="font-weight: bold; color: #0f172a; font-size: 9.5px;">${log.action.replace(/_/g, " ")}</div>
+          <div style="font-size: 8px; font-family: monospace; color: #64748b; margin-top: 2px;">
+            ID: ${log.id.toUpperCase()}
+          </div>
+        </td>
+        <td style="font-size: 9px; color: #334155;">
+          ${log.details}
+        </td>
+        <td style="font-weight: 500; font-size: 9px; color: #475569;">
+          ${log.performedBy}
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>St. Andrews Church - System Audit Logs</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      color: #1e293b;
+      margin: 40px;
+      line-height: 1.4;
+      background: #ffffff;
+    }
+    .header {
+      border-bottom: 3px double #334155;
+      padding-bottom: 16px;
+      margin-bottom: 25px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      background-color: #4f46e5;
+      color: #ffffff;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 18px;
+    }
+    .title-area {
+      flex: 1;
+    }
+    .title {
+      font-weight: 800;
+      font-size: 20px;
+      text-transform: uppercase;
+      letter-spacing: -0.5px;
+      color: #0f172a;
+      margin: 0;
+    }
+    .subtitle {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #64748b;
+      font-weight: 700;
+      margin: 3px 0 0 0;
+    }
+    .meta-file-id {
+      text-align: right;
+      font-family: monospace;
+      font-size: 9px;
+      color: #64748b;
+    }
+    .meta-file-title {
+      font-weight: 800;
+      font-size: 12px;
+      color: #0f172a;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 25px;
+    }
+    .meta-item {
+      background-color: #f8fafc;
+      padding: 8px 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+    }
+    .meta-label {
+      font-weight: 700;
+      font-size: 8px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 3px;
+    }
+    .meta-value {
+      font-weight: 700;
+      font-size: 11px;
+      color: #1e293b;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10px;
+      margin-bottom: 30px;
+    }
+    th {
+      background-color: #f1f5f9;
+      color: #475569;
+      text-transform: uppercase;
+      font-weight: 800;
+      font-size: 8.5px;
+      letter-spacing: 0.5px;
+      border: 1px solid #cbd5e1;
+      padding: 8px 10px;
+      text-align: left;
+    }
+    td {
+      border: 1px solid #e2e8f0;
+      padding: 8px 10px;
+      vertical-align: top;
+    }
+    tr:nth-child(even) {
+      background-color: #f8fafc;
+    }
+    .system-log {
+      margin-top: 50px;
+      border-top: 1px dashed #cbd5e1;
+      padding-top: 12px;
+      font-size: 8px;
+      color: #94a3b8;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      <div class="brand-logo">✝</div>
+      <div class="title-area">
+        <h1 class="title">St. Andrews Church</h1>
+        <p class="subtitle">System Audit Management Ledger</p>
+      </div>
+    </div>
+    <div class="meta-file-id">
+      <div class="meta-file-title">AUDIT LOG EXPORT</div>
+      <div>REF: LOG-${Date.now().toString(36).toUpperCase()}</div>
+      <div>OFFICIAL SECURE SYSTEM RECORD</div>
+    </div>
+  </div>
+
+  <div class="meta-grid">
+    <div class="meta-item">
+      <div class="meta-label">Report Title</div>
+      <div class="meta-value">${reportTitle}</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Exported By</div>
+      <div class="meta-value">${currentUser?.name || "System Operator"}</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Generated On</div>
+      <div class="meta-value">${fileDate} at ${fileTime}</div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 4%; text-align: center;">#</th>
+        <th style="width: 15%;">Timestamp</th>
+        <th style="width: 20%;">Action Type</th>
+        <th style="width: 46%;">Narrative Description</th>
+        <th style="width: 15%;">Operator</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${tableRowsHtml || `<tr><td colspan="5" style="text-align: center; padding: 20px; color: #94a3b8; font-style: italic;">No audit records found in selected scope.</td></tr>`}
+    </tbody>
+  </table>
+
+  <div class="system-log">
+    ST. ANDREWS PARISH FISCAL v3 PROTOCOL • AUDITED SYSTEM LOG RECORD • PRINTED SECURELY ON ${fileDate} AT ${fileTime}
+  </div>
+</body>
+</html>
+  `;
+}
+
+/**
+ * Prints system audit logs.
+ */
+export function printSystemLogs(
+  logs: SystemLog[],
+  reportTitle: string,
+  currentUser: any
+): void {
+  const html = generatePrintableLogsHtml(logs, reportTitle, currentUser);
+
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "absolute";
+  iframe.style.width = "0px";
+  iframe.style.height = "0px";
+  iframe.style.border = "none";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow?.document || iframe.contentDocument;
+  if (doc) {
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (err) {
+        console.error("Print execution fault:", err);
+      }
+      setTimeout(() => {
+        if (iframe && iframe.parentNode) {
+          iframe.parentNode.removeChild(iframe);
+        }
+      }, 1000);
+    }, 500);
+  }
+}
 
 /**
  * Generates high-fidelity, standalone, printer-friendly HTML ledger for physical filing.
