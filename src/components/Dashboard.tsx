@@ -524,7 +524,14 @@ const Dashboard: React.FC = () => {
           <div className="absolute right-0 top-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl" />
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6 md:gap-8">
             <div className="space-y-2">
-              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] opacity-70">Your Ministry Group Ledger</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-[10px] font-black uppercase tracking-[0.2em] opacity-70">Your Ministry Group Ledger</h2>
+                {requisitions.filter(r => r.projectId === userGroupProject.id).length > 0 && (
+                  <span className="bg-white/20 text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest border border-white/10 backdrop-blur-sm">
+                    {requisitions.filter(r => r.projectId === userGroupProject.id).length} Requisitions Done
+                  </span>
+                )}
+              </div>
               <h3 className="text-xl md:text-3xl font-bold">{userGroupProject.name}</h3>
               <p className="opacity-80 text-xs md:text-sm max-w-md">Live fiscal monitoring for your specific project allocation and spend patterns.</p>
             </div>

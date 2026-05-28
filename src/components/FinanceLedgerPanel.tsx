@@ -436,6 +436,8 @@ export const FinanceLedgerPanel: React.FC = () => {
           {/* Project Budget Quick-View Cards */}
           <div className="flex gap-3 overflow-x-auto pb-4 pt-1 -mx-2 px-2 scrollbar-hide">
             {projects.map((project) => {
+              const projectRequisitions = requisitions.filter(r => r.projectId === project.id);
+              const requisitionsCount = projectRequisitions.length;
               const spendingRatio = (project.spentAmount / project.allocatedBudget) * 100;
               const remainingAmount = project.allocatedBudget - project.spentAmount;
               return (
@@ -453,16 +455,23 @@ export const FinanceLedgerPanel: React.FC = () => {
                       </h4>
                       <p className="text-[8px] font-mono text-slate-400">Remaining: {formatCurrency(remainingAmount)}</p>
                     </div>
-                    <span className={cn(
-                      "text-[8px] font-black px-1.5 py-0.5 rounded-full border",
-                      spendingRatio >= 90 
-                        ? "bg-rose-50 text-rose-600 border-rose-100" 
-                        : spendingRatio >= 75 
-                          ? "bg-amber-50 text-amber-600 border-amber-100" 
-                          : "bg-emerald-50 text-emerald-600 border-emerald-100"
-                    )}>
-                      {spendingRatio.toFixed(0)}%
-                    </span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className={cn(
+                        "text-[8px] font-black px-1.5 py-0.5 rounded-full border",
+                        spendingRatio >= 90 
+                          ? "bg-rose-50 text-rose-600 border-rose-100" 
+                          : spendingRatio >= 75 
+                            ? "bg-amber-50 text-amber-600 border-amber-100" 
+                            : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                      )}>
+                        {spendingRatio.toFixed(0)}% Used
+                      </span>
+                      {requisitionsCount > 0 && (
+                        <span className="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 shadow-sm">
+                          {requisitionsCount} REQs
+                        </span>
+                      )}
+                    </div>
                   </div>
                   
                   <div className="space-y-1">
@@ -746,6 +755,8 @@ export const FinanceLedgerPanel: React.FC = () => {
 
             <div className="space-y-5">
               {projects.map((project) => {
+                const projectRequisitions = requisitions.filter(r => r.projectId === project.id);
+                const requisitionsCount = projectRequisitions.length;
                 const spendingRatio = (project.spentAmount / project.allocatedBudget) * 100;
                 const remainingAmount = project.allocatedBudget - project.spentAmount;
                 const codeInfo = getAccountingCode(project.groupId);
@@ -783,7 +794,7 @@ export const FinanceLedgerPanel: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Progress Bar */}
+              {/* Progress Bar */}
                     <div className="space-y-1.5">
                       <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
                         <div 
@@ -795,7 +806,14 @@ export const FinanceLedgerPanel: React.FC = () => {
                         />
                       </div>
                       <div className="flex justify-between items-center text-[9px] text-slate-500 font-bold">
-                        <span>{spendingRatio.toFixed(1)}% Bound</span>
+                        <div className="flex items-center gap-2">
+                          <span>{spendingRatio.toFixed(1)}% Bound</span>
+                          {requisitionsCount > 0 && (
+                            <span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-100 text-[8px] uppercase">
+                              {requisitionsCount} Requisitions Done
+                            </span>
+                          )}
+                        </div>
                         <span>{formatCurrency(remainingAmount)} Remaining Reserve</span>
                       </div>
                     </div>

@@ -64,19 +64,23 @@ export const ReceiptTemplateGenerator: React.FC<ReceiptTemplateGeneratorProps> =
     
     setIsAttaching(true);
     try {
-      // Lazily import html2canvas to safeguard against iframe sandbox restrictions on initial application load
-      const html2canvasModule = await import("html2canvas");
-      const html2canvas = html2canvasModule.default;
+      // Lazily import dom-to-image-more to handle modern CSS like oklch better than html2canvas
+      const domToImageModule = await import("dom-to-image-more");
+      const domToImage = domToImageModule.default;
 
-      // Capture the receipt as an image
-      const canvas = await html2canvas(receiptRef.current, {
-        scale: 2, // Higher quality
-        backgroundColor: "#ffffff",
-        logging: false,
-        useCORS: true
+      // Capture the receipt as an image with high quality
+      const imageData = await domToImage.toPng(receiptRef.current, {
+        bgcolor: "#ffffff",
+        quality: 1,
+        width: receiptRef.current.offsetWidth * 2,
+        height: receiptRef.current.offsetHeight * 2,
+        style: {
+          transform: "scale(2)",
+          transformOrigin: "top left",
+          width: receiptRef.current.offsetWidth + "px",
+          height: receiptRef.current.offsetHeight + "px",
+        }
       });
-      
-      const imageData = canvas.toDataURL("image/png");
       
       // Attach to requisition
       await uploadReceipts(req.id, [imageData]);

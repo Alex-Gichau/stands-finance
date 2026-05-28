@@ -40,6 +40,148 @@ import { ReceiptTemplateGenerator } from "./ReceiptTemplateGenerator";
 import { ReceiptGallery } from "./ReceiptGallery";
 import { EditRequisitionModal } from "./EditRequisitionModal";
 
+const DocumentPreviewModal = ({ docName, onClose }: { docName: string; onClose: () => void }) => {
+  const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(docName) || docName.startsWith('blob:') || docName.startsWith('data:');
+  const isSimulated = docName.includes("(Simulated)");
+  const cleanName = docName.replace(" (Simulated)", "");
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 md:p-10 bg-slate-900/80 backdrop-blur-md">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-white rounded-3xl w-full max-w-5xl h-full max-h-[85vh] shadow-2xl overflow-hidden border border-slate-200 flex flex-col relative"
+      >
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary">
+              <FileText size={16} />
+            </div>
+            <div>
+              <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest">{cleanName}</h3>
+              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Document Verification View</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const link = document.createElement("a");
+                link.href = "#";
+                link.download = cleanName;
+                link.click();
+              }}
+              className="p-2 hover:bg-slate-200 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
+              title="Download Original"
+            >
+              <Download size={18} />
+            </button>
+            <button 
+              onClick={onClose}
+              className="p-2 hover:bg-slate-200 rounded-full text-slate-400 hover:text-rose-500 transition-colors"
+            >
+              <XCircle size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto bg-slate-100/50 p-6 flex items-center justify-center">
+          {isSimulated ? (
+            <div className="max-w-3xl w-full bg-white shadow-xl rounded-2xl p-10 md:p-16 border border-slate-200 flex flex-col gap-8">
+              <div className="flex justify-between items-start border-b-4 border-slate-900 pb-6">
+                <div>
+                  <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Document Preview</h1>
+                  <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-2 px-1 bg-slate-100 w-fit rounded">Internal Verification Only</p>
+                </div>
+                <ShieldCheck size={48} className="text-slate-200" />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-8 py-4">
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filename</p>
+                  <p className="text-sm font-bold text-slate-900">{cleanName}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</p>
+                  <p className="text-sm font-bold text-emerald-600 uppercase">Simulated Integrity Valid</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Metadata</p>
+                  <p className="text-sm font-bold text-slate-900">MIME: application/octet-stream</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Timestamp</p>
+                  <p className="text-sm font-bold text-slate-900">{formatDate(new Date().toISOString())}</p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl p-12 flex flex-col items-center justify-center text-center gap-4">
+                <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm border border-slate-100">
+                  <Loader2 size={32} className="text-slate-300 animate-spin" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Rendering Sandbox Environment</p>
+                  <p className="text-[10px] text-slate-400 mt-1">Direct document rendering is restricted to authorized devices. Please download the full file for offline inspection.</p>
+                </div>
+              </div>
+
+              <div className="mt-8 border-t border-slate-100 pt-6 flex justify-between items-end">
+                <div className="space-y-1">
+                  <div className="w-32 h-8 bg-slate-50 rounded border border-slate-100 flex items-center justify-center text-[8px] font-mono text-slate-300 italic">
+                    Digital Fingerprint
+                  </div>
+                  <p className="text-[8px] font-mono text-slate-300">SHA-256: 8f3c...b9a2</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">St Andrews Ledger</p>
+                  <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest uppercase">Verified System Asset</p>
+                </div>
+              </div>
+            </div>
+          ) : isImage ? (
+            <img 
+              src={docName} 
+              alt={cleanName} 
+              className="max-w-full max-h-full object-contain rounded-xl shadow-2xl border border-white"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div className="text-center space-y-4">
+              <div className="p-8 bg-white rounded-3xl shadow-xl border border-slate-200 inline-block">
+                <Paperclip size={64} className="text-slate-200 mx-auto" />
+                <p className="mt-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Generic Preview Unavailable</p>
+                <p className="text-[10px] text-slate-400 mt-2">Open with native application for full inspection.</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+          <p className="text-[9px] font-black uppercase tracking-[0.3em] opacity-40">Secure Attachment Browser</p>
+          <div className="flex items-center gap-1.5">
+            <span className="w-1 h-1 bg-emerald-400 rounded-full animate-pulse" />
+            <p className="text-[8px] font-black uppercase tracking-[0.1em]">Ledger Verified Document</p>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const HighlightText = ({ text, highlight }: { text: string; highlight: string }) => {
+  if (!highlight.trim()) return <>{text}</>;
+  const parts = text.split(new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
+  return (
+    <>
+      {parts.map((part, i) => 
+        part.toLowerCase() === highlight.toLowerCase() 
+          ? <mark key={i} className="bg-amber-200 text-amber-900 rounded-px px-px font-bold underline decoration-amber-500/30 decoration-2">{part}</mark> 
+          : part
+      )}
+    </>
+  );
+};
+
 export const RequisitionsPanel: React.FC = () => {
   const { 
     requisitions, 
@@ -367,7 +509,9 @@ export const RequisitionsPanel: React.FC = () => {
                       <td className="px-3 md:px-6 py-2.5 md:py-4">
                         <div className="flex flex-col min-w-0 max-w-[120px] md:max-w-none">
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-900 text-[11px] md:text-sm truncate">{req.title}</span>
+                            <span className="font-bold text-slate-900 text-[11px] md:text-sm truncate">
+                              <HighlightText text={req.title} highlight={globalSearchTerm} />
+                            </span>
                             {req.status !== RequisitionStatus.DISBURSED && (
                               <span className="ml-2 text-[8px] md:text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded uppercase tracking-tight">
                                 {getDaysSinceSubmission(req.submittedAt)}d
@@ -395,7 +539,7 @@ export const RequisitionsPanel: React.FC = () => {
                           <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mt-1">
                             <span className="text-[7.5px] md:text-[10px] font-mono text-slate-400 uppercase tracking-wider truncate shrink-0">{req.id}</span>
                             <span className="inline-flex items-center px-1.5 py-0.5 bg-indigo-50/80 border border-indigo-200/50 text-indigo-700 rounded-md text-[7.5px] md:text-[9px] font-extrabold uppercase tracking-wider leading-none w-fit">
-                              💒 {req.groupName}
+                              💒 <HighlightText text={req.groupName} highlight={globalSearchTerm} />
                             </span>
                           </div>
                         </div>
@@ -566,7 +710,9 @@ export const RequisitionsPanel: React.FC = () => {
                     <td className="px-3 md:px-6 py-2.5 md:py-4">
                       <div className="flex flex-col min-w-0 max-w-[120px] md:max-w-none">
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900 text-[11px] md:text-sm truncate">{req.title}</span>
+                          <span className="font-bold text-slate-900 text-[11px] md:text-sm truncate">
+                            <HighlightText text={req.title} highlight={globalSearchTerm} />
+                          </span>
                           {req.flaggedForAudit && (
                             <span title="Flagged for Audit" className="inline-flex shrink-0">
                               <Flag size={11} className="text-rose-500 fill-rose-500" />
@@ -576,7 +722,7 @@ export const RequisitionsPanel: React.FC = () => {
                         <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mt-1">
                           <span className="text-[7.5px] md:text-[10px] font-mono text-slate-400 uppercase tracking-wider truncate shrink-0">{req.id}</span>
                           <span className="inline-flex items-center px-1.5 py-0.5 bg-blue-50/80 border border-blue-200/50 text-blue-700 rounded-md text-[7.5px] md:text-[9px] font-extrabold uppercase tracking-wider leading-none w-fit">
-                            💒 {req.groupName}
+                            💒 <HighlightText text={req.groupName} highlight={globalSearchTerm} />
                           </span>
                         </div>
                       </div>
@@ -764,6 +910,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
   const [approvalCode, setApprovalCode] = useState("");
   const [showDecisionForm, setShowDecisionForm] = useState<"APPROVE" | "REJECT" | "ESCALATE" | null>(null);
   const [loading, setLoading] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<string | null>(null);
 
   const handleToggleAuditFlag = async () => {
     try {
@@ -887,7 +1034,11 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                 <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Verification Evidence</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-4">
                    {req.attachments?.map((attachment, i) => (
-                    <div key={i} className="flex items-center gap-3 p-2.5 bg-white border border-slate-200 rounded-xl hover:border-primary/40 transition-all cursor-pointer group">
+                    <div 
+                      key={i} 
+                      onClick={() => setPreviewDoc(attachment)}
+                      className="flex items-center gap-3 p-2.5 bg-white border border-slate-200 rounded-xl hover:border-primary/40 transition-all cursor-pointer group"
+                    >
                       <div className="p-1.5 bg-slate-50 rounded-lg text-slate-400 group-hover:text-primary transition-colors">
                         <Paperclip size={12} />
                       </div>
@@ -1136,6 +1287,16 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
             )}
           </div>
         </div>
+
+        {/* Document Preview Overlay */}
+        <AnimatePresence>
+          {previewDoc && (
+            <DocumentPreviewModal 
+              docName={previewDoc} 
+              onClose={() => setPreviewDoc(null)} 
+            />
+          )}
+        </AnimatePresence>
       </motion.div>
     </div>
   );

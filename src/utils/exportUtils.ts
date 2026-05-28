@@ -6,7 +6,7 @@
 import { Requisition, SystemLog } from "../types";
 import { formatCurrency, formatDate } from "../lib/utils";
 import { jsPDF } from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 
 /**
  * Generates high-fidelity, printer-friendly HTML ledger for System Audit Logs.
@@ -809,7 +809,7 @@ export function downloadRequisitionsPdf(
     req.amount.toLocaleString()
   ]);
 
-  (doc as any).autoTable({
+  autoTable(doc, {
     startY: 42,
     head: headers,
     body: tableRows,
