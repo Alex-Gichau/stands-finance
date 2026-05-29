@@ -217,53 +217,41 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, not
       </div>
     </div>
 
-    {/* Modernized Floating Mobile Bottom Navigation Bar - Interactive Tactile Blob Dock */}
-    <div className="fixed bottom-5 left-4 right-4 max-w-md mx-auto h-16 bg-white/95 dark:bg-slate-900/90 border border-slate-200/50 dark:border-slate-800/80 flex md:hidden items-center justify-around px-2 z-40 shadow-[0_12px_35px_rgba(0,0,0,0.12)] rounded-3xl backdrop-blur-xl select-none transition-all duration-300 overflow-visible">
-      <div className="flex items-center justify-around w-full relative overflow-visible h-full">
+    {/* Glassmorphic Floating Mobile Dock */}
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-[360px] h-16 bg-slate-900/60 border border-white/10 flex md:hidden items-center justify-between px-2 z-50 shadow-2xl rounded-full backdrop-blur-xl select-none">
+      <div className="flex items-center justify-between w-full h-full gap-1">
         {(() => {
-          const mobileItems = filteredItems.filter(item => item.id !== "notifications");
-          const dashboardIdx = mobileItems.findIndex(i => i.id === "dashboard");
-          if (dashboardIdx !== -1) {
-            const [dashboard] = mobileItems.splice(dashboardIdx, 1);
-            const mid = Math.floor(mobileItems.length / 2);
-            mobileItems.splice(mid, 0, dashboard);
-          }
+          // Take top 5 items for the mobile dock to avoid overcrowding
+          const mobileItems = filteredItems.filter(item => item.id !== "notifications" && !item.desktopOnly).slice(0, 5);
+          
           return mobileItems;
         })().map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
+          
           return (
-            <motion.button
+            <button
               key={item.id}
               type="button"
-              whileTap={{ scale: 0.9 }}
               onClick={() => onViewChange(item.id)}
               data-sidebar-item={item.label}
-              className="flex flex-col items-center justify-center w-14 h-14 relative transition-all duration-300 overflow-visible cursor-pointer"
+              className="relative flex-1 h-full flex flex-col items-center justify-center cursor-pointer group rounded-full"
             >
-              {isActive ? (
-                <>
-                  {/* Modern Active Floating Circle */}
-                  <div className="absolute -top-7 w-12 h-12 rounded-full bg-primary text-white flex items-center justify-center shadow-lg shadow-primary/35 border-4 border-slate-50 dark:border-slate-950 transform transition-all duration-300 animate-float-subtle">
-                    <Icon size={18} strokeWidth={2.5} />
-                  </div>
-                  {/* Elegant active label */}
-                  <span className="absolute bottom-[-16px] text-[8px] font-black uppercase tracking-wider text-primary select-none transition-all duration-300">
-                    {item.label.split(" ")[0]}
-                  </span>
-                </>
-              ) : (
-                <>
-                  {/* Inactive Icon state */}
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-350 hover:bg-slate-100/50 dark:hover:bg-slate-800/30 transition-all duration-200">
-                    <Icon size={18} strokeWidth={2} />
-                  </div>
-                  <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mt-0.5 select-none">
-                    {item.label.split(" ")[0]}
-                  </span>
-                </>
+              {isActive && (
+                <motion.div 
+                  layoutId="active-mobile-pill"
+                  className="absolute inset-0 m-auto w-12 h-12 bg-blue-500 rounded-full shadow-lg shadow-blue-500/30"
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                />
               )}
-            </motion.button>
+              
+              <div className={cn(
+                "relative z-10 flex items-center justify-center w-12 h-12 transition-colors duration-300",
+                isActive ? "text-white" : "text-slate-400 group-hover:text-slate-200"
+              )}>
+                <Icon size={20} strokeWidth={2} />
+              </div>
+            </button>
           );
         })}
       </div>

@@ -785,7 +785,7 @@ function AppContent() {
     });
 
     // 2. New requisitions received (status === SUBMITTED)
-    requisitions.filter(r => r.status === "SUBMITTED").forEach(r => {
+    requisitions.filter(r => r.status === "SUBMITTED" && !r.id.includes("req-seed-")).forEach(r => {
       notificationItems.push({
         id: `req-sub-${r.id}`,
         type: "REQ_RECEIVED",
@@ -802,7 +802,7 @@ function AppContent() {
   }
 
   // 3. New approvals done
-  requisitions.filter(r => r.status === "APPROVED_L1" || r.status === "APPROVED_L2").forEach(r => {
+  requisitions.filter(r => (r.status === "APPROVED_L1" || r.status === "APPROVED_L2") && !r.id.includes("req-seed-")).forEach(r => {
     notificationItems.push({
       id: `req-app-${r.id}`,
       type: "REQ_APPROVED",
@@ -819,7 +819,7 @@ function AppContent() {
 
   // 3.5. Disbursements needed (specifically for FINANCE, ADMIN, and SUPER_ADMIN roles)
   if (currentUser?.role === UserRole.FINANCE || currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN) {
-    requisitions.filter(r => r.status === "APPROVED_L2").forEach(r => {
+    requisitions.filter(r => r.status === "APPROVED_L2" && !r.id.includes("req-seed-")).forEach(r => {
       notificationItems.push({
         id: `finance-disb-req-${r.id}`,
         type: "FINANCE_DISBURSEMENT_REQUIRED",

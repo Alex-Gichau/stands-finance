@@ -31,11 +31,12 @@ import {
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { cn } from "../lib/utils";
+import { UserRole } from "../types";
 import { motion } from "motion/react";
 import { SystemHealth } from "./SystemHealth";
 
 export const SettingsPanel: React.FC = () => {
-  const { thresholds, updateThreshold, currentUser, updateUserProfile, biometricEnrolled, enrollBiometric, systemLogs, seedAllEcosystemData } = useRequisitions();
+  const { thresholds, updateThreshold, currentUser, updateUserProfile, biometricEnrolled, enrollBiometric, systemLogs, seedAllEcosystemData, systemSettings, updateSystemSettings } = useRequisitions();
 
   const [sliderIndex, setSliderIndex] = React.useState(1); // 0 = Aggressive, 1 = Balanced, 2 = Power Saver
   const INTERVAL_MODES = [
@@ -122,7 +123,7 @@ export const SettingsPanel: React.FC = () => {
           </section>
 
           {/* System Health Diagnostics Monitor */}
-          {currentUser?.role === "ADMIN" && (
+          {(currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN) && (
             <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm p-8 space-y-8">
               {/* Telemetry Loop Speed Tuner Controls */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-border/60">
@@ -181,7 +182,7 @@ export const SettingsPanel: React.FC = () => {
           )}
 
           {/* Security & Access Thresholds */}
-          {currentUser?.role === "ADMIN" && (
+          {(currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN) && (
             <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm">
               <div className="px-8 py-6 border-b border-border flex items-center justify-between">
                 <h3 className="text-xs font-black text-foreground uppercase tracking-[0.2em] flex items-center gap-2">
@@ -278,7 +279,7 @@ export const SettingsPanel: React.FC = () => {
 
         <div className="space-y-8">
           {/* Record Metadata Card */}
-          {currentUser?.role === "ADMIN" && (
+          {(currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN) && (
             <section className="bg-slate-900 rounded-[2rem] p-8 shadow-2xl border border-slate-800 relative overflow-hidden group">
                <div className="absolute top-0 right-0 p-6 opacity-10 transition-transform group-hover:scale-125 duration-700">
                   <Server size={80} className="text-white" />
@@ -313,25 +314,47 @@ export const SettingsPanel: React.FC = () => {
               </div>
               
               <div className="pt-8 flex flex-col gap-3">
-                <button className="w-full py-4 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5 flex items-center justify-center gap-2">
-                  <Activity size={16} />
-                  ANALYZE_LATENCY
-                </button>
+                <div className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-2xl">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-white">Prototype Data</p>
+                    <p className="text-[10px] text-slate-400">Toggle mock requisitions, users, and projects</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      className="sr-only peer" 
+                      checked={systemSettings.prototypeDataEnabled}
+                      onChange={async (e) => {
+                        const enabled = e.target.checked;
+                        if (enabled) {
+                           // They turned it on, let's also trigger seed just in case it doesn't exist?
+                           // Actually the user just clicks toggle. No need to force seed, we can keep the separate seed button if needed.
+                           await updateSystemSettings({ prototypeDataEnabled: true });
+                        } else {
+                           await updateSystemSettings({ prototypeDataEnabled: false });
+                        }
+                      }} 
+                    />
+                    <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                </div>
 
-                <button 
-                  onClick={async () => {
-                    try {
-                      await seedAllEcosystemData();
-                      alert("St Andrews Ecosystem seeded successfully!");
-                    } catch (e: any) {
-                      alert("Seeding failed: " + e.message);
-                    }
-                  }}
-                  className="w-full py-4 bg-primary hover:bg-primary/90 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
-                >
-                  <Database size={16} />
-                  SEED_ECOSYSTEM_DATA
-                </button>
+                {systemSettings.prototypeDataEnabled && (
+                  <button 
+                    onClick={async () => {
+                      try {
+                        await seedAllEcosystemData();
+                        alert("St Andrews Ecosystem seeded successfully!");
+                      } catch (e: any) {
+                        alert("Seeding failed: " + e.message);
+                      }
+                    }}
+                    className="w-full py-4 bg-primary hover:bg-primary/90 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
+                  >
+                    <Database size={16} />
+                    FORCE_RESEED_ECOSYSTEM
+                  </button>
+                )}
               </div>
             </section>
           )}

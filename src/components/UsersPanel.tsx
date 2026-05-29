@@ -28,7 +28,8 @@ import {
   ShieldCheck,
   Clock,
   Download,
-  Trash2
+  Trash2,
+  LogOut
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -43,6 +44,7 @@ export const UsersPanel: React.FC = () => {
     adminRegisterUser,
     adminResetUserPassword,
     deleteUser,
+    adminForceLogoutUser,
     churchGroups,
     addChurchGroup,
     deleteChurchGroup,
@@ -452,6 +454,18 @@ export const UsersPanel: React.FC = () => {
                             <Mail size={8} className="text-slate-300 md:w-2.5 md:h-2.5" />
                             <p className="text-[7.5px] md:text-[10px] text-slate-400 font-medium truncate tracking-tight">{user.email}</p>
                           </div>
+                          {(() => {
+                            const now = new Date();
+                            const isOnline = user.isOnline && user.lastSeen && (now.getTime() - new Date(user.lastSeen).getTime() < 3 * 60000);
+                            return (
+                              <div className="flex items-center gap-1.5 mt-1" title={user.lastSeen ? new Date(user.lastSeen).toLocaleString() : ""}>
+                                <span className={cn("w-1.5 h-1.5 rounded-full", isOnline ? "bg-emerald-500 animate-pulse" : "bg-slate-300")} />
+                                <span className="text-[7px] md:text-[8px] text-slate-400 font-medium tracking-tight">
+                                  {isOnline ? "Online" : user.lastSeen ? `Last seen ${new Date(user.lastSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : "Offline"}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     </td>
@@ -503,6 +517,19 @@ export const UsersPanel: React.FC = () => {
                     </td>
                     <td className="px-4 md:px-8 py-3 md:py-5 text-right">
                       <div className="flex justify-end items-center gap-1 md:gap-2">
+                        {user.id !== currentUser?.id && currentUser?.role === UserRole.SUPER_ADMIN && (
+                          <button 
+                            onClick={async () => {
+                              if (window.confirm(`Force logout user ${user.email}?`)) {
+                                await adminForceLogoutUser(user.id);
+                              }
+                            }}
+                            className="p-2 md:p-2.5 bg-white border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 rounded-lg md:rounded-xl transition-all"
+                            title="Force Logout"
+                          >
+                            <LogOut size={14} className="md:w-4 md:h-4" />
+                          </button>
+                        )}
                         <button 
                           onClick={() => startEditing(user)}
                           className="p-2 md:p-2.5 bg-white border border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 rounded-lg md:rounded-xl transition-all"

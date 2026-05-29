@@ -61,8 +61,8 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ onSelectRequis
       if (!seenRequisitionsRef.current.has(r.id)) {
         seenRequisitionsRef.current.add(r.id);
 
-        // Only trigger toast if the requisition is SUBMITTED
-        if (r.status === RequisitionStatus.SUBMITTED) {
+        // Only trigger toast if the requisition is SUBMITTED and is not a mock seed
+        if (r.status === RequisitionStatus.SUBMITTED && !r.id.includes("req-seed-")) {
           const isUserAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN;
           
           const toastMessage = isUserAdmin
@@ -115,7 +115,7 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ onSelectRequis
       });
 
       // 2. New requisitions received (status === SUBMITTED)
-      requisitions.filter(r => r.status === RequisitionStatus.SUBMITTED).forEach(r => {
+      requisitions.filter(r => r.status === RequisitionStatus.SUBMITTED && !r.id.includes("req-seed-")).forEach(r => {
         items.push({
           id: `req-sub-${r.id}`,
           type: "REQ_RECEIVED",
@@ -132,7 +132,7 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ onSelectRequis
     }
 
     // 3. New approvals done
-    requisitions.filter(r => r.status === RequisitionStatus.APPROVED_L1 || r.status === RequisitionStatus.APPROVED_L2).forEach(r => {
+    requisitions.filter(r => (r.status === RequisitionStatus.APPROVED_L1 || r.status === RequisitionStatus.APPROVED_L2) && !r.id.includes("req-seed-")).forEach(r => {
       items.push({
         id: `req-app-${r.id}`,
         type: "REQ_APPROVED",
@@ -149,7 +149,7 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ onSelectRequis
 
     // 3.5. Disbursements needed (specifically for FINANCE, ADMIN, and SUPER_ADMIN roles)
     if (currentUser?.role === UserRole.FINANCE || currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN) {
-      requisitions.filter(r => r.status === RequisitionStatus.APPROVED_L2).forEach(r => {
+      requisitions.filter(r => r.status === RequisitionStatus.APPROVED_L2 && !r.id.includes("req-seed-")).forEach(r => {
         items.push({
           id: `finance-disb-req-${r.id}`,
           type: "FINANCE_DISBURSEMENT_REQUIRED",

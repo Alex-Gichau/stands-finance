@@ -28,6 +28,9 @@ export interface UserProfile {
   department?: string;
   photoURL?: string;
   tempPassword?: string;
+  isOnline?: boolean;
+  lastSeen?: string;
+  forceLogout?: boolean;
 }
 
 export type SearchFilter = "ALL" | "TITLE" | "GROUP" | "REQUESTER";
@@ -216,5 +219,9 @@ export interface PermissionConfig {
     canManageUsers: boolean;
     canManageSettings: boolean;
   };
+}
+
+export interface SystemSettings {
+  prototypeDataEnabled: boolean;
 }
 

@@ -115,7 +115,7 @@ const PieTooltip = ({ active, payload }: any) => {
 };
 
 const Dashboard: React.FC = () => {
-  const { requisitions, projects, alerts, currentUser, seedAllEcosystemData, deleteRequisition, systemLogs, canAccess } = useRequisitions();
+  const { requisitions, projects, alerts, currentUser, seedAllEcosystemData, deleteRequisition, systemLogs, canAccess, systemSettings } = useRequisitions();
 
   const hasAuditTrail = useMemo(() => {
     return canAccess("auditTrail");
@@ -159,10 +159,10 @@ const Dashboard: React.FC = () => {
     const baselineCount: Record<string, number> = { Sun: 1, Mon: 3, Tue: 4, Wed: 5, Thu: 3, Fri: 7, Sat: 2 };
     
     return days.map(day => {
-      const isSeeded = requisitions.length > 0;
-      const requested = isSeeded ? sumByDay[day] : baselineRequested[day];
-      const approved = isSeeded ? approvedByDay[day] : baselineApproved[day];
-      const count = isSeeded ? countByDay[day] : baselineCount[day];
+      const useMockData = systemSettings.prototypeDataEnabled && requisitions.length === 0;
+      const requested = useMockData ? baselineRequested[day] : sumByDay[day];
+      const approved = useMockData ? baselineApproved[day] : approvedByDay[day];
+      const count = useMockData ? baselineCount[day] : countByDay[day];
       const average = count > 0 ? Math.round(requested / count) : 0;
 
       return {
@@ -174,7 +174,7 @@ const Dashboard: React.FC = () => {
         average
       };
     });
-  }, [requisitions]);
+  }, [requisitions, systemSettings.prototypeDataEnabled]);
 
   const monthlyData = useMemo(() => {
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -217,10 +217,10 @@ const Dashboard: React.FC = () => {
     };
 
     return months.map(m => {
-      const isSeeded = requisitions.length > 0;
-      const requested = isSeeded ? sumByMonth[m] : baselineRequested[m];
-      const approved = isSeeded ? approvedByMonth[m] : baselineApproved[m];
-      const count = isSeeded ? countByMonth[m] : baselineCount[m];
+      const useMockData = systemSettings.prototypeDataEnabled && requisitions.length === 0;
+      const requested = useMockData ? baselineRequested[m] : sumByMonth[m];
+      const approved = useMockData ? baselineApproved[m] : approvedByMonth[m];
+      const count = useMockData ? baselineCount[m] : countByMonth[m];
       const average = count > 0 ? Math.round(requested / count) : 0;
 
       return {
@@ -232,7 +232,7 @@ const Dashboard: React.FC = () => {
         average
       };
     });
-  }, [requisitions]);
+  }, [requisitions, systemSettings.prototypeDataEnabled]);
 
   const annualData = useMemo(() => {
     const years = ["2024", "2025", "2026", "2027"];
@@ -272,10 +272,10 @@ const Dashboard: React.FC = () => {
     };
 
     return years.map(y => {
-      const isSeeded = requisitions.length > 0;
-      const requested = isSeeded ? sumByYear[y] : baselineRequested[y];
-      const approved = isSeeded ? approvedByYear[y] : baselineApproved[y];
-      const count = isSeeded ? countByYear[y] : baselineCount[y];
+      const useMockData = systemSettings.prototypeDataEnabled && requisitions.length === 0;
+      const requested = useMockData ? baselineRequested[y] : sumByYear[y];
+      const approved = useMockData ? baselineApproved[y] : approvedByYear[y];
+      const count = useMockData ? baselineCount[y] : countByYear[y];
       const average = count > 0 ? Math.round(requested / count) : 0;
 
       return {
@@ -287,7 +287,7 @@ const Dashboard: React.FC = () => {
         average
       };
     });
-  }, [requisitions]);
+  }, [requisitions, systemSettings.prototypeDataEnabled]);
 
   const currentVelocityData = useMemo(() => {
     if (velocityTimeframe === "DAILY") return dailyData;
@@ -427,7 +427,7 @@ const Dashboard: React.FC = () => {
     return Object.values(groupTotals).sort((a, b) => b.totalAmount - a.totalAmount);
   }, [requisitions]);
 
-  if (requisitions.length === 0 && (currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN)) {
+  if (systemSettings.prototypeDataEnabled && requisitions.length === 0 && (currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN)) {
     return (
       <div className="h-[80vh] flex flex-col items-center justify-center space-y-8 animate-in fade-in duration-1000">
         <div className="relative">

@@ -19,7 +19,8 @@ import {
   RecurrenceType,
   ChurchGroup,
   SearchFilter,
-  PermissionConfig
+  PermissionConfig,
+  SystemSettings
 } from "../types";
 import { 
   auth, 
@@ -86,12 +87,15 @@ interface RequisitionContextType {
   adminRegisterUser: (email: string, pass: string, name: string, role: UserRole, group?: string, approverCode?: string) => Promise<void>;
   adminResetUserPassword: (email: string) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
+  adminForceLogoutUser: (id: string) => Promise<void>;
   systemLogs: SystemLog[];
   addSystemLog: (action: string, details: string, metadata?: any) => Promise<void>;
   churchGroups: ChurchGroup[];
   addChurchGroup: (name: string, description?: string) => Promise<void>;
   deleteChurchGroup: (id: string) => Promise<void>;
   seedAllEcosystemData: () => Promise<void>;
+  systemSettings: SystemSettings;
+  updateSystemSettings: (updates: Partial<SystemSettings>) => Promise<void>;
   reports: SavedReport[];
   saveReport: (report: Omit<SavedReport, "id" | "timestamp" | "generatedBy" | "generatedById">) => Promise<void>;
   globalSearchTerm: string;
@@ -121,6 +125,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [forecastData, setForecastData] = useState<ForecastMonth[]>([]);
   const [systemLogs, setSystemLogs] = useState<SystemLog[]>([]);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>({ prototypeDataEnabled: true });
   const [reports, setReports] = useState<SavedReport[]>([]);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [permissionConfigs, setPermissionConfigs] = useState<PermissionConfig[]>([]);
@@ -254,7 +259,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       !a.isRead && 
       (a.severity === "HIGH" || a.severity === "MEDIUM") &&
       new Date(a.timestamp) > fiveMinutesAgo &&
-      !seenAlertsRef.current.has(a.id)
+      !seenAlertsRef.current.has(a.id) &&
+      !a.id.includes("budget-p") &&
+      !a.id.includes("req-seed-")
     );
 
     if (newPriorityAlerts.length > 0) {
@@ -430,6 +437,20 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 if (firebaseUser.photoURL && profile.photoURL !== firebaseUser.photoURL) {
                   setDoc(userRef, { photoURL: firebaseUser.photoURL }, { merge: true }).catch(e => console.warn("Failed to sync photoURL", e));
                 }
+
+                if (profile.forceLogout) {
+                  setDoc(userRef, { forceLogout: false, isOnline: false }, { merge: true }).catch(e => console.warn("Failed to reset forceLogout", e));
+                  auth.signOut();
+                  return;
+                }
+
+                // Update online status heartbeat
+                const now = new Date();
+                const isStale = !profile.lastSeen || (now.getTime() - new Date(profile.lastSeen).getTime() > 60000); // 1 minute
+                if (isStale || !profile.isOnline) {
+                   setDoc(userRef, { isOnline: true, lastSeen: now.toISOString() }, { merge: true }).catch(e => console.warn("Failed to update last seen", e));
+                }
+
                 setCurrentUser(profile);
                 setLoading(false);
               }
@@ -721,7 +742,28 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [addSystemLog]);
 
-  // Real-time Sync for authenticated users
+  const updateSystemSettings = useCallback(async (updates: Partial<SystemSettings>) => {
+    try {
+      await setDoc(doc(db, "settings", "system"), updates, { merge: true });
+      await addSystemLog("SYSTEM_SETTINGS_UPDATE", `System settings updated: ${JSON.stringify(updates)}`, { updates });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, "settings/system");
+    }
+  }, [addSystemLog]);
+
+  // System Settings Sync
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "settings", "system"), (snap) => {
+      if (snap.exists()) {
+        setSystemSettings(snap.data() as SystemSettings);
+      } else {
+        setDoc(doc(db, "settings", "system"), { prototypeDataEnabled: true }).catch(() => {});
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Real-time Sync for authenticated users (with filtering based on prototype settings)
   useEffect(() => {
     if (!currentUser || !currentUser.isApproved || currentUser.isSuspended) {
       setRequisitions([]);
@@ -736,22 +778,28 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     
     const shouldFilter = [UserRole.CHURCH_GROUP, UserRole.APPROVER_L1, UserRole.APPROVER_L2].includes(currentUser.role) && currentUser.group;
     const filterGroup = currentUser.group;
+    const hidePrototype = !systemSettings.prototypeDataEnabled;
 
     const unsubRequisitions = onSnapshot(query(collection(db, "requisitions"), orderBy("submittedAt", "desc")), (snap) => {
       let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Requisition));
       if (shouldFilter) data = data.filter(req => req.groupId === filterGroup || req.groupName === filterGroup);
+      if (hidePrototype) data = data.filter(req => !req.id.startsWith("req-seed-"));
       setRequisitions(data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, "requisitions"));
 
     const unsubProjects = onSnapshot(collection(db, "projects"), (snap) => {
       let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
       if (shouldFilter) data = data.filter(p => p.groupId === filterGroup || p.name === filterGroup);
+      if (hidePrototype) data = data.filter(p => !p.id.startsWith("p"));
       setProjects(data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, "projects"));
 
     const unsubAlerts = onSnapshot(query(collection(db, "alerts"), orderBy("timestamp", "desc")), (snap) => {
       let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as BudgetAlert));
       if (shouldFilter && filterGroup) data = data.filter(a => a.message.includes(filterGroup));
+      if (hidePrototype) {
+        data = data.filter(a => !a.id.includes("req-seed-") && !a.id.match(/budget-p[0-9]+/));
+      }
       setAlerts(data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, "alerts"));
 
@@ -764,7 +812,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }, (err) => handleFirestoreError(err, OperationType.LIST, "forecast"));
 
     const unsubReports = onSnapshot(query(collection(db, "reports"), orderBy("timestamp", "desc")), (snap) => {
-      setReports(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SavedReport)));
+      let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SavedReport));
+      if (hidePrototype) data = data.filter(r => !r.id.startsWith("rep-seed-"));
+      setReports(data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, "reports"));
 
     let unsubLogs = () => {};
@@ -772,6 +822,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       unsubLogs = onSnapshot(query(collection(db, "system_logs"), orderBy("timestamp", "desc")), (snap) => {
         let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemLog));
         if (shouldFilter && filterGroup) data = data.filter(log => log.groupId === filterGroup || log.details.includes(filterGroup));
+        if (hidePrototype) data = data.filter(log => !log.id.startsWith("log-seed-"));
         setSystemLogs(data);
       }, (err) => handleFirestoreError(err, OperationType.LIST, "system_logs"));
     } else {
@@ -781,6 +832,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const unsubUsers = onSnapshot(collection(db, "users"), (snap) => {
       let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
       if (shouldFilter && filterGroup) data = data.filter(u => u.group === filterGroup);
+      if (hidePrototype) data = data.filter(u => !u.id.startsWith("u-"));
       setUsers(data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, "users"));
 
@@ -801,6 +853,16 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     };
     seedInitialData();
 
+    // Online presence heartbeat
+    const heartbeatInterval = setInterval(() => {
+      if (currentUser?.id) {
+         setDoc(doc(db, "users", currentUser.id), { 
+           isOnline: true, 
+           lastSeen: new Date().toISOString() 
+         }, { merge: true }).catch(console.warn);
+      }
+    }, 60000); // 1 minute
+
     return () => {
       unsubRequisitions();
       unsubProjects();
@@ -810,8 +872,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       unsubUsers();
       unsubLogs();
       unsubReports();
+      clearInterval(heartbeatInterval);
     };
-  }, [currentUser, seedAllEcosystemData]);
+  }, [currentUser, seedAllEcosystemData, systemSettings.prototypeDataEnabled]);
 
   // Real-time Sync for Church Groups
   useEffect(() => {
@@ -1473,6 +1536,18 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [currentUser, users, addSystemLog]);
 
+  const adminForceLogoutUser = useCallback(async (id: string) => {
+    if (!currentUser || currentUser.role !== UserRole.SUPER_ADMIN) {
+      throw new Error("Unauthorized: Only Super Admins can force logout users.");
+    }
+    try {
+      await setDoc(doc(db, "users", id), { forceLogout: true }, { merge: true });
+      await addSystemLog("USER_FORCE_LOGOUT", `Super Admin forced logout for user ID: ${id}`, { userId: id });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${id}`);
+    }
+  }, [currentUser, addSystemLog]);
+
   const addRequisition = useCallback(async (reqData: any) => {
     const id = `req-${Math.random().toString(36).substr(2, 9)}`;
     const now = new Date();
@@ -1707,6 +1782,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       adminRegisterUser,
       adminResetUserPassword,
       deleteUser,
+      adminForceLogoutUser,
+      systemSettings,
+      updateSystemSettings,
       systemLogs,
       addSystemLog,
       seedAllEcosystemData,
