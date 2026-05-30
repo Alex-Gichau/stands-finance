@@ -747,13 +747,46 @@ function AppContent() {
             </div>
           </div>
         </motion.div>
+        
+        {/* Real-time Toast Notifications */}
+        <div className="fixed bottom-12 right-6 z-[100] flex flex-col gap-3 w-80 pointer-events-none">
+          <AnimatePresence mode="popLayout">
+            {activeToasts.map((toast, index) => (
+              <ToastItem
+                key={toast.id}
+                toast={toast}
+                index={index}
+                removeToast={removeToast}
+                setCurrentView={setCurrentView}
+              />
+            ))}
+          </AnimatePresence>
+        </div>
       </div>
     );
   }
 
   // Waiting Room or Suspension Logic
   if (!currentUser.isApproved || currentUser.isSuspended) {
-    return <WaitingRoom user={currentUser} onLogout={logout} />;
+    return (
+      <>
+        <WaitingRoom user={currentUser} onLogout={logout} />
+        {/* Real-time Toast Notifications */}
+        <div className="fixed bottom-12 right-6 z-[100] flex flex-col gap-3 w-80 pointer-events-none">
+          <AnimatePresence mode="popLayout">
+            {activeToasts.map((toast, index) => (
+              <ToastItem
+                key={toast.id}
+                toast={toast}
+                index={index}
+                removeToast={removeToast}
+                setCurrentView={setCurrentView}
+              />
+            ))}
+          </AnimatePresence>
+        </div>
+      </>
+    );
   }
 
 

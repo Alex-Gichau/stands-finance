@@ -786,10 +786,11 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       await setDoc(doc(db, "settings", "system"), updates, { merge: true });
       await addSystemLog("SYSTEM_SETTINGS_UPDATE", `System settings updated: ${JSON.stringify(updates)}`, { updates });
+      triggerToast({ type: "SYSTEM_INFO", message: "System settings saved successfully", severity: "LOW", timestamp: new Date().toISOString() });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, "settings/system");
     }
-  }, [addSystemLog]);
+  }, [addSystemLog, triggerToast]);
 
   const applySupplementaryBudget = useCallback(async (projectId: string, amount: number, justification: string) => {
     if (!currentUser) throw new Error("Authentication required");
@@ -1495,6 +1496,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (userEmail) {
       await addSystemLog("USER_LOGOUT", `User logged out: ${userEmail}`, { email: userEmail });
     }
+    triggerToast({ type: "SYSTEM_INFO", message: "Successfully logged out.", severity: "LOW", timestamp: new Date().toISOString() });
   };
 
   const approveUser = useCallback(async (id: string) => {
