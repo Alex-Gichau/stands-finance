@@ -88,6 +88,7 @@ export interface Requisition {
   rejectionReason?: string;
   approvalHistory: ApprovalNote[];
   digitalSignature?: string; // base64
+  payableTo?: string; // Vendor name
   recurrence?: RecurrenceType;
   lastRecurrenceGeneratedAt?: string;
   additionalInfo?: string;
@@ -223,5 +224,31 @@ export interface PermissionConfig {
 
 export interface SystemSettings {
   prototypeDataEnabled: boolean;
+  hideSupplementaryBudgetBtn?: boolean;
+  vendorListViewLevel?: "ALL_USERS" | "APPROVERS_UP" | "FINANCE_UP" | "ADMINS_ONLY";
+}
+
+export interface SupplementaryBudgetRequest {
+  id: string;
+  requesterId: string;
+  requesterName: string;
+  requesterEmail: string;
+  role: string;
+  projectId: string;
+  projectName: string;
+  amount: number;
+  justification: string;
+  submittedAt: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+}
+
+export interface Vendor {
+  id: string;
+  name: string;
+  contact?: string;
+  location?: string;
+  offerings?: string;
+  createdAt: string;
+  addedBy: string;
 }
 

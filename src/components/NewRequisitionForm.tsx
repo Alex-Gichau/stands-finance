@@ -16,12 +16,21 @@ interface NewRequisitionFormProps {
 }
 
 export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose }) => {
-  const { addRequisition, currentUser, projects, churchGroups, addChurchGroup } = useRequisitions();
+  const { addRequisition, currentUser, projects, churchGroups, addChurchGroup, vendors, addVendor } = useRequisitions();
   const [amount, setAmount] = useState<string>("");
   const [amountWords, setAmountWords] = useState<string>("");
   const [recurrence, setRecurrence] = useState<RecurrenceType>(RecurrenceType.NONE);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const [payableTo, setPayableTo] = useState<string>("");
+  const [showAddVendorForm, setShowAddVendorForm] = useState(false);
+  const [vendorContact, setVendorContact] = useState("");
+  const [vendorLocation, setVendorLocation] = useState("");
+  const [vendorOfferings, setVendorOfferings] = useState("");
+  const [isSavingVendor, setIsSavingVendor] = useState(false);
+
+  const [activeTab, setActiveTab] = useState<"SEARCH" | "CREATE">("SEARCH");
 
   const isAdminOrFinance = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.FINANCE;
   const [selectedGroup, setSelectedGroup] = useState<string>("");
@@ -44,6 +53,32 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
       console.error("Failed to add group:", err);
     } finally {
       setAddingGroup(false);
+    }
+  };
+
+  const isExistingVendor = vendors?.some(
+    v => v.name.toLowerCase().trim() === payableTo.toLowerCase().trim()
+  );
+
+  const handleSaveVendor = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!payableTo.trim()) return;
+    setIsSavingVendor(true);
+    try {
+      await addVendor({
+        name: payableTo.trim(),
+        contact: vendorContact.trim(),
+        location: vendorLocation.trim(),
+        offerings: vendorOfferings.trim()
+      });
+      setShowAddVendorForm(false);
+      setVendorContact("");
+      setVendorLocation("");
+      setVendorOfferings("");
+    } catch (err) {
+      console.error("Failed to add vendor:", err);
+    } finally {
+      setIsSavingVendor(false);
     }
   };
 
@@ -91,12 +126,20 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
     const matchingProject = projects.find(p => p.groupId === groupVal || p.name === groupVal);
 
     try {
+      const parsedAmount = Number(amount);
+      if (parsedAmount <= 0) {
+        setLoading(false);
+        alert("Amount must be greater than 0.");
+        return;
+      }
+
       await addRequisition({
         projectId: matchingProject ? matchingProject.id : "",
-        title: formData.get("title") as string,
-        description: formData.get("description") as string,
-        amount: Number(amount),
-        amountWords,
+        title: (formData.get("title") as string) || "Untitled Requisition",
+        description: (formData.get("description") as string) || "No description provided",
+        payableTo: payableTo.trim() || undefined,
+        amount: parsedAmount,
+        amountWords: amountWords || "",
         recurrence,
         groupId: groupVal,
         groupName: groupVal,
@@ -126,7 +169,7 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 flex-1">
+        <form id="new-req-form" onSubmit={handleSubmit} className="overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 flex-1">
           {/* Section 1: Requisition Information */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-2 w-full justify-between">
@@ -241,7 +284,167 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
                 </div>
               )}
             </div>
-            
+
+            {/* Vendor Management / Payable To Field */}
+            <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-150 relative">
+              <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest block mb-1">
+                🤝 Payable To (Vendor Name)
+              </label>
+              
+              <div className="relative">
+                <input 
+                  type="text"
+                  required 
+                  value={payableTo}
+                  onChange={(e) => {
+                    setPayableTo(e.target.value);
+                    setShowAddVendorForm(false);
+                  }}
+                  placeholder="e.g. Acme Stationery Supply Ltd"
+                  className="input-field bg-white text-xs md:text-sm h-10 px-3 pr-10"
+                />
+                
+                {/* Search suggestion drop-down if user types a matching string */}
+                {payableTo.trim() && !isExistingVendor && vendors && vendors.length > 0 && (
+                  <div className="absolute left-0 right-0 top-11 bg-white border border-slate-200 rounded-xl shadow-lg z-20 max-h-40 overflow-y-auto divide-y divide-slate-100">
+                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest p-2 bg-slate-50">
+                      Suggestions from registered STANDS Vendors
+                    </p>
+                    {vendors
+                      .filter(v => v.name.toLowerCase().includes(payableTo.toLowerCase()))
+                      .map(v => (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => {
+                            setPayableTo(v.name);
+                            setShowAddVendorForm(false);
+                          }}
+                          className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 font-medium text-slate-700 flex justify-between items-center"
+                        >
+                          <span>{v.name}</span>
+                          <span className="text-[9px] text-primary bg-primary/5 px-1.5 py-0.5 rounded font-mono font-bold uppercase">
+                            Registered
+                          </span>
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Add Vendor prompt if typed and not an existing registered vendor */}
+              {payableTo.trim() && !isExistingVendor && !showAddVendorForm && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-2"
+                >
+                  <div>
+                    <p className="text-xs font-bold text-slate-700">
+                      "{payableTo}" is not registered on STANDS Vendors
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      Would you like to register them to the permanent Diocesan ledger now?
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddVendorForm(true)}
+                    className="text-[10px] font-black text-primary hover:text-primary/80 uppercase tracking-widest shrink-0 self-start sm:self-center bg-white px-3 py-1.5 rounded-lg border border-primary/25 shadow-sm"
+                  >
+                    Add Vendor to STANDS Vendors?
+                  </button>
+                </motion.div>
+              )}
+
+              {/* Existing Vendor Badge / Details display */}
+              {payableTo.trim() && isExistingVendor && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-start gap-3 mt-2">
+                  <div className="w-5 h-5 bg-emerald-500 flex items-center justify-center text-white shrink-0 font-bold text-xs rounded-full">
+                    ✓
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-emerald-800">
+                      STANDS Verified Vendor Linked
+                    </p>
+                    {vendors?.filter(v => v.name.toLowerCase().trim() === payableTo.toLowerCase().trim()).map(v => (
+                      <div key={v.id} className="text-[10px] text-slate-600 mt-1 space-y-0.5">
+                        <p>📍 <span className="font-semibold">Location:</span> {v.location || "Not specified"}</p>
+                        <p>📞 <span className="font-semibold">Contact:</span> {v.contact || "Not specified"}</p>
+                        <p>🛍️ <span className="font-semibold">Offers:</span> {v.offerings || "Not specified"}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Register Vendor expanded sub-form */}
+              {showAddVendorForm && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  className="bg-white border border-slate-200 rounded-xl p-4 mt-2 space-y-3"
+                >
+                  <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest border-b border-slate-100 pb-1.5">
+                    Register "{payableTo}" Details
+                  </p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Contact Reference (Phone/Email)</label>
+                      <input 
+                        type="text"
+                        value={vendorContact}
+                        onChange={(e) => setVendorContact(e.target.value)}
+                        placeholder="e.g. +254 712 345678 / sales@firm.com"
+                        className="input-field bg-white h-9 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Physical Location</label>
+                      <input 
+                        type="text"
+                        value={vendorLocation}
+                        onChange={(e) => setVendorLocation(e.target.value)}
+                        placeholder="e.g. Bishop Road, Nairobi"
+                        className="input-field bg-white h-9 text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">What they offer / Products / services</label>
+                    <input 
+                      type="text"
+                      value={vendorOfferings}
+                      onChange={(e) => setVendorOfferings(e.target.value)}
+                      placeholder="e.g. Stationery, Tents, Catering services..."
+                      className="input-field bg-white h-9 text-xs"
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddVendorForm(false)}
+                      className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-slate-500 text-[9px] font-bold uppercase tracking-wider rounded-lg"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSavingVendor || !payableTo.trim()}
+                      onClick={handleSaveVendor}
+                      className="px-3.5 py-1.5 bg-primary text-white text-[9px] font-black uppercase tracking-wider rounded-lg flex items-center gap-1 hover:bg-primary/95 shadow-sm"
+                    >
+                      {isSavingVendor ? <Loader2 size={10} className="animate-spin" /> : null}
+                      <span>Save Vendor to STANDS</span>
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </div>
+
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Requisition Title</label>
               <input 
@@ -408,9 +611,6 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
             </span>
           </button>
         </div>
-        
-        {/* Actual form element needs ID for the button outside it */}
-        <form id="new-req-form" onSubmit={handleSubmit} className="hidden" />
       </motion.div>
     </div>
   );

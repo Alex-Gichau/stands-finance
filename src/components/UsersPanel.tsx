@@ -300,7 +300,8 @@ export const UsersPanel: React.FC = () => {
     const matchesSearch = u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                          u.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = filterRole === "ALL" || u.role === filterRole;
-    return matchesSearch && matchesRole;
+    const hideSuperAdmin = u.role === UserRole.SUPER_ADMIN && currentUser?.role !== UserRole.SUPER_ADMIN;
+    return matchesSearch && matchesRole && !hideSuperAdmin;
   });
 
   const getRoleBadge = (role: UserRole) => {
@@ -429,8 +430,9 @@ export const UsersPanel: React.FC = () => {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
+                    onClick={() => startEditing(user)}
                     className={cn(
-                      "group hover:bg-slate-50/50 transition-colors",
+                      "group hover:bg-slate-50/50 transition-colors cursor-pointer",
                       user.isSuspended && "bg-rose-50/10"
                     )}
                   >
@@ -515,7 +517,7 @@ export const UsersPanel: React.FC = () => {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 md:px-8 py-3 md:py-5 text-right">
+                    <td className="px-4 md:px-8 py-3 md:py-5 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end items-center gap-1 md:gap-2">
                         {user.id !== currentUser?.id && currentUser?.role === UserRole.SUPER_ADMIN && (
                           <button 

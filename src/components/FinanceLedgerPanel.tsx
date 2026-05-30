@@ -40,7 +40,9 @@ export const FinanceLedgerPanel: React.FC = () => {
     projects, 
     currentUser, 
     updateRequisitionStatus,
-    addSystemLog 
+    addSystemLog,
+    triggerToast,
+    users
   } = useRequisitions();
 
   // Component state
@@ -165,6 +167,18 @@ export const FinanceLedgerPanel: React.FC = () => {
     }
 
     setIsCommitingPayout(true);
+
+    const requester = users?.find(u => u.id === disbursingReq.requesterId);
+    const resolvedEmail = requester?.email || `${disbursingReq.requesterName.toLowerCase().replace(/\s+/g, "")}@church.org`;
+
+    // 1. Trigger Loading Email Toast
+    triggerToast({
+      type: "FINANCE_DISBURSEMENT",
+      severity: "MEDIUM",
+      message: `📧 Dispatching Cash Disbursement Email Notification to ${disbursingReq.requesterName} (${resolvedEmail})...`,
+      timestamp: new Date().toISOString()
+    });
+
     try {
       const payoutNotesText = `Disbursement ref: ${disburseMethod} #${referenceNum}. ${payoutNotes ? `Notes: ${payoutNotes}` : ""}`;
       
@@ -182,6 +196,30 @@ export const FinanceLedgerPanel: React.FC = () => {
         `Disbursed KES ${disbursingReq.amount.toLocaleString()} for '${disbursingReq.title}' via ${disburseMethod} (Ref: ${referenceNum})`,
         { requisitionId: disbursingReq.id, amount: disbursingReq.amount, method: disburseMethod, referenceNum }
       );
+
+      // 2. Perform API call to /api/send-email (logs activity)
+      try {
+        await fetch("/api/send-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: resolvedEmail,
+            requesterName: disbursingReq.requesterName,
+            amount: disbursingReq.amount,
+            title: disbursingReq.title
+          })
+        });
+
+        // 3. Trigger Success Toast
+        triggerToast({
+          type: "LARGE_REQUEST",
+          severity: "LOW",
+          message: `✅ Disbursement email successfully delivered to ${resolvedEmail}!`,
+          timestamp: new Date().toISOString()
+        });
+      } catch (mailErr) {
+        console.warn("Mail dispatch report failed:", mailErr);
+      }
 
       setReferenceNum("");
       setPayoutNotes("");

@@ -20,7 +20,9 @@ import {
   ChurchGroup,
   SearchFilter,
   PermissionConfig,
-  SystemSettings
+  SystemSettings,
+  SupplementaryBudgetRequest,
+  Vendor
 } from "../types";
 import { 
   auth, 
@@ -57,6 +59,24 @@ import {
 } from "firebase/auth";
 import { initializeApp, deleteApp } from "firebase/app";
 import firebaseConfig from "../../firebase-applet-config.json";
+
+// Helper to recursively remove any fields with value undefined to prevent Firestore write/update failures
+function cleanFirestoreData(data: any): any {
+  if (data === null || data === undefined) return data;
+  if (Array.isArray(data)) {
+    return data.map(item => cleanFirestoreData(item));
+  }
+  if (typeof data === "object") {
+    const cleaned: any = {};
+    for (const [key, val] of Object.entries(data)) {
+      if (val !== undefined) {
+        cleaned[key] = cleanFirestoreData(val);
+      }
+    }
+    return cleaned;
+  }
+  return data;
+}
 
 interface RequisitionContextType {
   requisitions: Requisition[];
@@ -96,6 +116,10 @@ interface RequisitionContextType {
   seedAllEcosystemData: () => Promise<void>;
   systemSettings: SystemSettings;
   updateSystemSettings: (updates: Partial<SystemSettings>) => Promise<void>;
+  supplementaryRequests: SupplementaryBudgetRequest[];
+  applySupplementaryBudget: (projectId: string, amount: number, justification: string) => Promise<void>;
+  vendors: Vendor[];
+  addVendor: (vendor: Omit<Vendor, "id" | "createdAt" | "addedBy">) => Promise<void>;
   reports: SavedReport[];
   saveReport: (report: Omit<SavedReport, "id" | "timestamp" | "generatedBy" | "generatedById">) => Promise<void>;
   globalSearchTerm: string;
@@ -126,6 +150,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [forecastData, setForecastData] = useState<ForecastMonth[]>([]);
   const [systemLogs, setSystemLogs] = useState<SystemLog[]>([]);
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({ prototypeDataEnabled: true });
+  const [supplementaryRequests, setSupplementaryRequests] = useState<SupplementaryBudgetRequest[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [reports, setReports] = useState<SavedReport[]>([]);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [permissionConfigs, setPermissionConfigs] = useState<PermissionConfig[]>([]);
@@ -187,6 +213,20 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (!currentUser) return false;
     if (currentUser.role === UserRole.SUPER_ADMIN) return true;
     
+    if (viewId === "vendors") {
+      const viewLevel = systemSettings.vendorListViewLevel || "ALL_USERS";
+      if (viewLevel === "ADMINS_ONLY") {
+        return currentUser.role === UserRole.ADMIN;
+      }
+      if (viewLevel === "FINANCE_UP") {
+        return [UserRole.FINANCE, UserRole.ADMIN].includes(currentUser.role);
+      }
+      if (viewLevel === "APPROVERS_UP") {
+        return [UserRole.APPROVER_L1, UserRole.APPROVER_L2, UserRole.FINANCE, UserRole.ADMIN].includes(currentUser.role);
+      }
+      return true; // ALL_USERS
+    }
+    
     const config = permissionConfigs.find(c => c.role === currentUser.role);
     if (!config) {
       const defaults: Record<string, string[]> = {
@@ -200,7 +240,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
     
     return (config.access as any)[viewId] ?? false;
-  }, [currentUser, permissionConfigs]);
+  }, [currentUser, permissionConfigs, systemSettings]);
 
   const canPerform = useCallback((actionId: keyof PermissionConfig["actions"]) => {
     if (!currentUser) return false;
@@ -751,6 +791,67 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [addSystemLog]);
 
+  const applySupplementaryBudget = useCallback(async (projectId: string, amount: number, justification: string) => {
+    if (!currentUser) throw new Error("Authentication required");
+    
+    try {
+      const budgetId = "sup-" + Math.random().toString(36).substring(2, 9);
+      const proj = projects.find(p => p.id === projectId);
+      const projectName = proj ? proj.name : "Church Allocation";
+      
+      const requestData = {
+        requesterId: currentUser.id,
+        requesterName: currentUser.name,
+        requesterEmail: currentUser.email,
+        role: currentUser.role,
+        projectId,
+        projectName,
+        amount,
+        justification,
+        submittedAt: new Date().toISOString(),
+        status: "PENDING"
+      };
+
+      await setDoc(doc(db, "supplementary_budgets", budgetId), requestData);
+      
+      // Add alert for Admin/Super Admin
+      const alertId = "alert-" + Math.random().toString(36).substring(2, 9);
+      await setDoc(doc(db, "alerts", alertId), {
+        id: alertId,
+        type: "THRESHOLD_WARN",
+        severity: "MEDIUM",
+        message: `Supplementary budget request (KES ${amount.toLocaleString()}) submitted by ${currentUser.name} for project: ${projectName}`,
+        timestamp: new Date().toISOString(),
+        isRead: false,
+        targetRole: UserRole.SUPER_ADMIN
+      });
+
+      await addSystemLog("SUPPLEMENTARY_BUDGET_APPLY", `Supplementary budget of KES ${amount} submitted on terminal by ${currentUser.name} for ${projectName}`, { projectId, amount });
+    } catch (err) {
+      console.error("Failed to submit supplementary budget:", err);
+      throw err;
+    }
+  }, [currentUser, db, projects, addSystemLog]);
+
+  const addVendor = useCallback(async (vendor: Omit<Vendor, "id" | "createdAt" | "addedBy">) => {
+    try {
+      const vendorId = "vendor-" + Math.random().toString(36).substring(2, 9);
+      const addedBy = currentUser ? currentUser.name : "System";
+      const newVendor: Vendor = {
+        id: vendorId,
+        ...vendor,
+        createdAt: new Date().toISOString(),
+        addedBy
+      };
+
+      await setDoc(doc(db, "vendors", vendorId), newVendor);
+      await addSystemLog("VENDOR_CREATE", `Registered new STANDS vendor: ${vendor.name}`, { vendorId, ...vendor });
+    } catch (err) {
+      console.error("Failed to add vendor:", err);
+      throw err;
+    }
+  }, [currentUser, db, addSystemLog]);
+
   // System Settings Sync
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "settings", "system"), (snap) => {
@@ -883,6 +984,34 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }, (err) => handleFirestoreError(err, OperationType.LIST, "church_groups"));
     return () => unsubGroups();
   }, []);
+
+  // Real-time Sync for Supplementary Budget Requests
+  useEffect(() => {
+    const unsubSupplementary = onSnapshot(
+      query(collection(db, "supplementary_budgets"), orderBy("submittedAt", "desc")),
+      (snap) => {
+        setSupplementaryRequests(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SupplementaryBudgetRequest)));
+      },
+      (err) => {
+         console.warn("Supplementary budget sync failed/not initialized:", err);
+      }
+    );
+    return () => unsubSupplementary();
+  }, [db]);
+
+  // Real-time Sync for Vendors
+  useEffect(() => {
+    const unsubVendors = onSnapshot(
+      query(collection(db, "vendors"), orderBy("createdAt", "desc")),
+      (snap) => {
+        setVendors(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Vendor)));
+      },
+      (err) => {
+         console.warn("Vendors sync failed/not initialized:", err);
+      }
+    );
+    return () => unsubVendors();
+  }, [db]);
 
   // Automated background expiry notifications watcher (Admin only for writing alerts)
   useEffect(() => {
@@ -1565,7 +1694,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       flaggedForAudit: reqData.amount > 100000,
     };
     try {
-      await setDoc(doc(db, "requisitions", id), newReq);
+      await setDoc(doc(db, "requisitions", id), cleanFirestoreData(newReq));
       await addSystemLog("REQUISITION_CREATED", `Requisition '${newReq.title}' created (amount KES ${newReq.amount.toLocaleString()})`, {
         requisitionId: id,
         title: newReq.title,
@@ -1586,7 +1715,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     rejectionReason?: string,
     approvalCode?: string
   ) => {
-    const historyAction: ApprovalNote = {
+    const historyAction: ApprovalNote = cleanFirestoreData({
       id: `an-${Math.random().toString(36).substr(2, 9)}`,
       approverId: currentUser?.id || "sys",
       approverName: currentUser?.name || "System",
@@ -1597,7 +1726,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       approvalCode, // In real app, this would be salted/hashed
       method,
       timestamp: new Date().toISOString(),
-    };
+    });
 
     try {
       const reqRef = doc(db, "requisitions", id);
@@ -1633,7 +1762,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
       if (status === RequisitionStatus.DISBURSED) updates.disbursedAt = new Date().toISOString();
 
-      await updateDoc(reqRef, updates);
+      await updateDoc(reqRef, cleanFirestoreData(updates));
       await addSystemLog("STATUS_CHANGE", `Requisition '${req.title}' decision: ${decision} -> New Status: ${status}`, {
         requisitionId: id,
         title: req.title,
@@ -1687,7 +1816,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         flaggedForAudit: newAmount > 100000 ? true : (updates.flaggedForAudit !== undefined ? updates.flaggedForAudit : (currentReq.flaggedForAudit || false))
       };
       
-      await updateDoc(reqRef, cleanedUpdates);
+      await updateDoc(reqRef, cleanFirestoreData(cleanedUpdates));
       await addSystemLog("REQUISITION_EDITED", `Requisition '${id}' updated`, { requisitionId: id, updates });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `requisitions/${id}`);
@@ -1785,6 +1914,10 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       adminForceLogoutUser,
       systemSettings,
       updateSystemSettings,
+      supplementaryRequests,
+      applySupplementaryBudget,
+      vendors,
+      addVendor,
       systemLogs,
       addSystemLog,
       seedAllEcosystemData,

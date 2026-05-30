@@ -20,7 +20,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 
 export const AccessControlPanel: React.FC = () => {
-  const { permissionConfigs, updateRolePermissions, currentUser } = useRequisitions();
+  const { permissionConfigs, updateRolePermissions, currentUser, systemSettings, updateSystemSettings } = useRequisitions();
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.CHURCH_GROUP);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -234,6 +234,68 @@ export const AccessControlPanel: React.FC = () => {
                     </div>
                   );
                 })}
+
+                {currentUser?.role === UserRole.SUPER_ADMIN && (
+                  <>
+                    {/* Header line for Global controls */}
+                    <div className="bg-slate-50/70 px-6 py-4 border-t border-b border-slate-100 flex items-center gap-2">
+                      <ShieldCheck size={14} className="text-primary animate-pulse" />
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-800">Global Structural Visibility Settings</span>
+                      <span className="text-[8px] font-bold uppercase py-0.5 px-1.5 bg-primary/10 text-primary rounded-md ml-auto">Super-Admin Configuration</span>
+                    </div>
+
+                    {/* Toggle: Hide Supplementary Budget Button */}
+                    <div className="p-6 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+                      <div className="space-y-1">
+                        <p className="text-[11px] font-black text-slate-800 uppercase tracking-widest">Hide Supplementary Budget Button</p>
+                        <p className="text-[10px] text-slate-500 font-medium">Hide the supplementary budget request button across all user dashboards</p>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          await updateSystemSettings({ 
+                            hideSupplementaryBudgetBtn: !systemSettings.hideSupplementaryBudgetBtn 
+                          });
+                        }}
+                        className={cn(
+                          "w-12 h-6 rounded-full relative transition-all duration-300",
+                          systemSettings.hideSupplementaryBudgetBtn ? "bg-emerald-500" : "bg-slate-200"
+                        )}
+                      >
+                        <div className={cn(
+                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm",
+                          systemSettings.hideSupplementaryBudgetBtn ? "left-7" : "left-1"
+                        )} />
+                      </button>
+                    </div>
+
+                    {/* Selector: Vendor List View Level */}
+                    <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/50 transition-colors">
+                      <div className="space-y-1">
+                        <p className="text-[11px] font-black text-slate-800 uppercase tracking-widest">Vendor Directory Access Level</p>
+                        <p className="text-[10px] text-slate-500 font-medium">Specify who has visibility and access to the STANDS directory on the navigation bar</p>
+                      </div>
+                      <div className="relative shrink-0">
+                        <select 
+                          value={systemSettings.vendorListViewLevel || "ALL_USERS"}
+                          onChange={async (e) => {
+                            await updateSystemSettings({ vendorListViewLevel: e.target.value as any });
+                          }}
+                          className="bg-slate-100 hover:bg-slate-200 border border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-800 pl-4 pr-10 py-2.5 rounded-xl appearance-none focus:outline-none cursor-pointer focus:ring-2 focus:ring-primary/40 block min-w-[200px]"
+                        >
+                          <option value="ALL_USERS">🌍 Everyone (All Users)</option>
+                          <option value="APPROVERS_UP">🛡️ Approvers & Higher</option>
+                          <option value="FINANCE_UP">💼 Finance & Higher</option>
+                          <option value="ADMINS_ONLY">🔐 Admins & Super Admin</option>
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-550">
+                          <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                            <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 

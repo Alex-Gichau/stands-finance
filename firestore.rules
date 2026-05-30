@@ -92,7 +92,7 @@ service cloud.firestore {
       return data.keys().hasAll(['id', 'title', 'description', 'amount', 'groupId', 'groupName', 'requesterId', 'requesterName', 'status', 'submittedAt', 'updatedAt', 'approvalHistory']) &&
              data.id is string && data.title is string && data.title.size() <= 200 &&
              data.description is string && data.description.size() <= 1500 &&
-             (data.amount is int || data.amount is float) && data.amount > 0 &&
+             (data.amount is int || data.amount is float) && data.amount >= 0 &&
              data.status in ['DRAFT', 'SUBMITTED', 'APPROVED_L1', 'APPROVED_L2', 'ESCALATED', 'DISBURSED', 'REJECTED', 'CANCELLED'] &&
              data.approvalHistory is list && data.approvalHistory.size() <= 20 &&
              (!('amountWords' in data) || (data.amountWords is string)) &&
@@ -226,6 +226,12 @@ service cloud.firestore {
     match /settings/{settingId} {
       allow read: if true;
       allow write: if isSuperAdmin();
+    }
+
+    match /vendors/{vendorId} {
+      allow read: if isApprovedUser() || isAdmin();
+      allow create, update: if isValidId(vendorId) && (isApprovedUser() || isAdmin());
+      allow delete: if isAdmin();
     }
   }
 }

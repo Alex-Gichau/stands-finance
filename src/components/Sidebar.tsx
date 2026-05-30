@@ -17,7 +17,8 @@ import {
   ChevronRight,
   ShieldCheck,
   Zap,
-  Bell
+  Bell,
+  Store
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { UserRole } from "../types";
@@ -57,6 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, not
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "notifications", label: "Notification", icon: Bell },
     { id: "requisitions", label: "Requisitions", icon: FileText },
+    { id: "vendors", label: "STANDS Vendors", icon: Store },
     { id: "approvals", label: "Approvals", icon: CheckCircle },
     { id: "finance", label: "Budgets", icon: Banknote },
     { id: "reports", label: "Financial Reports", icon: BarChart3 },

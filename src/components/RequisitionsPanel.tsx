@@ -29,7 +29,15 @@ import {
   ChevronDown,
   Users,
   Flag,
-  TrendingUp
+  TrendingUp,
+  Check,
+  User,
+  FileSignature,
+  Fingerprint,
+  KeyRound,
+  Coins,
+  ArrowRight,
+  Activity
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
@@ -191,7 +199,8 @@ export const RequisitionsPanel: React.FC = () => {
     globalSearchTerm, 
     setGlobalSearchTerm,
     searchFilter,
-    canPerform
+    canPerform,
+    loading
   } = useRequisitions();
   const [isAdding, setIsAdding] = useState(false);
   const [viewingReq, setViewingReq] = useState<Requisition | null>(null);
@@ -392,6 +401,40 @@ export const RequisitionsPanel: React.FC = () => {
       default: return "bg-slate-50 text-slate-600 border-slate-100";
     }
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6 lg:space-y-8 animate-pulse p-4 md:p-8">
+        {/* Header Skeleton */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-3">
+            <div className="h-8 w-64 bg-slate-200 rounded-lg"></div>
+            <div className="h-4 w-48 bg-slate-100 rounded-md"></div>
+          </div>
+          <div className="flex gap-2">
+             <div className="h-10 w-10 bg-slate-200 rounded-xl"></div>
+             <div className="h-10 w-10 bg-slate-200 rounded-xl"></div>
+             <div className="h-10 w-32 bg-slate-200 rounded-xl"></div>
+          </div>
+        </div>
+
+        {/* Filter bar skeleton */}
+        <div className="flex items-center gap-3">
+          <div className="h-10 flex-1 bg-slate-200 rounded-xl border border-slate-100"></div>
+          <div className="h-10 w-32 bg-slate-200 rounded-xl hidden md:block"></div>
+          <div className="h-10 w-32 bg-slate-200 rounded-xl hidden md:block"></div>
+        </div>
+
+        {/* Table skeleton */}
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-sm">
+           <div className="h-8 bg-slate-100/50 rounded-xl mb-6"></div>
+           {[...Array(6)].map((_, i) => (
+             <div key={i} className="h-16 bg-slate-100/50 rounded-2xl border border-slate-100/80"></div>
+           ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-in fade-in transition-all duration-700">
@@ -1155,6 +1198,120 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
         </div>
 
         <div className="flex-1 overflow-y-auto">
+          {/* Top workflow progress timeline component */}
+          {(() => {
+            const isRejected = req.status === RequisitionStatus.REJECTED;
+            const isCancelled = req.status === RequisitionStatus.CANCELLED;
+            const isEscalated = req.status === RequisitionStatus.ESCALATED;
+
+            let currentStep = 0;
+            if (req.status === RequisitionStatus.SUBMITTED) {
+              currentStep = 0;
+            } else if (req.status === RequisitionStatus.APPROVED_L1 || isEscalated) {
+              currentStep = 1;
+            } else if (req.status === RequisitionStatus.APPROVED_L2) {
+              currentStep = 2;
+            } else if (req.status === RequisitionStatus.DISBURSED) {
+              currentStep = 3;
+            }
+
+            const steps = [
+              {
+                title: "Submittal",
+                desc: "Church Group Init",
+                icon: User,
+                status: currentStep > 0 ? "completed" : currentStep === 0 ? "current" : "upcoming"
+              },
+              {
+                title: "L1 Review",
+                desc: "Ministry Leader",
+                icon: ShieldCheck,
+                status: isRejected ? "rejected" : (currentStep > 1 ? "completed" : currentStep === 1 ? "current" : "upcoming")
+              },
+              {
+                title: "L2 Board Review",
+                desc: "Admin Approval",
+                icon: ShieldCheck,
+                status: isEscalated ? "escalated" : (isRejected && currentStep === 1 ? "rejected" : (currentStep > 2 ? "completed" : currentStep === 2 ? "current" : "upcoming"))
+              },
+              {
+                title: "Payout",
+                desc: "Finance Disbursed",
+                icon: Coins,
+                status: currentStep === 3 ? "completed" : "upcoming"
+              }
+            ];
+
+            return (
+              <div className="bg-slate-50/45 border-b border-slate-100 p-4 md:p-6">
+                <div className="max-w-4xl mx-auto">
+                  <div className="relative flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-0">
+                    
+                    {/* Horizontal connection line for desktop */}
+                    <div className="hidden md:block absolute left-4 right-4 top-1/2 -translate-y-5 h-[3px] bg-slate-200 z-0 w-[calc(100%-2rem)]">
+                      <div 
+                        className="h-full bg-emerald-500 transition-all duration-700 rounded-full" 
+                        style={{ 
+                          width: `${
+                            isRejected || isCancelled ? (currentStep * 33.33) :
+                            currentStep === 3 ? 100 : (currentStep * 33.33)
+                          }%` 
+                        }} 
+                      />
+                    </div>
+
+                    {steps.map((step, idx) => {
+                      const StepIcon = step.icon;
+                      return (
+                        <div key={idx} className="flex md:flex-col items-center gap-3 md:gap-2 z-10 w-full md:w-auto relative">
+                          <div className={cn(
+                            "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-500 shadow-sm",
+                            step.status === "completed" ? "bg-emerald-500 border-emerald-600 text-white" :
+                            step.status === "current" ? "bg-primary text-white border-primary-dark ring-4 ring-primary/20 animate-pulse" :
+                            step.status === "rejected" ? "bg-rose-500 border-rose-600 text-white" :
+                            step.status === "escalated" ? "bg-amber-500 border-amber-600 text-white animate-pulse" :
+                            "bg-white border-slate-200 text-slate-400"
+                          )}>
+                            {step.status === "completed" ? (
+                              <Check size={18} className="stroke-[3]" />
+                            ) : (
+                              <StepIcon size={18} />
+                            )}
+                          </div>
+                          
+                          <div className="text-left md:text-center">
+                            <p className={cn(
+                              "text-[10px] md:text-xs font-black uppercase tracking-wider",
+                              step.status === "completed" ? "text-emerald-700" :
+                              step.status === "current" ? "text-primary" :
+                              step.status === "rejected" ? "text-rose-700" :
+                              step.status === "escalated" ? "text-amber-700" :
+                              "text-slate-500"
+                            )}>
+                              {step.title}
+                            </p>
+                            <p className="text-[8px] md:text-[9.5px] font-medium text-slate-400">
+                              {step.desc}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {(isRejected || isCancelled) && (
+                    <div className="mt-4 p-3 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-2.5 text-rose-700">
+                      <XCircle size={16} className="text-rose-500 shrink-0" />
+                      <p className="text-[10px] md:text-xs font-bold uppercase tracking-wider">
+                        Ledger execution sequence halts: Requisition is {req.status}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="grid grid-cols-1 lg:grid-cols-3">
             {/* Left Content */}
             <div className="lg:col-span-2 p-4 md:p-8 space-y-5 md:space-y-8 border-b lg:border-b-0 lg:border-r border-slate-100">
@@ -1284,41 +1441,146 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
             <div className="bg-slate-50/50 p-6 md:p-8 space-y-6 md:space-y-8 h-full">
               <section className="space-y-4">
                 <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Digital Audit Trail</h4>
-                <div className="space-y-5 md:space-y-6 relative ml-1">
-                  <div className="absolute left-1.5 top-2 bottom-2 w-0.5 bg-slate-200" />
+                <div className="space-y-6 relative ml-1">
+                  {/* Vertical Timeline Connector Line */}
+                  <div className="absolute left-3.5 top-3.5 bottom-3.5 w-[2px] bg-slate-200 rounded-full" />
                   
                   {/* Creation Transaction */}
-                  <div className="relative pl-7 md:pl-8">
-                    <div className="absolute left-0 top-1.5 w-3 h-3 md:w-3.5 md:h-3.5 rounded-full bg-slate-200 border-2 border-white ring-4 ring-slate-50/50" />
-                    <p className="text-[9px] md:text-[10px] font-serif text-slate-400 mb-0.5 md:mb-1">{formatDate(req.submittedAt)}</p>
-                    <p className="text-[10px] md:text-[11px] font-bold text-slate-900 leading-tight">Ledger Transaction Initialized</p>
-                    <p className="text-[8px] md:text-[10px] text-slate-500 mt-1 uppercase tracking-tighter">Requester: {req.requesterName}</p>
+                  <div className="relative pl-9 group">
+                    {/* Circle badge marker with icon */}
+                    <div className="absolute left-0 top-1 w-7.5 h-7.5 rounded-full bg-blue-50 border-2 border-white flex items-center justify-center text-blue-600 ring-4 ring-blue-50/50 shadow-sm transition-transform group-hover:scale-105">
+                      <User size={13} className="stroke-[2.5]" />
+                    </div>
+                    <div>
+                      <p className="text-[9px] md:text-[10px] font-semibold text-slate-400 mb-0.5">{formatDate(req.submittedAt)}</p>
+                      <p className="text-[11px] font-black text-slate-900 leading-tight uppercase tracking-wider">Ledger Token Created</p>
+                      <div className="mt-2 p-2.5 bg-white rounded-xl border border-slate-100 space-y-1 text-[9px] md:text-[10px] text-slate-605 shadow-sm">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Initiator:</span>
+                          <span className="font-extrabold text-slate-705">{req.requesterName}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Church Group:</span>
+                          <span className="font-extrabold text-slate-705 uppercase tracking-wider text-[8px]">{req.groupName}</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* History Transactions */}
-                  {req.approvalHistory.map((note, i) => (
-                    <div key={i} className="relative pl-7 md:pl-8">
-                       <div className={cn(
-                        "absolute left-0 top-1.5 w-3 h-3 md:w-3.5 md:h-3.5 rounded-full border-2 border-white ring-4 ring-slate-50/50",
-                        note.decision === "APPROVE" ? "bg-emerald-500" : "bg-rose-500"
-                      )} />
-                      <p className="text-[9px] md:text-[10px] font-serif text-slate-400 mb-0.5 md:mb-1">{formatDate(note.timestamp)}</p>
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <p className="text-[10px] md:text-[11px] font-bold text-slate-900 leading-tight">
-                          {note.decision === "APPROVE" ? "Authorized" : "Rejected"}
-                        </p>
-                        <span className={cn(
-                          "px-1.5 py-0.5 rounded-sm text-[7px] md:text-[8px] font-black uppercase tracking-widest",
-                          note.decision === "APPROVE" ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
+                  {req.approvalHistory.map((note, i) => {
+                    const isApprove = note.decision === "APPROVE";
+                    const isReject = note.decision === "REJECT";
+                    const isEscalate = note.decision === "ESCALATE";
+
+                    let cardColor = "blue";
+                    let stepTitle = "Step Processed";
+                    let StepNodeIcon = ShieldCheck;
+
+                    if (isApprove) {
+                      cardColor = "emerald";
+                      stepTitle = "Authorized & Approved";
+                      StepNodeIcon = ShieldCheck;
+                    } else if (isReject) {
+                      cardColor = "rose";
+                      stepTitle = "Transaction Rejected";
+                      StepNodeIcon = XCircle;
+                    } else if (isEscalate) {
+                      cardColor = "amber";
+                      stepTitle = "Requisition Escalated";
+                      StepNodeIcon = AlertTriangle;
+                    }
+
+                    // For disbursement specifically
+                    if (isApprove && (note.note || "").toLowerCase().includes("disbursement")) {
+                      cardColor = "emerald";
+                      stepTitle = "Disbursed & Closed";
+                      StepNodeIcon = Coins;
+                    }
+
+                    // Security Method details
+                    let methodLabel = "System authorization protocol";
+                    let MethodIcon = Activity;
+                    if (note.method === "CODE") {
+                      methodLabel = "Secure passcode verified";
+                      MethodIcon = KeyRound;
+                    } else if (note.method === "FINGERPRINT") {
+                      methodLabel = "Biometric authenticated";
+                      MethodIcon = Fingerprint;
+                    } else if (note.method === "SIGNATURE") {
+                      methodLabel = "Cryptographic signature signed";
+                      MethodIcon = FileSignature;
+                    }
+
+                    return (
+                      <div key={i} className="relative pl-9 group">
+                        {/* Circle badge marker with icon */}
+                        <div className={cn(
+                          "absolute left-0 top-1 w-7.5 h-7.5 rounded-full border-2 border-white flex items-center justify-center ring-4 transition-transform group-hover:scale-105 shadow-sm",
+                          cardColor === "emerald" ? "bg-emerald-50 text-emerald-600 ring-emerald-50/50" :
+                          cardColor === "rose" ? "bg-rose-50 text-rose-600 ring-rose-50/50" :
+                          cardColor === "amber" ? "bg-amber-50 text-amber-600 ring-amber-50/50" :
+                          "bg-blue-50 text-blue-600 ring-blue-50/50"
                         )}>
-                          {note.role.split('_').pop()}
-                        </span>
+                          <StepNodeIcon size={13} className="stroke-[2.5]" />
+                        </div>
+                        
+                        <div>
+                          <p className="text-[9px] md:text-[10px] font-semibold text-slate-400 mb-0.5">{formatDate(note.timestamp)}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+                            <h5 className="text-[11px] font-bold text-slate-905">{stepTitle}</h5>
+                            <span className={cn(
+                              "px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase tracking-widest",
+                              cardColor === "emerald" ? "bg-emerald-100 text-emerald-700" :
+                              cardColor === "rose" ? "bg-rose-100 text-rose-700" :
+                              cardColor === "amber" ? "bg-amber-100 text-amber-700" :
+                              "bg-blue-100 text-blue-700"
+                            )}>
+                              {note.decision}
+                            </span>
+                            <span className="px-1 py-0.5 bg-slate-100 text-slate-500 rounded text-[7px] font-black uppercase tracking-wider">
+                              {note.role.split('_').pop()}
+                            </span>
+                          </div>
+
+                          <div className={cn(
+                            "p-3 rounded-xl border space-y-2.5 shadow-sm bg-white transition-all",
+                            cardColor === "emerald" ? "hover:border-emerald-200" :
+                            cardColor === "rose" ? "hover:border-rose-200" :
+                            cardColor === "amber" ? "hover:border-amber-200" :
+                            "hover:border-blue-200"
+                          )}>
+                            <div className="flex items-center justify-between text-[9px] border-b border-slate-50 pb-1.5">
+                              <span className="font-medium text-slate-400">Processed by:</span>
+                              <span className="font-extrabold text-slate-800">{note.approverName}</span>
+                            </div>
+
+                            {/* Authentication and security signatures */}
+                            <div className="flex items-center justify-between text-[8px] text-slate-400">
+                              <span className="flex items-center gap-1">
+                                <MethodIcon size={10} className="text-slate-450" />
+                                {methodLabel}
+                              </span>
+                              {note.approvalCode && (
+                                <span className="font-mono bg-slate-50 px-1 py-0.5 rounded text-slate-500 font-extrabold uppercase tracking-wide">
+                                  Auth sequence confirmed
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Decision text note block */}
+                            {(note.note || note.rejectionReason) && (
+                              <div className="pt-2 border-t border-slate-50">
+                                <p className="text-[9.5px] text-slate-600 leading-relaxed italic bg-slate-50/50 p-2 rounded-lg border border-slate-100">
+                                  "{note.note || note.rejectionReason}"
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-[10px] md:text-[11px] text-slate-600 italic bg-white p-2 rounded-lg border border-slate-200 leading-relaxed shadow-sm">
-                        "{note.note || note.rejectionReason}"
-                      </p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
 

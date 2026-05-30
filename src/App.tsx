@@ -21,6 +21,7 @@ import { ProfilePrompt } from "./components/ProfilePrompt";
 import { ReportsPanel } from "./components/ReportsPanel";
 import { FinanceLedgerPanel } from "./components/FinanceLedgerPanel";
 import { AccessControlPanel } from "./components/AccessControlPanel";
+import { VendorsPanel } from "./components/VendorsPanel";
 import { UserRole, BudgetAlert, SearchFilter, PermissionConfig } from "./types";
 import { 
   Bell, 
@@ -865,6 +866,7 @@ function AppContent() {
       case "dashboard": return <Dashboard />;
       case "notifications": return <NotificationHub onSelectRequisition={(req) => setSelectedReqForNoticeDetail(req)} />;
       case "requisitions": return <RequisitionsPanel />;
+      case "vendors": return <VendorsPanel />;
       case "approvals": return <ApprovalsPanel />;
       case "settings": return <SettingsPanel />;
       case "users": return <UsersPanel />;
