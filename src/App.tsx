@@ -17,6 +17,7 @@ import { Sidebar } from "./components/Sidebar";
 import Dashboard from "./components/Dashboard";
 import { useIdleTimeout } from "./hooks/useIdleTimeout";
 import { sendSlackNotification } from "./lib/utils";
+import { getPrimaryDatabaseStatus } from "./lib/dataSource";
 import { RequisitionsPanel, RequisitionDetailModal } from "./components/RequisitionsPanel";
 import { NotificationHub } from "./components/NotificationHub";
 import { ReceiptTemplateGenerator } from "./components/ReceiptTemplateGenerator";
@@ -240,6 +241,15 @@ function AppContent() {
   }, [darkMode]);
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    setPrimaryDatabaseStatus(getPrimaryDatabaseStatus({
+      SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+      SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+      VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
+    }));
+  }, []);
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"EMAIL_LOGIN" | "EMAIL_SIGNUP">("EMAIL_LOGIN");
   const [email, setEmail] = useState("");
@@ -249,6 +259,12 @@ function AppContent() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [pendingInvite, setPendingInvite] = useState<any>(null);
+  const [primaryDatabaseStatus, setPrimaryDatabaseStatus] = useState(() => getPrimaryDatabaseStatus({
+    SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+    SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
+    VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+    VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
+  }));
 
   // Password update states
   const [showUpdatePasswordModal, setShowUpdatePasswordModal] = useState(false);
@@ -1954,12 +1970,16 @@ function AppContent() {
               {isSyncingData ? (
                 <>
                   <RefreshCw className="animate-spin text-indigo-500" size={10} />
-                  <span className="text-indigo-600 font-medium tracking-wide">Syncing Data (Checking Cache/Firestore)...</span>
+                  <span className="text-indigo-600 font-medium tracking-wide">Syncing Data (Checking Supabase)...</span>
                 </>
               ) : (
                 <>System synchronized • {new Date().toLocaleTimeString()}</>
               )}
             </p>
+            <div className="mt-1 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.2em] text-emerald-700">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              {primaryDatabaseStatus.activeDatabase === "supabase" ? "Supabase Primary" : "Database Pending"}
+            </div>
           </div>
 
           <div id="global-search-container" className="flex-1 max-w-md mx-8 hidden md:block" ref={searchRef}>
