@@ -59,7 +59,7 @@ export const ProfilePrompt: React.FC<ProfilePromptProps> = ({ user, onComplete }
   const handlePasswordReset = async () => {
     setLoading(true);
     setError("");
-    alert("Password reset functionality is currently disabled as the Firebase backend has been removed. Please contact the administrator.");
+    alert("Password reset functionality is currently disabled until the Supabase auth flow is configured. Please contact the administrator.");
     setLoading(false);
   };
 

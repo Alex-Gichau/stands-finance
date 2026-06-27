@@ -166,7 +166,7 @@ export const SettingsPanel: React.FC = () => {
     }
 
     const details = [
-      `*Supabase Sync State Toggled:* ${isEnabled ? "🟢 ENABLED (Dual-Write Active)" : "🔴 DISABLED (Firestore Only)"}`,
+      `*Supabase Sync State Toggled:* ${isEnabled ? "🟢 ENABLED (Supabase Active)" : "🔴 DISABLED (Local Sync Only)"}`,
       `*Audit Status Backup Summary (Current Supabase Table Counts):*`,
       `• *Registered Users:* ${counts.users} records`,
       `• *Active Projects:* ${counts.projects} records`,
@@ -453,7 +453,7 @@ export const SettingsPanel: React.FC = () => {
   const updateInterval = INTERVAL_MODES[sliderIndex].value;
 
   const handleTestEmail = async () => {
-    alert("Email test functionality is currently disabled as the Firebase backend has been removed. Please configure an alternative notification service.");
+    alert("Email test functionality is currently disabled until the Supabase notification configuration is set up. Please configure an alternative notification service.");
   };
 
   const lastTenLogs = systemLogs.slice(0, 10);

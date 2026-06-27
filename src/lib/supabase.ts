@@ -8,6 +8,18 @@ let dynamicSupabaseAnonKey: string | null = null;
 let attemptedDynamicFetch = false;
 let lastFetchTime = 0;
 
+const getViteEnv = () => {
+  const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+  return env || {};
+};
+
+const hasValidSupabaseConfig = (url: string | null | undefined, key: string | null | undefined) => {
+  const normalizedUrl = url?.trim() || "";
+  const normalizedKey = key?.trim() || "";
+
+  return normalizedUrl.length > 0 && normalizedKey.length > 0 && !normalizedUrl.includes("YOUR_SUPABASE_URL");
+};
+
 const fetchConfigSynchronously = (force = false) => {
   const now = Date.now();
   if (attemptedDynamicFetch && !force && dynamicSupabaseUrl) return;
@@ -16,6 +28,10 @@ const fetchConfigSynchronously = (force = false) => {
 
   attemptedDynamicFetch = true;
   lastFetchTime = now;
+  if (typeof window === "undefined" || typeof XMLHttpRequest === "undefined") {
+    return;
+  }
+
   try {
     const xhr = new XMLHttpRequest();
     // Synchronous request to get live env variables backend-side
@@ -45,19 +61,19 @@ export const getSupabaseClient = (forceRefresh = false) => {
 
   let supabaseUrl = "";
   let supabaseAnonKey = "";
+  const viteEnv = getViteEnv();
 
   fetchConfigSynchronously(forceRefresh);
   if (dynamicSupabaseUrl && dynamicSupabaseAnonKey) {
     supabaseUrl = dynamicSupabaseUrl;
     supabaseAnonKey = dynamicSupabaseAnonKey;
   } else {
-    supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-    supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+    supabaseUrl = viteEnv.VITE_SUPABASE_URL || "";
+    supabaseAnonKey = viteEnv.VITE_SUPABASE_ANON_KEY || "";
   }
 
   // Guard against missing keys
-  if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes("YOUR_SUPABASE_URL")) {
-    console.log("Supabase credentials are not fully configured yet. Dynamic DB operations will run on simulated PostgreSQL sandbox inside client.");
+  if (!hasValidSupabaseConfig(supabaseUrl, supabaseAnonKey)) {
     return null;
   }
 
@@ -82,12 +98,9 @@ export const getSupabaseClient = (forceRefresh = false) => {
  */
 export const isSupabaseEnabled = (): boolean => {
   // Try to see if we have credentials loaded either from env or dynamic fetch
-  const url = dynamicSupabaseUrl || import.meta.env.VITE_SUPABASE_URL;
-  const key = dynamicSupabaseAnonKey || import.meta.env.VITE_SUPABASE_ANON_KEY;
-  
-  if (!url || !key || url.includes("YOUR_SUPABASE_URL")) {
-    return false;
-  }
-  
-  return true;
+  const viteEnv = getViteEnv();
+  const url = dynamicSupabaseUrl || viteEnv.VITE_SUPABASE_URL;
+  const key = dynamicSupabaseAnonKey || viteEnv.VITE_SUPABASE_ANON_KEY;
+
+  return hasValidSupabaseConfig(url, key);
 };
