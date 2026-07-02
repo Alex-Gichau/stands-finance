@@ -1,6 +1,11 @@
 import dns from 'dns';
 
-const project = "wjftrnergydgosatyuzo";
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+const project = supabaseUrl.match(/https:\/\/(.*?)\.supabase\.co/)?.[1] || "";
+if (!project) {
+  console.error("❌ SUPABASE_URL is not set or project reference cannot be parsed!");
+  process.exit(1);
+}
 const regions = [
   "us-east-1", "us-east-2", "us-west-1", "us-west-2",
   "eu-central-1", "eu-west-1", "eu-west-2", "eu-west-3", "eu-north-1",
@@ -32,7 +37,7 @@ async function run() {
     }
   }
   if (!found) {
-    console.log("❌ No regional pooler resolved. Checking db.wjftrnergydgosatyuzo.supabase.co DNS...");
+    console.log(`❌ No regional pooler resolved. Checking db.${project}.supabase.co DNS...`);
     const directIp = await resolveHost(`db.${project}.supabase.co`);
     if (directIp) {
       console.log(`🟢 Direct Host resolves! db.${project}.supabase.co => IP: ${directIp}`);

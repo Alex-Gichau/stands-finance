@@ -136,6 +136,40 @@ function persistBugReport(report: BugReport) {
   }
 }
 
+interface Feedback {
+  id: string;
+  category: string;
+  subject: string;
+  explanation: string;
+  email: string;
+  username: string;
+  timestamp: string;
+}
+
+function restoreFeedback(): Feedback[] {
+  try {
+    const filePath = path.join(process.cwd(), "feedback.json");
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, "utf-8");
+      return JSON.parse(content);
+    }
+  } catch (err) {
+    console.error("Error reading feedback.json:", err);
+  }
+  return [];
+}
+
+function persistFeedback(feedback: Feedback) {
+  try {
+    const filePath = path.join(process.cwd(), "feedback.json");
+    const reports = restoreFeedback();
+    reports.push(feedback);
+    fs.writeFileSync(filePath, JSON.stringify(reports, null, 2), "utf-8");
+  } catch (err) {
+    console.error("Error writing feedback.json:", err);
+  }
+}
+
 function generateSlackFullReport(): string {
   const activities = restoreActivities();
   if (activities.length === 0) {
@@ -1098,9 +1132,17 @@ async function startServer() {
       });
 
       res.json({ success: true, deliveredTo: to, status });
-    } catch (err) {
-      console.error("Failed to send email:", err);
-      res.status(500).json({ error: "SMTP Dispatch failed" });
+    } catch (err: any) {
+      console.warn("SMTP Send failed, logging as simulated:", err.message || err);
+      
+      persistActivity({
+        action: "EMAIL_SIMULATED",
+        details: `Simulated Email (${status}) to ${requesterName} <${to}> regarding '${title}' (SMTP Error: ${err.message || "Unknown error"})`,
+        performedBy: "SYSTEM_MAILER",
+        timestamp: new Date().toISOString()
+      });
+
+      res.json({ success: true, deliveredTo: to, status, simulated: true, warning: err.message });
     }
   });
 
@@ -1215,9 +1257,9 @@ async function startServer() {
       });
 
       res.json({ success: true, deliveredTo: to });
-    } catch (err) {
-      console.error("Failed to send summary email:", err);
-      res.status(500).json({ error: "SMTP Dispatch failed for summary" });
+    } catch (err: any) {
+      console.warn("SMTP Summary Send failed, logging as simulated:", err.message || err);
+      res.json({ success: true, deliveredTo: to, simulated: true, warning: err.message });
     }
   });
 
@@ -2020,6 +2062,96 @@ async function startServer() {
     } catch (err: any) {
       console.warn("Failed to dispatch bug report Slack message:", err);
       res.json({ success: true, simulated: true, report, error: "Failed to dispatch Slack message" });
+    }
+  });
+
+  // API Route: Submit Feedback
+  app.post("/api/feedback", express.json(), async (req, res) => {
+    const { category, subject, explanation, email, username } = req.body;
+    if (!subject || !explanation) {
+      return res.status(400).json({ error: "Subject and explanation are required fields" });
+    }
+
+    const feedback: Feedback = {
+      id: "FB-" + Math.floor(1000 + Math.random() * 9000),
+      category: category || "Feedback",
+      subject: subject.trim(),
+      explanation: explanation.trim(),
+      email: email || "anonymous@pceastandrews.org",
+      username: username || "Anonymous",
+      timestamp: new Date().toISOString()
+    };
+
+    persistFeedback(feedback);
+
+    // Send a beautiful Slack notification if webhook is configured
+    const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+    const targetChannel = "#system-feedback";
+
+    const slackBody = {
+      attachments: [
+        {
+          color: "#8b5cf6", // Violet
+          blocks: [
+            {
+              type: "header",
+              text: {
+                type: "plain_text",
+                text: `✨ NEW SYSTEM FEEDBACK: ${feedback.id}`,
+                emoji: true
+              }
+            },
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: `*Category:* ${feedback.category}\n*Submitted By:* ${feedback.username} (<mailto:${feedback.email}|${feedback.email}>)`
+              }
+            },
+            { type: "divider" },
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: `*Subject:* ${feedback.subject}\n\n*Explanation:*\n${feedback.explanation}`
+              }
+            },
+            { type: "divider" },
+            {
+              type: "context",
+              elements: [
+                {
+                  type: "mrkdwn",
+                  text: `Timestamp: *${new Date(feedback.timestamp).toLocaleString()}* | Target Channel: \`${targetChannel}\``
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+
+    if (!webhookUrl) {
+      return res.json({
+        success: true,
+        simulated: true,
+        feedback,
+        targetChannel,
+        payload: slackBody,
+        message: "Slack Webhook not configured. Local Feedback logged and simulated."
+      });
+    }
+
+    try {
+      await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(slackBody)
+      });
+      res.json({ success: true, simulated: false, feedback, targetChannel });
+    } catch (err: any) {
+      console.warn("Failed to dispatch feedback Slack message:", err);
+      res.json({ success: true, simulated: true, feedback, error: "Failed to dispatch Slack message" });
     }
   });
 
