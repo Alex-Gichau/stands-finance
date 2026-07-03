@@ -1,7 +1,11 @@
 import pg from "pg";
 import { v4 as uuidv4 } from "uuid";
 
-const dbUrl = "postgresql://postgres:Alexx%40admin.47@db.wjftrnergydgosatyuzo.supabase.co:5432/postgres";
+const dbUrl = process.env.DATABASE_URL || "";
+if (!dbUrl) {
+  console.error("❌ DATABASE_URL is not set in environment variables!");
+  process.exit(1);
+}
 
 async function seedDatabase() {
   console.log("🚀 Starting Production-Grade Database Seeding...");

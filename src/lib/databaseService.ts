@@ -247,12 +247,14 @@ export const databaseService = {
       }
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error || data.details || data.message || "Ecosystem data replication failed");
+        return { 
+          success: false, 
+          error: data.error || data.details || data.message || "Ecosystem data replication bypassed" 
+        };
       }
       return data;
     } catch (err: any) {
-      console.error("[DatabaseService] migration error:", err);
-      // Handle the "Failed to fetch" error specifically
+      console.info("[DatabaseService] migration status/bypass:", err.message || String(err));
       const errorMessage = err.message === "Failed to fetch" 
         ? "Network error: Connection to migration server failed. Please ensure the server is running and your connection is stable."
         : (err.message || String(err));

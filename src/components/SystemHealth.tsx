@@ -81,7 +81,7 @@ export const SystemHealth: React.FC<{ updateInterval?: number }> = ({ updateInte
         }
       }
     } catch (err) {
-      console.error("Failed to fetch system health:", err);
+      console.warn("Failed to fetch system health. Retrying later...", err);
     } finally {
       setIsHealthLoading(false);
     }

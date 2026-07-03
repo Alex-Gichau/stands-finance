@@ -166,7 +166,7 @@ export const SettingsPanel: React.FC = () => {
     }
 
     const details = [
-      `*Supabase Sync State Toggled:* ${isEnabled ? "🟢 ENABLED (Supabase Active)" : "🔴 DISABLED (Local Sync Only)"}`,
+      `*Supabase Sync State Toggled:* ${isEnabled ? "🟢 ENABLED (Dual-Write Active)" : "🔴 DISABLED (Firestore Only)"}`,
       `*Audit Status Backup Summary (Current Supabase Table Counts):*`,
       `• *Registered Users:* ${counts.users} records`,
       `• *Active Projects:* ${counts.projects} records`,
@@ -269,6 +269,8 @@ export const SettingsPanel: React.FC = () => {
       else if (type === "stale") endpoint = "/api/slack/alert-stale-requisitions";
       else if (type === "anomalies") endpoint = "/api/slack/alert-behavioral-anomalies";
       else if (type === "latency") endpoint = "/api/slack/alert-latency";
+      else if (type === "search-daily") endpoint = "/api/slack/search-daily";
+      else if (type === "search-weekly") endpoint = "/api/slack/search-weekly";
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -404,6 +406,14 @@ export const SettingsPanel: React.FC = () => {
     executeSlackTrigger("latency", { endpoint: "/api/check-balance", durationMs: 1420 });
   };
 
+  const dispatchDailySearchSummary = () => {
+    executeSlackTrigger("search-daily", {});
+  };
+
+  const dispatchWeeklySearchSummary = () => {
+    executeSlackTrigger("search-weekly", {});
+  };
+
   const [sliderIndex, setSliderIndex] = React.useState(1); // 0 = Aggressive, 1 = Balanced, 2 = Power Saver
   
   // Update password state
@@ -453,7 +463,7 @@ export const SettingsPanel: React.FC = () => {
   const updateInterval = INTERVAL_MODES[sliderIndex].value;
 
   const handleTestEmail = async () => {
-    alert("Email test functionality is currently disabled until the Supabase notification configuration is set up. Please configure an alternative notification service.");
+    alert("Email test functionality is currently disabled as the Firebase backend has been removed. Please configure an alternative notification service.");
   };
 
   const lastTenLogs = systemLogs.slice(0, 10);
@@ -566,6 +576,81 @@ export const SettingsPanel: React.FC = () => {
                 >
                   Save Email
                 </button>
+              </div>
+            </section>
+          )}
+
+          {/* Requisition Expiry Configuration (Super Admin Only) */}
+          {currentUser?.role === UserRole.SUPER_ADMIN && (
+            <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm p-8 space-y-4">
+              <div className="flex items-center gap-3">
+                <Clock size={18} className="text-primary" />
+                <h3 className="text-xs font-black text-foreground uppercase tracking-[0.2em]">
+                  System Expiry Configuration (Super Admin Only)
+                </h3>
+              </div>
+              <p className="text-[10px] text-muted font-medium italic">
+                Set the default expiration period (in days) for all new requisitions. Requisitions will automatically expire after this many days.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-border/50">
+                <div className="flex-1 flex items-center justify-between sm:justify-start gap-4">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Expiry Duration</span>
+                  <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-border rounded-xl p-1 shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const current = systemSettings.requisitionExpiryDays ?? 7;
+                        if (current > 1) {
+                          updateSystemSettings({ requisitionExpiryDays: current - 1 });
+                        }
+                      }}
+                      className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-slate-100 text-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-200 rounded-lg text-xs font-black transition-colors"
+                      title="Reduce expiry by 1 day"
+                    >
+                      -
+                    </button>
+                    <span className="text-xs font-black font-mono text-foreground w-16 text-center">
+                      {systemSettings.requisitionExpiryDays ?? 7} DAYS
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const current = systemSettings.requisitionExpiryDays ?? 7;
+                        updateSystemSettings({ requisitionExpiryDays: current + 1 });
+                      }}
+                      className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-slate-100 text-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-200 rounded-lg text-xs font-black transition-colors"
+                      title="Increase expiry by 1 day"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="7"
+                    className="w-24 px-4 py-3 bg-white dark:bg-slate-800 border border-border rounded-xl text-xs font-bold focus:border-primary/50 outline-none transition-colors"
+                    value={systemSettings.requisitionExpiryDays ?? 7}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      if (!isNaN(val) && val > 0) {
+                        updateSystemSettings({ requisitionExpiryDays: val });
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateSystemSettings({ requisitionExpiryDays: 7 });
+                    }}
+                    className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors"
+                  >
+                    Reset to Default (7)
+                  </button>
+                </div>
               </div>
             </section>
           )}
@@ -1666,6 +1751,56 @@ export const SettingsPanel: React.FC = () => {
                       <Zap size={10} />
                     )}
                     Simulate Lag Alert
+                  </button>
+                </div>
+
+                {/* 7. Daily Search Metrics Summary */}
+                <div className="p-4 rounded-2xl border border-border bg-background/50 space-y-3 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-[10px] font-extrabold uppercase text-foreground tracking-wider flex items-center gap-1.5">
+                      <span>🔍</span> Daily Search Metrics
+                    </h4>
+                    <p className="text-[9px] text-muted font-bold mt-1 leading-relaxed">
+                      Compiles and dispatches the top 5 most searched queries of the day to the system channels.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={dispatchDailySearchSummary}
+                    disabled={slackActionLoading["search-daily"]}
+                    className="w-full py-2.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {slackActionLoading["search-daily"] ? (
+                      <RefreshCw size={10} className="animate-spin" />
+                    ) : (
+                      <Activity size={10} />
+                    )}
+                    Send Daily Search Report
+                  </button>
+                </div>
+
+                {/* 8. Weekly Search Summary */}
+                <div className="p-4 rounded-2xl border border-border bg-background/50 space-y-3 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-[10px] font-extrabold uppercase text-foreground tracking-wider flex items-center gap-1.5">
+                      <span>📊</span> Weekly Search Summary
+                    </h4>
+                    <p className="text-[9px] text-muted font-bold mt-1 leading-relaxed">
+                      Aggregates search query frequency for the last 7 days and delivers the trending top 5 list.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={dispatchWeeklySearchSummary}
+                    disabled={slackActionLoading["search-weekly"]}
+                    className="w-full py-2.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {slackActionLoading["search-weekly"] ? (
+                      <RefreshCw size={10} className="animate-spin" />
+                    ) : (
+                      <Gauge size={10} />
+                    )}
+                    Send Weekly Search Report
                   </button>
                 </div>
               </div>

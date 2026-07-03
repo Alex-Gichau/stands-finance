@@ -1,5 +1,11 @@
 import https from 'https';
-const targetUrl = 'https://wjftrnergydgosatyuzo.supabase.co/auth/v1/authorize?provider=google&redirect_to=https://ais-dev-km4p5ah2577oq3ir42cgsq-261596193432.europe-west2.run.app';
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const appUrl = process.env.APP_URL || '';
+if (!supabaseUrl || !appUrl) {
+  console.error("❌ SUPABASE_URL/VITE_SUPABASE_URL or APP_URL is not set in environment variables!");
+  process.exit(1);
+}
+const targetUrl = `${supabaseUrl.replace(/\/$/, "")}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(appUrl)}`;
 
 https.get(targetUrl, (res) => {
   console.log("Status:", res.statusCode);

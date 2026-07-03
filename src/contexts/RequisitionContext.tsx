@@ -32,6 +32,7 @@ import {
 import { getProjectRequisitions } from "../utils/budgetUtils";
 import { getSupabaseClient, isSupabaseEnabled } from "../lib/supabase";
 import { databaseService } from "../lib/databaseService";
+import { uploadAttachmentsToLocalServer } from "../lib/utils";
 
 // @ts-ignore
 const db = {}; // Dummy db to allow migration progress
@@ -52,35 +53,175 @@ const deleteField = () => null;
 const getFirestore = () => ({});
 const initializeFirestore = (...args: any[]) => ({});
 
+const mapCamelToSnake = (data: any): any => {
+  if (data === null || data === undefined || typeof data !== "object" || Array.isArray(data)) {
+    return data;
+  }
+  const snakeData: any = {};
+  for (const [key, val] of Object.entries(data)) {
+    let snakeKey = key;
+    if (key === 'photoURL') {
+      snakeKey = 'photo_url';
+    } else {
+      snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+    }
+    snakeData[snakeKey] = val;
+  }
+  return snakeData;
+};
+
+const mapSnakeToCamel = (data: any): any => {
+  if (data === null || data === undefined) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data.map(mapSnakeToCamel);
+  }
+  if (typeof data === "object") {
+    const camelData: any = {};
+    for (const [key, val] of Object.entries(data)) {
+      let camelKey = key;
+      if (key === 'photo_url') {
+        camelKey = 'photoURL';
+      } else {
+        camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+      }
+      camelData[camelKey] = mapSnakeToCamel(val);
+    }
+    return camelData;
+  }
+  return data;
+};
+
 const setDoc = async (docRef: any, data: any, options?: any) => {
   const supabase = getSupabaseClient();
   if (!supabase) return;
-  const payload = { id: docRef.id, ...data };
-  const { error } = await supabase.from(docRef.table).upsert(payload);
-  if (error) console.error("setDoc error", error);
+  let payload = mapCamelToSnake({ id: docRef.id, ...data });
+  try {
+    let { error } = await supabase.from(docRef.table).upsert(payload);
+    if (error) {
+      if (error.message && error.message.includes("Could not find the") && error.message.includes("column of")) {
+        const match = error.message.match(/Could not find the '([^']+)' column/);
+        if (match && match[1]) {
+          const missingColumn = match[1];
+          console.warn(`[Supabase Self-Healing] Column '${missingColumn}' not found in table '${docRef.table}'. Filtering and retrying...`);
+          delete payload[missingColumn];
+          const retryResult = await supabase.from(docRef.table).upsert(payload);
+          if (!retryResult.error) {
+            console.log(`[Supabase Self-Healing] Successfully completed setDoc on table '${docRef.table}' after filtering column '${missingColumn}'.`);
+            return;
+          }
+          error = retryResult.error;
+        }
+      }
+      console.error(`setDoc error: table=${docRef.table}, id=${docRef.id}, message=${error.message || JSON.stringify(error)}, details=${error.details || ""}`);
+    }
+  } catch (err) {
+    console.error("setDoc failed:", err);
+  }
 };
 
 const updateDoc = async (docRef: any, data: any) => {
   const supabase = getSupabaseClient();
   if (!supabase) return;
-  const { error } = await supabase.from(docRef.table).update(data).eq("id", docRef.id);
-  if (error) console.error("updateDoc error", error);
+  let payload = mapCamelToSnake(data);
+  try {
+    let { error } = await supabase.from(docRef.table).update(payload).eq("id", docRef.id);
+    if (error) {
+      if (error.message && error.message.includes("Could not find the") && error.message.includes("column of")) {
+        const match = error.message.match(/Could not find the '([^']+)' column/);
+        if (match && match[1]) {
+          const missingColumn = match[1];
+          console.warn(`[Supabase Self-Healing] Column '${missingColumn}' not found in table '${docRef.table}'. Filtering and retrying...`);
+          delete payload[missingColumn];
+          const retryResult = await supabase.from(docRef.table).update(payload).eq("id", docRef.id);
+          if (!retryResult.error) {
+            console.log(`[Supabase Self-Healing] Successfully completed updateDoc on table '${docRef.table}' after filtering column '${missingColumn}'.`);
+            return;
+          }
+          error = retryResult.error;
+        }
+      }
+      console.error(`updateDoc error: table=${docRef.table}, id=${docRef.id}, message=${error.message || JSON.stringify(error)}, details=${error.details || ""}`);
+    }
+  } catch (err) {
+    console.error("updateDoc failed:", err);
+  }
 };
 
 const deleteDoc = async (docRef: any) => {
   const supabase = getSupabaseClient();
   if (!supabase) return;
-  const { error } = await supabase.from(docRef.table).delete().eq("id", docRef.id);
-  if (error) console.error("deleteDoc error", error);
+  try {
+    const { error } = await supabase.from(docRef.table).delete().eq("id", docRef.id);
+    if (error) {
+      console.error(`deleteDoc error: table=${docRef.table}, id=${docRef.id}, message=${error.message || JSON.stringify(error)}, details=${error.details || ""}`);
+    }
+  } catch (err) {
+    console.error("deleteDoc failed:", err);
+  }
 };
 
 const getDoc = async (docRef: any) => {
   const supabase = getSupabaseClient();
   if (!supabase) return { exists: () => false, data: () => ({} as any), id: docRef.id };
-  const { data, error } = await supabase.from(docRef.table).select("*").eq("id", docRef.id).single();
-  if (error || !data) return { exists: () => false, data: () => ({} as any), id: docRef.id };
-  return { exists: () => true, data: () => data, id: docRef.id };
+  try {
+    const { data, error } = await supabase.from(docRef.table).select("*").eq("id", docRef.id).single();
+    if (error || !data) return { exists: () => false, data: () => ({} as any), id: docRef.id };
+    return { exists: () => true, data: () => mapSnakeToCamel(data), id: docRef.id };
+  } catch (err) {
+    console.error("getDoc failed:", err);
+    return { exists: () => false, data: () => ({} as any), id: docRef.id };
+  }
 };
+
+export function safeNormalizeAttachments(attachments: any): string[] {
+  if (!attachments) return [];
+  if (Array.isArray(attachments)) {
+    return attachments.filter((x: any) => typeof x === 'string' || (x && typeof x === 'object')).map((x: any) => typeof x === 'string' ? x : JSON.stringify(x));
+  }
+  if (typeof attachments === 'string') {
+    const trimmed = attachments.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.map((x: any) => typeof x === 'string' ? x : JSON.stringify(x));
+        }
+      } catch (e) {
+        console.error("Failed to parse stringified attachments array:", e);
+      }
+    }
+    if (trimmed.length > 0) {
+      return [trimmed];
+    }
+  }
+  return [];
+}
+
+export function safeNormalizeReceipts(receipts: any): string[] {
+  if (!receipts) return [];
+  if (Array.isArray(receipts)) {
+    return receipts.filter((x: any) => typeof x === 'string' || (x && typeof x === 'object')).map((x: any) => typeof x === 'string' ? x : JSON.stringify(x));
+  }
+  if (typeof receipts === 'string') {
+    const trimmed = receipts.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.map((x: any) => typeof x === 'string' ? x : JSON.stringify(x));
+        }
+      } catch (e) {
+        console.error("Failed to parse stringified receipts array:", e);
+      }
+    }
+    if (trimmed.length > 0) {
+      return [trimmed];
+    }
+  }
+  return [];
+}
 
 const limit = (val: number) => ({ type: 'limit', value: val });
 const orderBy = (field: string, direction: string = 'asc') => ({ type: 'orderBy', field, direction });
@@ -116,19 +257,29 @@ const getDocs = async (queryRef: any) => {
   if (queryRef.orderColumn) q = q.order(queryRef.orderColumn, { ascending: queryRef.ascending });
   if (queryRef.limitCount) q = q.limit(queryRef.limitCount);
   
-  const { data, error } = await q;
-  if (error || !data) return { docs: [], empty: true, forEach: (cb: any) => {} };
-  
-  const docs = data.map(d => ({ data: () => d, id: d.id, exists: () => true }));
-  return { docs, empty: docs.length === 0, forEach: (cb: any) => docs.forEach(cb) };
+  try {
+    const { data, error } = await q;
+    if (error || !data) return { docs: [], empty: true, forEach: (cb: any) => {} };
+    
+    const docs = data.map((d: any) => ({ data: () => mapSnakeToCamel(d), id: d.id, exists: () => true }));
+    return { docs, empty: docs.length === 0, forEach: (cb: any) => docs.forEach(cb) };
+  } catch (err) {
+    console.error("getDocs failed:", err);
+    return { docs: [], empty: true, forEach: (cb: any) => {} };
+  }
 };
 
 const addDoc = async (col: any, data: any) => {
   const supabase = getSupabaseClient();
   if (!supabase) return { id: "mock" };
-  const { data: inserted, error } = await supabase.from(col.table).insert([data]).select().single();
-  if (error || !inserted) return { id: "mock" };
-  return { id: inserted.id };
+  try {
+    const { data: inserted, error } = await supabase.from(col.table).insert([data]).select().single();
+    if (error || !inserted) return { id: "mock" };
+    return { id: inserted.id };
+  } catch (err) {
+    console.error("addDoc failed:", err);
+    return { id: "mock" };
+  }
 };
 
 const onSnapshot = (queryRef: any, callback: (snap: any) => void, errorCallback?: (err: any) => void) => {
@@ -136,12 +287,17 @@ const onSnapshot = (queryRef: any, callback: (snap: any) => void, errorCallback?
   if (!supabase) return () => {};
   
   const fetchData = async () => {
-    if (queryRef.id) { 
-      const res = await getDoc(queryRef);
-      callback(res);
-    } else {
-      const res = await getDocs(queryRef);
-      callback(res);
+    try {
+      if (queryRef.id) { 
+        const res = await getDoc(queryRef);
+        callback(res);
+      } else {
+        const res = await getDocs(queryRef);
+        callback(res);
+      }
+    } catch (err) {
+      if (errorCallback) errorCallback(err);
+      else console.warn("onSnapshot fetch failed:", err);
     }
   };
   
@@ -223,6 +379,7 @@ interface RequisitionContextType {
   systemLogs: SystemLog[];
   addSystemLog: (action: string, details: string, metadata?: any) => Promise<void>;
   churchGroups: ChurchGroup[];
+  lastGroupsSync: Date | null;
   addChurchGroup: (name: string, description?: string) => Promise<void>;
   deleteChurchGroup: (id: string) => Promise<void>;
   ledgerBooks: LedgerBook[];
@@ -295,6 +452,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [alerts, setAlerts] = useState<BudgetAlert[]>([]);
   const [thresholds, setThresholds] = useState<AlertThreshold[]>([]);
   const [churchGroups, setChurchGroups] = useState<ChurchGroup[]>([]);
+  const [lastGroupsSync, setLastGroupsSync] = useState<Date | null>(null);
   const [ledgerBooks, setLedgerBooks] = useState<LedgerBook[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [forecastData, setForecastData] = useState<ForecastMonth[]>([]);
@@ -500,21 +658,31 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const now = new Date();
     const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
 
-    const newPriorityAlerts = alerts.filter(a => 
-      !a.isRead && 
-      (a.severity === "HIGH" || a.severity === "MEDIUM") &&
-      new Date(a.timestamp) > fiveMinutesAgo &&
-      !seenAlertsRef.current.has(a.id) &&
-      !a.id.includes("budget-p") &&
-      !a.id.includes("req-seed-")
-    );
+    const seenNew = new Set<string>();
+    const newPriorityAlerts = alerts.filter(a => {
+      if (!a || !a.id) return false;
+      if (seenNew.has(a.id)) return false;
+      seenNew.add(a.id);
+      return !a.isRead && 
+        (a.severity === "HIGH" || a.severity === "MEDIUM") &&
+        new Date(a.timestamp) > fiveMinutesAgo &&
+        !seenAlertsRef.current.has(a.id) &&
+        !a.id.includes("budget-p") &&
+        !a.id.includes("req-seed-");
+    });
 
     if (newPriorityAlerts.length > 0) {
       newPriorityAlerts.forEach(a => seenAlertsRef.current.add(a.id));
       setActiveToasts(prev => {
         const combined = [...newPriorityAlerts, ...prev];
-        // Keep only top 2
-        return combined.slice(0, 2);
+        const seen = new Set<string>();
+        const unique = combined.filter(item => {
+          if (!item || !item.id) return false;
+          if (seen.has(item.id)) return false;
+          seen.add(item.id);
+          return true;
+        });
+        return unique.slice(0, 2);
       });
     }
   }, [alerts]);
@@ -1416,7 +1584,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (skipFirestore) return;
     if (!currentUserId || !currentUserIsApproved || currentUserIsSuspended || !activeSyncTargets.has('requisitions')) return;
     const hidePrototype = true;
-    const isGroupUser = currentUserRole === UserRole.CHURCH_GROUP;
+    const isGroupUser = currentUserRole === UserRole.CHURCH_GROUP || currentUserRole === UserRole.APPROVER_L1 || currentUserRole === UserRole.APPROVER_L2;
     const filterGroups = JSON.parse(currentUserGroupsJSON) as string[];
     const parsedGroups = filterGroups.length > 0 ? filterGroups : (currentUserGroup ? [currentUserGroup] : []);
 
@@ -1436,7 +1604,15 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     let isFirstSnap = true;
 
     const unsubRequisitions = onSnapshot(baseQuery, (snap) => {
-      let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Requisition));
+      let data = snap.docs.map(doc => {
+        const r = doc.data() as any;
+        return {
+          id: doc.id,
+          ...r,
+          attachments: safeNormalizeAttachments(r?.attachments),
+          receipts: safeNormalizeReceipts(r?.receipts)
+        } as Requisition;
+      });
       // Client-side additional filtering for non-standard access or multiple groups
       if (isGroupUser && parsedGroups.length > 1) {
         data = data.filter(req => parsedGroups.includes(req.groupId) || parsedGroups.includes(req.groupName));
@@ -1496,7 +1672,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (skipFirestore) return;
     if (!currentUserId || !currentUserIsApproved || currentUserIsSuspended || !activeSyncTargets.has('projects')) return;
     const hidePrototype = true;
-    const shouldFilter = currentUserRole === UserRole.CHURCH_GROUP;
+    const shouldFilter = currentUserRole === UserRole.CHURCH_GROUP || currentUserRole === UserRole.APPROVER_L1 || currentUserRole === UserRole.APPROVER_L2;
     const filterGroups = JSON.parse(currentUserGroupsJSON) as string[];
     const parsedGroups = filterGroups.length > 0 ? filterGroups : (currentUserGroup ? [currentUserGroup] : []);
 
@@ -1526,7 +1702,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (skipFirestore) return;
     if (!currentUserId || !currentUserIsApproved || currentUserIsSuspended || !activeSyncTargets.has('alerts')) return;
     const hidePrototype = true;
-    const shouldFilter = currentUserRole === UserRole.CHURCH_GROUP;
+    const shouldFilter = currentUserRole === UserRole.CHURCH_GROUP || currentUserRole === UserRole.APPROVER_L1 || currentUserRole === UserRole.APPROVER_L2;
     const filterGroups = JSON.parse(currentUserGroupsJSON) as string[];
     const parsedGroups = filterGroups.length > 0 ? filterGroups : (currentUserGroup ? [currentUserGroup] : []);
 
@@ -1648,7 +1824,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (skipFirestore) return;
     if (!currentUserId || !currentUserIsApproved || currentUserIsSuspended || !activeSyncTargets.has('system_logs')) return;
     const hidePrototype = true;
-    const shouldFilter = currentUserRole === UserRole.CHURCH_GROUP;
+    const shouldFilter = currentUserRole === UserRole.CHURCH_GROUP || currentUserRole === UserRole.APPROVER_L1 || currentUserRole === UserRole.APPROVER_L2;
     const filterGroups = JSON.parse(currentUserGroupsJSON) as string[];
     const parsedGroups = filterGroups.length > 0 ? filterGroups : (currentUserGroup ? [currentUserGroup] : []);
 
@@ -1684,7 +1860,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (skipFirestore) return;
     if (!currentUserId || !currentUserIsApproved || currentUserIsSuspended || !activeSyncTargets.has('users')) return;
     const hidePrototype = true;
-    const shouldFilter = currentUserRole === UserRole.CHURCH_GROUP;
+    const shouldFilter = currentUserRole === UserRole.CHURCH_GROUP || currentUserRole === UserRole.APPROVER_L1 || currentUserRole === UserRole.APPROVER_L2;
     const filterGroups = JSON.parse(currentUserGroupsJSON) as string[];
     const parsedGroups = filterGroups.length > 0 ? filterGroups : (currentUserGroup ? [currentUserGroup] : []);
 
@@ -1771,30 +1947,69 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     handleSyncError
   ]);
 
-  // Global System Lifecycle (Seeding & Heartbeat)
+  // Real-time Presence Heartbeat (Supabase & Firestore Unified)
   useEffect(() => {
-    if (skipFirestore) return;
     if (!currentUserId || !currentUserIsApproved || currentUserIsSuspended) return;
 
-    // Online presence heartbeat (optimized to 3 minutes to reduce Firestore quota write operations)
-    const heartbeatInterval = setInterval(() => {
-      if (currentUserId && !isFirestoreQuotaExceeded()) {
-         setDoc(doc(db, "users", currentUserId), { 
-           isOnline: true, 
-           lastSeen: new Date().toISOString() 
-         }, { merge: true }).catch(() => {});
-      }
-    }, 180000); // 3 minutes
+    const updatePresence = async (onlineStatus: boolean) => {
+      const nowStr = new Date().toISOString();
+      const supabase = getSupabaseClient();
 
-    return () => clearInterval(heartbeatInterval);
+      if (supabase) {
+        try {
+          await supabase
+            .from("users")
+            .update({
+              is_online: onlineStatus,
+              last_seen: nowStr
+            })
+            .eq("id", currentUserId);
+        } catch (err) {
+          console.warn("Failed to update presence in Supabase:", err);
+        }
+      }
+
+      if (!skipFirestore && !isFirestoreQuotaExceeded()) {
+        try {
+          await setDoc(doc(db, "users", currentUserId), { 
+            isOnline: onlineStatus, 
+            lastSeen: nowStr 
+          }, { merge: true });
+        } catch (err) {
+          console.warn("Failed to update presence in Firestore:", err);
+        }
+      }
+    };
+
+    // Trigger immediately on mount/load
+    updatePresence(true);
+
+    // Setup periodic heartbeat every 30 seconds
+    const heartbeatInterval = setInterval(() => {
+      updatePresence(true);
+    }, 30000);
+
+    const handleUnload = () => {
+      const supabase = getSupabaseClient();
+      if (supabase && currentUserId) {
+        supabase.from("users").update({ is_online: false }).eq("id", currentUserId).then(() => {});
+      }
+    };
+
+    window.addEventListener("beforeunload", handleUnload);
+
+    return () => {
+      clearInterval(heartbeatInterval);
+      window.removeEventListener("beforeunload", handleUnload);
+      // Clean up presence (offline) when unmounting
+      updatePresence(false);
+    };
   }, [
     firestoreQuotaExceeded,
     currentUserId,
     currentUserIsApproved,
     currentUserIsSuspended,
-    currentUserRole,
-    seedAllEcosystemData,
-    systemSettings.prototypeDataEnabled
+    skipFirestore
   ]);
 
   // Real-time Sync for Ledger Books
@@ -2017,13 +2232,14 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
         if (shouldGenerate) {
           const draftId = `req-auto-${req.id}-${Date.now()}`;
+          const expiryDays = systemSettings?.requisitionExpiryDays ?? 7;
           const newDraft: Requisition = {
             ...req,
             id: draftId,
             status: RequisitionStatus.DRAFT,
             submittedAt: now.toISOString(),
             updatedAt: now.toISOString(),
-            expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+            expiresAt: new Date(now.getTime() + expiryDays * 24 * 60 * 60 * 1000).toISOString(),
             approvalHistory: [],
             recurrence: RecurrenceType.NONE, // Spawned ones are one-off
             lastRecurrenceGeneratedAt: undefined
@@ -2043,7 +2259,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     };
 
     checkRecurring();
-  }, [requisitions, firestoreQuotaExceeded, currentUserId, db, addSystemLog]);
+  }, [requisitions, firestoreQuotaExceeded, currentUserId, db, addSystemLog, systemSettings]);
 
   // --- UNIFIED SUPABASE DATA LOADER FOR ALL 15 DATASETS ---
   useEffect(() => {
@@ -2068,7 +2284,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
 
       const hidePrototype = true;
-      const isGroupUser = currentUserRole === UserRole.CHURCH_GROUP;
+      const isGroupUser = currentUserRole === UserRole.CHURCH_GROUP || currentUserRole === UserRole.APPROVER_L1 || currentUserRole === UserRole.APPROVER_L2;
       const filterGroups = JSON.parse(currentUserGroupsJSON) as string[];
       const parsedGroups = filterGroups.length > 0 ? filterGroups : (currentUserGroup ? [currentUserGroup] : []);
 
@@ -2140,8 +2356,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             recurrence: r.recurrence,
             lastRecurrenceGeneratedAt: r.last_recurrence_generated_at,
             additionalInfo: r.additional_info,
-            attachments: r.attachments || [],
-            receipts: r.receipts || [],
+            attachments: safeNormalizeAttachments(r.attachments),
+            receipts: safeNormalizeReceipts(r.receipts),
             flaggedForAudit: r.flagged_for_audit,
             inProcurement: r.in_procurement,
             requiresMoreInfo: r.requires_more_info,
@@ -2330,6 +2546,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             createdAt: cg.created_at
           } as ChurchGroup));
           setChurchGroups(data);
+          setLastGroupsSync(new Date());
         }
 
         // Process Ledger Books
@@ -2708,6 +2925,23 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       
       const isSessionInvalidOrExpired = options?.forceDirect || !user || !currentUser || currentUser.isSuspended || !currentUser.isActive || !currentUser.isApproved || currentUser.forceLogout;
 
+      // Set user offline status in the databases before signing out
+      if (currentUserId) {
+        try {
+          await supabase.from("users").update({ is_online: false, last_seen: new Date().toISOString() }).eq("id", currentUserId);
+        } catch (err) {
+          console.warn("Failed to mark user offline in Supabase on logout:", err);
+        }
+
+        if (!skipFirestore && !isFirestoreQuotaExceeded()) {
+          try {
+            await setDoc(doc(db, "users", currentUserId), { isOnline: false, lastSeen: new Date().toISOString() }, { merge: true });
+          } catch (err) {
+            console.warn("Failed to mark user offline in Firestore on logout:", err);
+          }
+        }
+      }
+
       if (userEmail && user && !isSessionInvalidOrExpired) {
         try {
           await addSystemLog("USER_LOGOUT", `👤 User logged out successfully: ${userEmail}`, { email: userEmail });
@@ -3015,6 +3249,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 updatedAt: new Date().toISOString()
               });
               console.log(`[Google Drive Sync] Successfully updated requisition ${req.id} firestore attachments with Drive URLs.`);
+              setRequisitions(prev => prev.map(r => r.id === req.id ? { ...r, attachments: data.uploadedAttachments } : r));
             } catch (fsErr) {
               console.log("Failed to update firestore attachments with Google Drive URLs:", fsErr);
             }
@@ -3053,7 +3288,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     const id = `req-${Math.random().toString(36).substr(2, 9)}`;
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+    const expiryDays = systemSettings?.requisitionExpiryDays ?? 7;
+    const expiresAt = new Date(now.getTime() + expiryDays * 24 * 60 * 60 * 1000); // dynamic days from now
 
     // Requisition Limit Check: Every single requisition must be within the group's requisition limit
     const matchingProj = projects.find(p => p.id === reqData.projectId || p.groupId === reqData.groupId || p.name === reqData.groupName);
@@ -3155,6 +3391,17 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const req = requisitions.find(r => r.id === id);
       if (!req) return;
 
+      // Security check: Restricted approver can only approve requisitions of their affiliated groups
+      const isRestrictedRole = currentUser?.role ? [UserRole.CHURCH_GROUP, UserRole.APPROVER_L1, UserRole.APPROVER_L2].includes(currentUser.role) : false;
+      if (isRestrictedRole) {
+        const filterGroups = currentUser?.groups || [];
+        const parsedGroups = filterGroups.length > 0 ? filterGroups : (currentUser?.group ? [currentUser.group] : []);
+        const belongsToAffiliatedGroup = parsedGroups.includes(req.groupId) || parsedGroups.includes(req.groupName);
+        if (!belongsToAffiliatedGroup) {
+          throw new Error("Security Violation: You are not authorized to approve, reject, or modify requisitions for this church group.");
+        }
+      }
+
       const updates: any = {
         status,
         updatedAt: new Date().toISOString(),
@@ -3190,6 +3437,17 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const reqSnap = await getDoc(reqRef);
       if (!reqSnap.exists()) return;
       const req = reqSnap.data() as Requisition;
+
+      // Security check: Restricted approver can only approve requisitions of their affiliated groups
+      const isRestrictedRole = currentUser?.role ? [UserRole.CHURCH_GROUP, UserRole.APPROVER_L1, UserRole.APPROVER_L2].includes(currentUser.role) : false;
+      if (isRestrictedRole) {
+        const filterGroups = currentUser?.groups || [];
+        const parsedGroups = filterGroups.length > 0 ? filterGroups : (currentUser?.group ? [currentUser.group] : []);
+        const belongsToAffiliatedGroup = parsedGroups.includes(req.groupId) || parsedGroups.includes(req.groupName);
+        if (!belongsToAffiliatedGroup) {
+          throw new Error("Security Violation: You are not authorized to approve, reject, or modify requisitions for this church group.");
+        }
+      }
 
       // Check if financial books for this year are CLOSED
       const activeYear = systemSettings.currentFiscalYear || 2026;
@@ -3242,6 +3500,10 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (status === RequisitionStatus.DISBURSED) updates.disbursedAt = new Date().toISOString();
 
       await updateDoc(reqRef, cleanFirestoreData(updates));
+      
+      const updatedReq = { ...req, ...updates, id };
+      await databaseService.saveRequisition(cleanFirestoreData(updatedReq));
+      setRequisitions(prev => prev.map(r => r.id === id ? updatedReq : r));
       
       if (status === RequisitionStatus.APPROVED_L1 || status === RequisitionStatus.APPROVED_L2 || status === RequisitionStatus.DISBURSED) {
         const syncedRecord = {
@@ -3367,6 +3629,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       
       const updatedReq = { ...currentReq, ...cleanedUpdates };
       await databaseService.saveRequisition(cleanFirestoreData(updatedReq));
+      setRequisitions(prev => prev.map(r => r.id === id ? updatedReq : r));
       await addSystemLog("REQUISITION_EDITED", `Requisition '${id}' updated`, { requisitionId: id, updates });
 
       if (updates.status === RequisitionStatus.SUBMITTED && currentReq.status !== RequisitionStatus.SUBMITTED) {
@@ -3393,17 +3656,20 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (!reqSnap.exists()) return;
       const data = reqSnap.data() as Requisition;
       const currentReceipts = data.receipts || [];
-      const updatedReceipts = [...currentReceipts, ...newReceipts];
+      const localUploadedReceipts = await uploadAttachmentsToLocalServer(newReceipts);
+      const updatedReceipts = [...currentReceipts, ...localUploadedReceipts];
       
+      const updatedAt = new Date().toISOString();
       await updateDoc(reqRef, {
         receipts: updatedReceipts,
-        updatedAt: new Date().toISOString()
+        updatedAt
       });
+      setRequisitions(prev => prev.map(r => r.id === id ? { ...r, receipts: updatedReceipts, updatedAt } : r));
       await addSystemLog("RECEIPTS_UPLOADED", `Uploaded ${newReceipts.length} receipts to Requisition ID: ${id}`, { requisitionId: id, currentReceiptCount: updatedReceipts.length });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `requisitions/${id}`);
     }
-  }, [addSystemLog]);
+  }, [addSystemLog, setRequisitions]);
 
   const markAlertAsRead = useCallback(async (id: string) => {
     try {
@@ -3502,6 +3768,16 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     });
   }, [churchGroups]);
 
+  const uniqueActiveToasts = React.useMemo(() => {
+    const seen = new Set<string>();
+    return activeToasts.filter(t => {
+      if (!t || !t.id) return false;
+      if (seen.has(t.id)) return false;
+      seen.add(t.id);
+      return true;
+    });
+  }, [activeToasts]);
+
   const uniqueLedgerBooks = React.useMemo(() => {
     const seen = new Set<string>();
     return ledgerBooks.filter(lb => {
@@ -3574,6 +3850,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       loading,
       authLoading,
       churchGroups: uniqueChurchGroups,
+      lastGroupsSync,
       addChurchGroup,
       deleteChurchGroup,
       ledgerBooks: uniqueLedgerBooks,
@@ -3635,7 +3912,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setAdvancedCustomEndDate,
       advancedBudgetLine,
       setAdvancedBudgetLine,
-      activeToasts,
+      activeToasts: uniqueActiveToasts,
       removeToast,
       triggerToast,
       readNoticeIds,

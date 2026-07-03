@@ -50,3 +50,76 @@ export async function sendSlackNotification(params: {
     return { error: "Failed to send notification" };
   }
 }
+
+export async function uploadAttachmentToLocalServer(att: string): Promise<string> {
+  if (typeof att !== "string") return att;
+  
+  let fileName = "attachment";
+  let dataUrl = att;
+  
+  if (att.includes("::")) {
+    const parts = att.split("::");
+    fileName = parts[0];
+    dataUrl = parts[1];
+  } else {
+    // If it's a raw data URL without filename
+    if (dataUrl.startsWith("data:")) {
+      const mime = dataUrl.split(";")[0].split(":")[1] || "";
+      const ext = mime.split("/")[1] || "png";
+      fileName = `receipt_${Date.now()}.${ext}`;
+    } else {
+      // Already a URL or relative path
+      return att;
+    }
+  }
+  
+  if (dataUrl && dataUrl.startsWith("data:")) {
+    try {
+      const res = await fetch("/api/attachments/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ fileName, dataUrl }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.url) {
+          return att.includes("::") ? `${fileName}::${data.url}` : data.url;
+        }
+      }
+    } catch (err) {
+      console.error("Local file upload failed:", err);
+    }
+  }
+  return att;
+}
+
+export async function uploadAttachmentsToLocalServer(
+  attachments: string[],
+  onProgress?: (completed: number, total: number, lastFile: string) => void
+): Promise<string[]> {
+  if (!attachments || attachments.length === 0) {
+    if (onProgress) onProgress(0, 0, "");
+    return [];
+  }
+  let completed = 0;
+  const total = attachments.length;
+  if (onProgress) {
+    onProgress(0, total, "Initializing...");
+  }
+  return Promise.all(
+    attachments.map(async (att) => {
+      let fileName = "attachment";
+      if (typeof att === "string" && att.includes("::")) {
+        fileName = att.split("::")[0];
+      }
+      const res = await uploadAttachmentToLocalServer(att);
+      completed++;
+      if (onProgress) {
+        onProgress(completed, total, fileName);
+      }
+      return res;
+    })
+  );
+}

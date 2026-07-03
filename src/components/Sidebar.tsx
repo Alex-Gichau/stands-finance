@@ -41,7 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   notificationsCount = 0,
   onLogout
 }) => {
-  const { currentUser, logout, canAccess } = useRequisitions();
+  const { currentUser, logout, canAccess, users } = useRequisitions();
   
   const handleLogoutClick = () => {
     if (onLogout) {

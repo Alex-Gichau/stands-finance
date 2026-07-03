@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { 
   Plus, 
   Search, 
@@ -410,7 +410,7 @@ const RichDocumentViewer = ({
 };
 
 const DocumentPreviewModal = ({ 
-  attachments = [], 
+  attachments: rawAttachments = [], 
   initialIndex = 0, 
   onClose 
 }: { 
@@ -418,6 +418,10 @@ const DocumentPreviewModal = ({
   initialIndex: number; 
   onClose: () => void;
 }) => {
+  const attachments = Array.isArray(rawAttachments) 
+    ? rawAttachments 
+    : (typeof rawAttachments === "string" && rawAttachments ? [rawAttachments] : []);
+
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [viewMode, setViewMode] = useState<"detail" | "grid">("detail");
   const [zoomScale, setZoomScale] = useState(1);
@@ -505,6 +509,82 @@ const DocumentPreviewModal = ({
         const parts = doc.split("::");
         dName = parts[0];
         dUrl = parts[1];
+      } else if (doc.toLowerCase().includes("simulated") || !/^(https?:\/\/|data:|blob:|\/)/i.test(doc)) {
+        // If it's a simulated file or has no valid URL scheme, generate a beautiful simulated HTML preview
+        dName = doc;
+        const htmlContent = `
+          <html>
+            <head>
+              <style>
+                body {
+                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                  background-color: #0f172a;
+                  color: #cbd5e1;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  height: 100vh;
+                  margin: 0;
+                  padding: 24px;
+                  box-sizing: border-box;
+                  text-align: center;
+                }
+                .card {
+                  background: #1e293b;
+                  border: 1px solid #334155;
+                  border-radius: 16px;
+                  padding: 32px;
+                  max-width: 480px;
+                  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);
+                }
+                .icon {
+                  font-size: 48px;
+                  margin-bottom: 16px;
+                }
+                h2 {
+                  font-size: 18px;
+                  font-weight: 700;
+                  margin: 0 0 8px 0;
+                  text-transform: uppercase;
+                  letter-spacing: 0.05em;
+                  color: #f1f5f9;
+                }
+                p {
+                  font-size: 13px;
+                  color: #94a3b8;
+                  line-height: 1.5;
+                  margin: 0 0 20px 0;
+                }
+                .badge {
+                  background: rgba(99, 102, 241, 0.15);
+                  border: 1px solid rgba(99, 102, 241, 0.3);
+                  color: #818cf8;
+                  padding: 6px 12px;
+                  border-radius: 8px;
+                  font-size: 11px;
+                  font-weight: 600;
+                  word-break: break-all;
+                  display: inline-block;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <div class="icon">📄</div>
+                <h2>Simulated Attachment</h2>
+                <p>This is a simulated secure preview of the requisition document attachment:</p>
+                <div class="badge">${dName.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+              </div>
+            </body>
+          </html>
+        `;
+        try {
+          const base64Html = btoa(unescape(encodeURIComponent(htmlContent)));
+          dUrl = `data:text/html;base64,${base64Html}`;
+        } catch (e) {
+          dUrl = "data:text/html;charset=utf-8," + encodeURIComponent(htmlContent);
+        }
       }
     } else if (typeof doc === "object") {
       dName = doc.name || doc.title || "Attachment";
@@ -537,7 +617,7 @@ const DocumentPreviewModal = ({
     const ext = filenameNoSim.split('.').pop()?.toUpperCase() || "DOC";
     
     const isImg = /\.(jpg|jpeg|png|gif|webp)$/i.test(filenameNoSim) || dUrl.startsWith('blob:') || dUrl.startsWith('data:image/');
-    const isPf = /\.(pdf)$/i.test(filenameNoSim) || dUrl.startsWith('data:application/pdf') || dUrl.includes('/api/attachments/'); // Fallback for proxied PDFs
+    const isPf = /\.(pdf)$/i.test(filenameNoSim) || dUrl.startsWith('data:application/pdf') || dUrl.startsWith('data:text/html') || dUrl.includes('/api/attachments/'); // Fallback for proxied PDFs
     const isWord = /\.(docx)$/i.test(filenameNoSim) || dUrl.startsWith('data:application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     const isLegacyWord = /\.(doc)$/i.test(filenameNoSim) || dUrl.startsWith('data:application/msword');
     const isExcel = /\.(xlsx)$/i.test(filenameNoSim) || dUrl.startsWith('data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -1017,6 +1097,12 @@ export const RequisitionsPanel: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
+  const projectMap = useMemo(() => {
+    const map = new Map<string, typeof projects[0]>();
+    projects.forEach(p => map.set(p.id, p));
+    return map;
+  }, [projects]);
+
   const filtered = requisitions.filter(req => {
     const term = globalSearchTerm.toLowerCase();
     
@@ -1094,7 +1180,7 @@ export const RequisitionsPanel: React.FC = () => {
       const budgetLineLower = advancedBudgetLine.toLowerCase();
       const inGroupName = req.groupName.toLowerCase().includes(budgetLineLower);
       const inGroupId = req.groupId?.toLowerCase().includes(budgetLineLower);
-      const project = projects.find(p => p.id === req.projectId);
+      const project = req.projectId ? projectMap.get(req.projectId) : undefined;
       const inProjectName = project ? project.name.toLowerCase().includes(budgetLineLower) : false;
       const inProjectId = req.projectId?.toLowerCase().includes(budgetLineLower);
       return inGroupName || inGroupId || inProjectName || inProjectId;
@@ -2683,7 +2769,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
 
           <div className="flex-1 min-h-0 flex flex-col lg:grid lg:grid-cols-3 overflow-y-auto lg:overflow-hidden">
             {/* Left Content */}
-            <div className="lg:col-span-2 p-4 md:p-8 space-y-5 md:space-y-8 border-b lg:border-b-0 lg:border-r border-slate-100 h-full overflow-y-auto">
+            <div className="lg:col-span-2 p-4 md:p-8 space-y-5 md:space-y-8 border-b lg:border-b-0 lg:border-r border-slate-100 lg:h-full lg:overflow-y-auto h-auto overflow-visible">
               <section className="space-y-3 md:space-y-4">
                 <div className="flex items-center gap-2">
                   <h4 className="text-[9px] md:text-[10px] font-black text-primary uppercase tracking-[0.2em]">Contextual Data</h4>
@@ -2901,7 +2987,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
             </div>
 
             {/* Right Sidebar - History & Status */}
-            <div className="bg-slate-50/50 p-6 md:p-8 space-y-6 md:space-y-8 h-full overflow-y-auto">
+            <div className="bg-slate-50/50 p-6 md:p-8 space-y-6 md:space-y-8 lg:h-full lg:overflow-y-auto h-auto overflow-visible">
               <section className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h4 className="text-[10px] md:text-[11px] font-black text-slate-800 uppercase tracking-widest">History & Audit Timeline</h4>

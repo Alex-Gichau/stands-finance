@@ -3,7 +3,11 @@ import pg from 'pg';
 import fs from 'fs';
 import path from 'path';
 
-const dbUrl = "postgresql://postgres:Alexx%40admin.47@db.wjftrnergydgosatyuzo.supabase.co:5432/postgres";
+const dbUrl = process.env.DATABASE_URL || "";
+if (!dbUrl) {
+  console.error("❌ DATABASE_URL is not set in environment variables!");
+  process.exit(1);
+}
 
 async function applyPolicies() {
   console.log("🔄 Applying Fixed RLS Policies to Supabase...");

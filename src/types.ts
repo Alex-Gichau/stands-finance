@@ -154,6 +154,7 @@ export interface Project {
   groupId: string;
   allocatedBudget: number;
   spentAmount: number;
+  committedAmount?: number;
   status: "ACTIVE" | "ON_HOLD" | "COMPLETED" | "CLOSED";
   color?: string;
   fiscalYear?: number;
@@ -307,6 +308,7 @@ export interface SystemSettings {
   announcementMessage?: string;
   announcementType?: "info" | "warning" | "alert" | "success";
   announcementIsActive?: boolean;
+  requisitionExpiryDays?: number;
 }
 
 export interface SupplementaryBudgetRequest {

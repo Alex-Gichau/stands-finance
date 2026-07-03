@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from "react";
 import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionContext";
 import { numberToWords } from "../utils/numberUtils";
-import { formatCurrency, cn } from "../lib/utils";
+import { formatCurrency, cn, uploadAttachmentsToLocalServer } from "../lib/utils";
 import { Upload, X, Paperclip, Loader2, DollarSign, FileText, Info, Repeat, Users, PlusCircle, Save, Camera } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { RecurrenceType, UserRole } from "../types";
@@ -19,7 +19,7 @@ interface NewRequisitionFormProps {
 }
 
 export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose }) => {
-  const { addRequisition, currentUser, projects, churchGroups, addChurchGroup, vendors, addVendor } = useRequisitions();
+  const { addRequisition, currentUser, projects, churchGroups, addChurchGroup, vendors, addVendor, triggerToast } = useRequisitions();
   const activeYear = getActiveFiscalYear();
   const [amount, setAmount] = useState<string>("");
   const [amountWords, setAmountWords] = useState<string>("");
@@ -29,6 +29,7 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
   const [attachments, setAttachments] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const [payableTo, setPayableTo] = useState<string>("");
   const [showAddVendorForm, setShowAddVendorForm] = useState(false);
@@ -131,7 +132,11 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
         setSelectedGroup(`Youth Camp ${activeYear}`);
       }
     } else {
-      setSelectedGroup(currentUser?.group || `Youth Camp ${activeYear}`);
+      if (currentUser?.groups && currentUser.groups.length > 0) {
+        setSelectedGroup(currentUser.group || currentUser.groups[0]);
+      } else {
+        setSelectedGroup(currentUser?.group || `Youth Camp ${activeYear}`);
+      }
     }
   }, [currentUser, churchGroups, isAdminOrFinance]);
 
@@ -182,15 +187,108 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
     }
   }, [amount]);
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const selectedFiles = Array.from(e.dataTransfer.files);
+      const limit = 2 * 1024 * 1024; // 2MB
+
+      const allowedFormatFiles: File[] = [];
+      const unsupportedFiles: File[] = [];
+
+      for (const file of selectedFiles) {
+        const name = file.name.toLowerCase();
+        const type = file.type.toLowerCase();
+
+        const isPdf = type === "application/pdf" || name.endsWith(".pdf");
+        const isImage = type.startsWith("image/") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".gif") || name.endsWith(".webp");
+        const isDocx = type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || 
+                       type === "application/msword" || 
+                       name.endsWith(".docx") || 
+                       name.endsWith(".doc");
+
+        if (isPdf || isImage || isDocx) {
+          allowedFormatFiles.push(file);
+        } else {
+          unsupportedFiles.push(file);
+        }
+      }
+
+      if (unsupportedFiles.length > 0) {
+        alert(`Unsupported format error: Only PDF, Image, and DOCX files are allowed. The following file(s) were rejected:\n${unsupportedFiles.map(f => f.name).join("\n")}`);
+        if (triggerToast) {
+          triggerToast({
+            type: "SYSTEM_INFO",
+            message: "Unsupported format error: Only PDF, Image, and DOCX files are allowed.",
+            severity: "HIGH",
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+
+      const oversizedFiles = allowedFormatFiles.filter(file => file.size > limit);
+      if (oversizedFiles.length > 0) {
+        alert(`The following file(s) exceed the 2MB size limit and were rejected:\n${oversizedFiles.map(f => `${f.name} (${(f.size / (1024 * 1024)).toFixed(2)} MB)`).join("\n")}`);
+      }
+      const allowedFiles = allowedFormatFiles.filter(file => file.size <= limit);
+      setAttachments(prev => [...prev, ...allowedFiles]);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const selectedFiles = Array.from(e.target.files);
       const limit = 2 * 1024 * 1024; // 2MB
-      const oversizedFiles = selectedFiles.filter(file => file.size > limit);
+
+      const allowedFormatFiles: File[] = [];
+      const unsupportedFiles: File[] = [];
+
+      for (const file of selectedFiles) {
+        const name = file.name.toLowerCase();
+        const type = file.type.toLowerCase();
+
+        const isPdf = type === "application/pdf" || name.endsWith(".pdf");
+        const isImage = type.startsWith("image/") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".gif") || name.endsWith(".webp");
+        const isDocx = type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || 
+                       type === "application/msword" || 
+                       name.endsWith(".docx") || 
+                       name.endsWith(".doc");
+
+        if (isPdf || isImage || isDocx) {
+          allowedFormatFiles.push(file);
+        } else {
+          unsupportedFiles.push(file);
+        }
+      }
+
+      if (unsupportedFiles.length > 0) {
+        alert(`Unsupported format error: Only PDF, Image, and DOCX files are allowed. The following file(s) were rejected:\n${unsupportedFiles.map(f => f.name).join("\n")}`);
+        if (triggerToast) {
+          triggerToast({
+            type: "SYSTEM_INFO",
+            message: "Unsupported format error: Only PDF, Image, and DOCX files are allowed.",
+            severity: "HIGH",
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+
+      const oversizedFiles = allowedFormatFiles.filter(file => file.size > limit);
       if (oversizedFiles.length > 0) {
         alert(`The following file(s) exceed the 2MB size limit and were rejected:\n${oversizedFiles.map(f => `${f.name} (${(f.size / (1024 * 1024)).toFixed(2)} MB)`).join("\n")}`);
       }
-      const allowedFiles = selectedFiles.filter(file => file.size <= limit);
+      const allowedFiles = allowedFormatFiles.filter(file => file.size <= limit);
       setAttachments(prev => [...prev, ...allowedFiles]);
     }
   };
@@ -298,13 +396,8 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
               };
               img.src = result;
             } else {
-              // Non-image files like PDFs. If they are small enough (< 300KB), preserve base64. 
-              // Otherwise, store a simulated lightweight reference to avoid Firestore limit.
-              if (file.size > 300 * 1024) {
-                resolve(`${file.name} (Simulated)::data:text/plain;base64,U2ltdWxhdGVkIGZpbGUgZGF0YSBkdWUgdG8gc2l6ZSBsaW1pdHM=`);
-              } else {
-                resolve(`${file.name}::${result}`);
-              }
+              // Non-image files like PDFs. Preserve full base64 content so they are uploaded to Google Drive and saved.
+              resolve(`${file.name}::${result}`);
             }
           };
           reader.onerror = () => {
@@ -315,6 +408,7 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
       });
 
       const encodedAttachments = await Promise.all(readPromises);
+      const localUploadedAttachments = await uploadAttachmentsToLocalServer(encodedAttachments);
 
       await addRequisition({
         projectId: matchingProject ? matchingProject.id : "",
@@ -329,7 +423,7 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
         requesterId: currentUser?.id || "u-anon",
         requesterName: currentUser?.name || "Anonymous",
         requesterEmail: currentUser?.email || "",
-        attachments: encodedAttachments,
+        attachments: localUploadedAttachments,
       });
 
       // Clear the local draft from storage upon successful submission
@@ -361,6 +455,44 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
         </div>
 
         <form id="new-req-form" onSubmit={handleSubmit} className="overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 flex-1">
+          {/* Draft Restored Banner */}
+          {isDraftRestored && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-indigo-50 border border-indigo-200 dark:bg-indigo-950/30 dark:border-indigo-800/50 p-4 rounded-xl flex items-start justify-between gap-4"
+            >
+              <div className="flex gap-3">
+                <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center shrink-0">
+                  <Save size={14} className="text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <div>
+                  <h5 className="text-xs font-black text-indigo-900 dark:text-indigo-300 uppercase tracking-widest mb-1">Unsaved Draft Restored</h5>
+                  <p className="text-[11px] text-indigo-700/80 dark:text-indigo-400/80">We recovered your previous unsaved inputs from this device.</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => {
+                  setTitle("");
+                  setDescription("");
+                  setAmount("");
+                  setPayableTo("");
+                  setVendorContact("");
+                  setVendorLocation("");
+                  setVendorOfferings("");
+                  if (currentUser?.id) {
+                    localStorage.removeItem(`stands_requisition_draft_${currentUser.id}`);
+                  }
+                  setIsDraftRestored(false);
+                }}
+                className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 px-3 py-1.5 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-800/50 transition-colors whitespace-nowrap"
+              >
+                Start Fresh
+              </button>
+            </motion.div>
+          )}
+
           {/* Section 1: Requisition Information */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-2 w-full justify-between">
@@ -459,6 +591,23 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
                   </select>
                   <p className="text-[9px] text-primary font-black uppercase tracking-wider pl-1 font-mono">
                     ★ Privileged Terminal Mode: Change designated church group manually
+                  </p>
+                </div>
+              ) : currentUser?.groups && currentUser.groups.length > 1 ? (
+                <div className="space-y-1.5">
+                  <select
+                    value={selectedGroup}
+                    onChange={(e) => setSelectedGroup(e.target.value)}
+                    className="input-field cursor-pointer h-10 px-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-bold uppercase tracking-widest text-[11px] text-slate-900 dark:text-slate-200"
+                  >
+                    {currentUser.groups.map((groupName, idx) => (
+                      <option key={idx} value={groupName} className="font-sans text-xs">
+                        {groupName}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[9px] text-indigo-500 font-bold uppercase tracking-widest pl-1 font-mono flex items-center gap-1">
+                    <span>⚡ Group Selection: You are affiliated with multiple ministry groups. Choose the correct group for permission scoping.</span>
                   </p>
                 </div>
               ) : (
@@ -744,13 +893,26 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="flex flex-col gap-3">
-                <label className="border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-6 flex flex-col items-center justify-center gap-2 hover:border-primary/40 dark:hover:border-primary/60 hover:bg-primary/5 dark:hover:bg-primary/5 transition-all cursor-pointer group flex-1">
+                <label 
+                  onDragOver={handleDragOver}
+                  onDragEnter={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={cn(
+                    "border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group flex-1",
+                    isDragging 
+                      ? "border-emerald-500 bg-emerald-500/10 dark:border-emerald-400 dark:bg-emerald-400/10 scale-[1.02]" 
+                      : "border-slate-200 dark:border-slate-800 hover:border-primary/40 dark:hover:border-primary/60 hover:bg-primary/5 dark:hover:bg-primary/5"
+                  )}
+                >
                   <input type="file" multiple onChange={handleFileChange} className="hidden" />
                   <div className="w-9 h-9 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Upload size={16} className="text-slate-400 dark:text-slate-300 group-hover:text-primary" />
+                    <Upload size={16} className={cn("text-slate-400 dark:text-slate-300 group-hover:text-primary", isDragging && "text-emerald-500 dark:text-emerald-400")} />
                   </div>
                   <div className="text-center">
-                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Click to upload documents</p>
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      {isDragging ? "Drop your files here!" : "Click or drag & drop documents"}
+                    </p>
                     <p className="text-[9px] text-slate-400 dark:text-slate-550 mt-0.5 uppercase tracking-widest">PDF, Image, XLSX max 2MB</p>
                   </div>
                 </label>

@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Project, RequisitionStatus } from "../types";
 import { formatCurrency, cn } from "../lib/utils";
 import { Wallet, CheckCircle, AlertTriangle, PiggyBank, ArrowDownRight, TrendingDown } from "lucide-react";
@@ -147,6 +147,7 @@ const BudgetCircularGaugeItem: React.FC<GaugeItemProps> = ({ project }) => {
 export const BudgetCircularGauges: React.FC<BudgetCircularGaugesProps> = ({ projects }) => {
   const { requisitions } = useRequisitions();
   const { year: activeYear } = useActiveFiscalYear();
+  const [showAllGauges, setShowAllGauges] = useState(false);
 
   // Filters projects belonging to the active year.
   const activeYearProjects = useMemo(() => {
@@ -175,6 +176,9 @@ export const BudgetCircularGauges: React.FC<BudgetCircularGaugesProps> = ({ proj
       count: activeYearProjects.length
     };
   }, [activeYearProjects, requisitions]);
+
+  const displayedProjects = showAllGauges ? activeYearProjects : activeYearProjects.slice(0, 5);
+  const hasMore = activeYearProjects.length > 5;
 
   return (
     <div 
@@ -225,10 +229,22 @@ export const BudgetCircularGauges: React.FC<BudgetCircularGaugesProps> = ({ proj
       </div>
 
       {activeYearProjects.length > 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {activeYearProjects.map(project => (
-            <BudgetCircularGaugeItem key={project.id} project={project} />
-          ))}
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {displayedProjects.map(project => (
+              <BudgetCircularGaugeItem key={project.id} project={project} />
+            ))}
+          </div>
+          {hasMore && (
+            <div className="flex justify-center pt-2">
+              <button
+                onClick={() => setShowAllGauges(!showAllGauges)}
+                className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 px-6 py-2.5 rounded-full border border-slate-200 transition-colors"
+              >
+                {showAllGauges ? "Show Less" : `See All ${activeYearProjects.length} Categories`}
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="text-center py-12 bg-slate-50 border border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-300">

@@ -937,7 +937,7 @@ export function generateVoucherHtml(req: Requisition, currentUser: any): string 
   <div class="voucher-container">
     <div class="header">
       <div class="brand">
-        <h1>St. Andrews Cathedral</h1>
+        <h1>St. Andrews Parish Nairobi</h1>
         <p>Finance & Expenditure Department</p>
       </div>
       <div class="voucher-id">

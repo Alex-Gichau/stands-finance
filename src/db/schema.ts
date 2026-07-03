@@ -31,6 +31,7 @@ export const projects = pgTable("projects", {
   groupId: text("group_id").notNull(),
   allocatedBudget: doublePrecision("allocated_budget").notNull(),
   spentAmount: doublePrecision("spent_amount").default(0).notNull(),
+  committedAmount: doublePrecision("committed_amount").default(0).notNull(),
   status: text("status").default("ACTIVE").notNull(), // ACTIVE, ON_HOLD, COMPLETED, CLOSED
   color: text("color"),
   fiscalYear: integer("fiscal_year"),

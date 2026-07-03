@@ -222,7 +222,48 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  const uploadsDir = path.join(process.cwd(), "uploads");
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  app.use("/uploads", express.static(uploadsDir));
+
+  // Local File Upload Endpoint (VPS Local Storage Support)
+  app.post("/api/attachments/upload", async (req, res) => {
+    const { fileName, dataUrl } = req.body;
+    if (!fileName || !dataUrl) {
+      return res.status(400).json({ error: "Missing fileName or dataUrl payload." });
+    }
+    
+    try {
+      const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches) {
+        return res.status(400).json({ error: "Invalid dataUrl format. Must be a valid base64 data URL." });
+      }
+      
+      const mimeType = matches[1];
+      const base64Data = matches[2];
+      const buffer = Buffer.from(base64Data, "base64");
+      
+      const cleanFileName = fileName.replace(/[^a-zA-Z0-9_.-]/g, "_");
+      const uniquePrefix = Math.random().toString(36).substring(2, 10) + "_" + Date.now();
+      const uniqueFileName = `${uniquePrefix}_${cleanFileName}`;
+      const filePath = path.join(uploadsDir, uniqueFileName);
+      
+      fs.writeFileSync(filePath, buffer);
+      
+      const fileUrl = `/uploads/${uniqueFileName}`;
+      console.log(`[Local Upload] Saved file to VPS local disk: ${fileUrl}`);
+      
+      res.json({ success: true, url: fileUrl });
+    } catch (err: any) {
+      console.error("[Local Upload] Failed saving file:", err.message || err);
+      res.status(500).json({ error: `Failed to store attachment locally: ${err.message || err}` });
+    }
+  });
 
   // Check Supabase env vars
   app.get("/api/config/supabase", (req, res) => {
@@ -290,6 +331,66 @@ async function startServer() {
         report.recommendations.push("PostgreSQL connection failing. Check your credentials.");
       }
       try { await client.end(); } catch(_) {}
+    }
+
+    // Verify Google Sheets & Drive API authentication status
+    try {
+      const keyPath = path.join(process.cwd(), "googleService.json");
+      let credentials: any = null;
+      if (fs.existsSync(keyPath)) {
+        credentials = JSON.parse(fs.readFileSync(keyPath, "utf-8"));
+      } else if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+        try {
+          credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
+        } catch (_) {
+          const decoded = Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_KEY, "base64").toString("utf8");
+          credentials = JSON.parse(decoded);
+        }
+      } else if (process.env.GOOGLE_PRIVATE_KEY) {
+        credentials = {
+          client_email: process.env.GOOGLE_CLIENT_EMAIL || "stands-erequisitions@quiet-surface-499808-t9.iam.gserviceaccount.com",
+          private_key: process.env.GOOGLE_PRIVATE_KEY
+        };
+      }
+
+      if (!credentials || !credentials.client_email || !credentials.private_key) {
+        report.googleSheets = { status: "missing_config" };
+        report.recommendations.push("⚠️ GOOGLE SHEETS NOT CONFIGURED: Service account credentials are not configured. Switched to offline simulated sheets persistence.");
+      } else {
+        let cleanKey = credentials.private_key.trim();
+        if (cleanKey.startsWith('"') && cleanKey.endsWith('"')) {
+          cleanKey = cleanKey.substring(1, cleanKey.length - 1);
+        }
+        if (cleanKey.startsWith("'") && cleanKey.endsWith("'")) {
+          cleanKey = cleanKey.substring(1, cleanKey.length - 1);
+        }
+        cleanKey = cleanKey.replace(/\\n/g, "\n");
+
+        const authClient = new google.auth.JWT({
+          email: credentials.client_email,
+          key: cleanKey,
+          scopes: ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        });
+
+        await authClient.getAccessToken();
+        report.googleSheets = { status: "ok", email: credentials.client_email };
+      }
+    } catch (err: any) {
+      const errMsg = String(err.message || err);
+      report.googleSheets = { status: "error", error: errMsg };
+      
+      const isInvalidSignature = errMsg.includes("invalid_grant") || errMsg.includes("Signature");
+      if (isInvalidSignature) {
+        report.recommendations.push(
+          "📋 GOOGLE SHEETS AUTH ERROR: The Google Service Account private key is invalid or has been revoked (Invalid JWT Signature). " +
+          "Google Sheets and Drive integrations are currently running in Offline Simulated Fallback mode to prevent application disruption. " +
+          "To restore active cloud syncing, please generate a new Google Service Account private key from your Google Cloud Console (for service account 'stands-erequisitions@quiet-surface-499808-t9.iam.gserviceaccount.com') and update your secrets or replace googleService.json."
+        );
+      } else {
+        report.recommendations.push(
+          `⚠️ GOOGLE SHEETS CONNECTION ERROR: Google Sheets integration is currently falling back to Offline Simulation due to: ${errMsg}`
+        );
+      }
     }
 
     res.json(report);
@@ -2885,6 +2986,18 @@ async function startServer() {
       googleAuthError = "Google Service Account credentials (client_email, private_key) are not configured. Switched to offline simulated sheets persistence.";
       console.warn(`[Google Sheets] ${googleAuthError}`);
       throw new Error(googleAuthError);
+    }
+
+    if (credentials && typeof credentials.private_key === "string") {
+      let cleanKey = credentials.private_key.trim();
+      if (cleanKey.startsWith('"') && cleanKey.endsWith('"')) {
+        cleanKey = cleanKey.substring(1, cleanKey.length - 1);
+      }
+      if (cleanKey.startsWith("'") && cleanKey.endsWith("'")) {
+        cleanKey = cleanKey.substring(1, cleanKey.length - 1);
+      }
+      cleanKey = cleanKey.replace(/\\n/g, "\n");
+      credentials.private_key = cleanKey;
     }
 
     try {

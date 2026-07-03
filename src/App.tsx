@@ -17,7 +17,6 @@ import { Sidebar } from "./components/Sidebar";
 import Dashboard from "./components/Dashboard";
 import { useIdleTimeout } from "./hooks/useIdleTimeout";
 import { sendSlackNotification } from "./lib/utils";
-import { getPrimaryDatabaseStatus } from "./lib/dataSource";
 import { RequisitionsPanel, RequisitionDetailModal } from "./components/RequisitionsPanel";
 import { NotificationHub } from "./components/NotificationHub";
 import { ReceiptTemplateGenerator } from "./components/ReceiptTemplateGenerator";
@@ -34,7 +33,9 @@ import { AuditLogsPanel } from "./components/AuditLogsPanel";
 import { HelpPanel } from "./components/HelpPanel";
 import { AnnouncementBanner } from "./components/AnnouncementBanner";
 import { ProductTour } from "./components/ProductTour";
+import { FeedbackModal } from "./components/FeedbackModal";
 import TransactionsPanel from "./components/TransactionsPanel";
+import { BugReportModal } from "./components/BugReportModal";
 import { UserRole, BudgetAlert, SearchFilter, PermissionConfig } from "./types";
 import { 
   Bell, 
@@ -66,7 +67,10 @@ import {
   KeyRound,
   AlertTriangle,
   Check,
-  Info
+  Info,
+  Bug,
+  HeartHandshake,
+  MessageSquare
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { PerformanceTracker } from "./components/PerformanceTracker";
@@ -241,15 +245,6 @@ function AppContent() {
   }, [darkMode]);
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-
-  useEffect(() => {
-    setPrimaryDatabaseStatus(getPrimaryDatabaseStatus({
-      SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
-      SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
-      VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
-      VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
-    }));
-  }, []);
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"EMAIL_LOGIN" | "EMAIL_SIGNUP">("EMAIL_LOGIN");
   const [email, setEmail] = useState("");
@@ -259,12 +254,6 @@ function AppContent() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [pendingInvite, setPendingInvite] = useState<any>(null);
-  const [primaryDatabaseStatus, setPrimaryDatabaseStatus] = useState(() => getPrimaryDatabaseStatus({
-    SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
-    SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
-    VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
-    VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
-  }));
 
   // Password update states
   const [showUpdatePasswordModal, setShowUpdatePasswordModal] = useState(false);
@@ -452,7 +441,7 @@ function AppContent() {
     const nextVal = typeof specificVal === 'boolean' ? specificVal : !darkMode;
     setDarkMode(nextVal);
     if (currentUser?.id) {
-      updateUserProfile(currentUser.id, { theme: nextVal ? 'dark' : 'light' }).catch(console.error);
+      updateUserProfile(currentUser.id, { theme: nextVal ? 'dark' : 'light' }).catch((err) => console.warn("Theme update failed", err));
     }
   };
 
@@ -589,6 +578,7 @@ function AppContent() {
   const [showIdleWarning, setShowIdleWarning] = useState(false);
   const [idleCountdown, setIdleCountdown] = useState(60);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
 
   const handleLogout = async (force: boolean | React.MouseEvent = false) => {
     const isSessionInvalidOrExpired = !auth.currentUser || !currentUser || currentUser.isSuspended || !currentUser.isActive || !currentUser.isApproved || currentUser.forceLogout;
@@ -798,7 +788,24 @@ function AppContent() {
         try {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
-            setRecentSearches(parsed.slice(0, 5));
+            const now = Date.now();
+            const normalized = parsed.map(item => {
+              if (typeof item === "string") {
+                return { term: item, timestamp: new Date().toISOString() };
+              } else if (item && typeof item === "object" && typeof item.term === "string") {
+                return { term: item.term, timestamp: item.timestamp || new Date().toISOString() };
+              }
+              return null;
+            }).filter((item): item is { term: string, timestamp: string } => item !== null);
+
+            const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+            const validItems = normalized.filter(item => {
+              const itemTime = new Date(item.timestamp).getTime();
+              return !isNaN(itemTime) && itemTime >= thirtyDaysAgo;
+            });
+
+            localStorage.setItem("recent_searches", JSON.stringify(validItems));
+            setRecentSearches(validItems.map(item => item.term).slice(0, 5));
           }
         } catch (e) {
           console.error("Failed to parse recent searches", e);
@@ -808,6 +815,7 @@ function AppContent() {
   }, []);
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isBugReportOpen, setIsBugReportOpen] = useState(false);
   const [isFyDropdownOpen, setIsFyDropdownOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
@@ -834,6 +842,7 @@ function AppContent() {
       if (e.key === 'Escape') {
         setIsNotificationsOpen(false);
         setIsProfileOpen(false);
+        setIsBugReportOpen(false);
         setIsSearchFocused(false);
         setSelectedReqForNoticeDetail(null);
         setIsGeneratingReceiptFromHub(null);
@@ -875,9 +884,44 @@ function AppContent() {
       const filtered = prev.filter(s => s.toLowerCase() !== trimmed.toLowerCase());
       const updated = [trimmed, ...filtered].slice(0, 5);
       if (typeof window !== "undefined") {
-        localStorage.setItem("recent_searches", JSON.stringify(updated));
+        let currentStored: { term: string, timestamp: string }[] = [];
+        const saved = localStorage.getItem("recent_searches");
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+              currentStored = parsed.map(item => {
+                if (typeof item === "string") return { term: item, timestamp: new Date().toISOString() };
+                return item;
+              }).filter(item => item && typeof item.term === "string");
+            }
+          } catch (e) {
+            console.error("Failed to parse stored searches", e);
+          }
+        }
+
+        const restStored = currentStored.filter(item => item.term.toLowerCase() !== trimmed.toLowerCase());
+        const newStored = [{ term: trimmed, timestamp: new Date().toISOString() }, ...restStored].slice(0, 100);
+
+        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        const finalStored = newStored.filter(item => new Date(item.timestamp).getTime() >= thirtyDaysAgo);
+
+        localStorage.setItem("recent_searches", JSON.stringify(finalStored));
       }
       return updated;
+    });
+
+    // Log query to backend
+    fetch("/api/search-logs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: trimmed,
+        username: currentUser?.name || "Anonymous",
+        email: currentUser?.email || "anonymous@pceastandrews.org"
+      })
+    }).catch(err => {
+      console.warn("Failed to log search query to backend:", err);
     });
   };
 
@@ -886,7 +930,21 @@ function AppContent() {
     setRecentSearches(prev => {
       const updated = prev.filter(s => s !== termToRemove);
       if (typeof window !== "undefined") {
-        localStorage.setItem("recent_searches", JSON.stringify(updated));
+        const saved = localStorage.getItem("recent_searches");
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+              const filtered = parsed.filter(item => {
+                const term = typeof item === "string" ? item : item?.term;
+                return term !== termToRemove;
+              });
+              localStorage.setItem("recent_searches", JSON.stringify(filtered));
+            }
+          } catch (e) {
+            console.error("Failed to parse stored searches on remove", e);
+          }
+        }
       }
       return updated;
     });
@@ -1012,7 +1070,7 @@ function AppContent() {
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen w-full bg-slate-950 flex items-center justify-center sm:p-6 relative overflow-y-auto no-scrollbar">
+      <div className="h-[100vh] w-[100vw] bg-slate-950 flex items-center justify-center sm:p-6 relative overflow-hidden">
         {/* Ambient background effects */}
         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,#1e293b_0%,transparent_50%)] opacity-30" />
         <div className="absolute -top-24 -right-24 w-64 h-64 bg-primary/20 rounded-full blur-[100px]" />
@@ -1742,6 +1800,10 @@ function AppContent() {
           <ProfilePrompt user={currentUser} onComplete={() => setShowProfilePrompt(false)} />
         )}
 
+        {showFeedbackModal && currentUser && (
+          <FeedbackModal currentUser={currentUser} onClose={() => setShowFeedbackModal(false)} />
+        )}
+
         {showLogoutModal && currentUser && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -1970,16 +2032,12 @@ function AppContent() {
               {isSyncingData ? (
                 <>
                   <RefreshCw className="animate-spin text-indigo-500" size={10} />
-                  <span className="text-indigo-600 font-medium tracking-wide">Syncing Data (Checking Supabase)...</span>
+                  <span className="text-indigo-600 font-medium tracking-wide">Syncing Data (Checking Cache/Firestore)...</span>
                 </>
               ) : (
                 <>System synchronized • {new Date().toLocaleTimeString()}</>
               )}
             </p>
-            <div className="mt-1 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.2em] text-emerald-700">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              {primaryDatabaseStatus.activeDatabase === "supabase" ? "Supabase Primary" : "Database Pending"}
-            </div>
           </div>
 
           <div id="global-search-container" className="flex-1 max-w-md mx-8 hidden md:block" ref={searchRef}>
@@ -2481,7 +2539,7 @@ function AppContent() {
                           <>
                             {unread.map(item => (
                               <div 
-                                key={`dropdown-${item.id}`} 
+                                key={`dropdown-unread-${item.id}`} 
                                 onClick={() => {
                                   if (item.requisition) {
                                     setSelectedReqForNoticeDetail(item.requisition);
@@ -2532,7 +2590,7 @@ function AppContent() {
 
                             {read.map(item => (
                               <div 
-                                key={`dropdown-${item.id}`} 
+                                key={`dropdown-read-${item.id}`} 
                                 onClick={() => {
                                   if (item.requisition) {
                                     setSelectedReqForNoticeDetail(item.requisition);
@@ -2653,6 +2711,16 @@ function AppContent() {
                         <HelpCircle size={14} className="text-slate-400" />
                         PORTAL HELP
                       </button>
+                      <button
+                        onClick={() => {
+                          setIsBugReportOpen(true);
+                          setIsProfileOpen(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-left cursor-pointer"
+                      >
+                        <Bug size={14} className="text-slate-400" />
+                        REPORT BUG / FEEDBACK
+                      </button>
 
                       <div className="h-[1px] bg-slate-50 my-1" />
 
@@ -2738,6 +2806,17 @@ function AppContent() {
                         )}
                       </div>
 
+                      <button
+                        onClick={() => {
+                          setIsProfileOpen(false);
+                          setShowFeedbackModal(true);
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-left"
+                      >
+                        <HeartHandshake size={14} className="text-violet-500" />
+                        Share System Feedback
+                      </button>
+
                       <div className="h-[1px] bg-slate-50 my-1" />
 
                       <button
@@ -2817,6 +2896,12 @@ function AppContent() {
         onClose={() => setIsTourOpen(false)} 
         currentView={currentView} 
         onViewChange={setCurrentView} 
+      />
+
+      <BugReportModal 
+        isOpen={isBugReportOpen}
+        onClose={() => setIsBugReportOpen(false)}
+        currentUser={currentUser}
       />
     </div>
   );

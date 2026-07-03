@@ -10,5 +10,11 @@ const getRedirectUrl = (url: string) => {
 };
 
 (async () => {
-  console.log(await getRedirectUrl('https://wjftrnergydgosatyuzo.supabase.co/auth/v1/authorize?provider=google&redirect_to=http%3A%2F%2Flocalhost%3A3000'));
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  if (!supabaseUrl) {
+    console.error("❌ SUPABASE_URL or VITE_SUPABASE_URL is not set in environment variables!");
+    return;
+  }
+  const targetUrl = `${supabaseUrl.replace(/\/$/, "")}/auth/v1/authorize?provider=google&redirect_to=http%3A%2F%2Flocalhost%3A3000`;
+  console.log(await getRedirectUrl(targetUrl));
 })();

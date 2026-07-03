@@ -320,8 +320,9 @@ const Dashboard: React.FC<{
       });
     });
 
-    // Share system logs
-    systemLogs.forEach(l => {
+    // Share system logs, optimization: only process the top 30 to prevent memory blow up
+    const recentLogs = systemLogs.slice(0, 30);
+    recentLogs.forEach(l => {
       items.push({
         id: l.id,
         message: `${l.details}`,
@@ -333,7 +334,7 @@ const Dashboard: React.FC<{
 
     // Sort descending by timestamp, take top 15
     return items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 15);
-  }, [alerts, systemLogs]);
+  }, [activeAlerts, systemLogs]);
 
   const findRequisitionForLog = (text: string) => {
     if (!text) return null;
@@ -448,8 +449,12 @@ const Dashboard: React.FC<{
   const requestedPerGroup = useMemo(() => {
     const groupTotals: Record<string, { groupId: string, groupName: string, count: number, totalAmount: number, pendingCount: number, disbursedAmount: number, requisitions: Requisition[] }> = {};
     
+    // Optimization: Create a O(1) lookup map for projects
+    const projectMap = new Map<string, typeof projects[0]>();
+    projects.forEach(p => projectMap.set(p.id, p));
+
     requisitions.forEach(req => {
-      const project = projects.find(p => p.id === req.projectId);
+      const project = req.projectId ? projectMap.get(req.projectId) : undefined;
       const pid = project ? project.id : "OTHER";
       const pname = project ? project.name : (req.groupName || "Other / Non-affine");
       const gid = project ? project.groupId : (req.groupId || "OTHER");
@@ -482,13 +487,25 @@ const Dashboard: React.FC<{
   }, [requisitions, projects]);
 
   const budgetVariances = useMemo(() => {
+    // Optimization: Pre-calculate project utilizations and create a lookup map
+    const projectUtilizations = new Map<string, { usedAmount: number, remainingAmount: number }>();
+    const projectMap = new Map<string, typeof projects[0]>();
+    
+    projects.forEach(p => {
+      projectMap.set(p.id, p);
+      projectUtilizations.set(p.id, calculateProjectUtilization(p, requisitions));
+    });
+
     return requisitions
       .filter(req => req.status !== RequisitionStatus.DRAFT)
       .map(req => {
-        const project = projects.find(p => p.id === req.projectId);
+        const project = req.projectId ? projectMap.get(req.projectId) : undefined;
         if (!project) return null;
         
-        const { usedAmount, remainingAmount } = calculateProjectUtilization(project, requisitions);
+        const utilization = projectUtilizations.get(project.id);
+        if (!utilization) return null;
+        
+        const { usedAmount, remainingAmount } = utilization;
 
         const exceedsRemaining = req.amount > remainingAmount && req.status !== RequisitionStatus.DISBURSED && req.status !== RequisitionStatus.APPROVED_L2 && req.status !== RequisitionStatus.APPROVED_L1 && req.status !== RequisitionStatus.ESCALATED && req.status !== RequisitionStatus.SUBMITTED;
         const exceedsTotal = req.amount > project.allocatedBudget;
@@ -1044,7 +1061,7 @@ const Dashboard: React.FC<{
               <tbody className="divide-y divide-slate-100">
                 {requestedPerGroup.map((val, i) => (
                   <tr 
-                    key={val.groupId} 
+                    key={`dashboard-group-row-${val.groupId}-${i}`} 
                     onClick={() => setSelectedGroupDetails(val)}
                     className="hover:bg-indigo-50/20 transition-all cursor-pointer group"
                   >
@@ -1144,7 +1161,7 @@ const Dashboard: React.FC<{
                       const pct = totalVal > 0 ? ((g.totalAmount / totalVal) * 100).toFixed(1) : "0";
                       return (
                         <div 
-                          key={g.groupId} 
+                          key={`dashboard-legend-item-${g.groupId}-${idx}`} 
                           onClick={() => setSelectedGroupDetails(g)}
                           className="flex items-center justify-between text-[11px] p-2 hover:bg-slate-50 rounded-xl transition-all cursor-pointer group/item"
                         >

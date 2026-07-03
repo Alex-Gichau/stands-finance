@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from "react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { numberToWords } from "../utils/numberUtils";
-import { formatCurrency, cn } from "../lib/utils";
+import { formatCurrency, cn, uploadAttachmentsToLocalServer } from "../lib/utils";
 import { X, Loader2, DollarSign, FileText, Repeat, Users, PlusCircle, Save, Activity } from "lucide-react";
 import { motion } from "motion/react";
 import { RecurrenceType, Requisition, RequisitionStatus, UserRole } from "../types";
@@ -18,7 +18,7 @@ interface EditRequisitionModalProps {
 }
 
 export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req, onClose }) => {
-  const { updateRequisition, projects, churchGroups, addChurchGroup, currentUser } = useRequisitions();
+  const { updateRequisition, projects, churchGroups, addChurchGroup, currentUser, triggerToast } = useRequisitions();
   
   const [title, setTitle] = useState(req.title);
   const [description, setDescription] = useState(req.description);
@@ -37,7 +37,15 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
   const [saving, setSaving] = useState(false);
   const [submitAction, setSubmitAction] = useState<"save" | "submit">("save");
 
-  const [existingAttachments, setExistingAttachments] = useState<string[]>(req.attachments || []);
+  const [uploadCompletedCount, setUploadCompletedCount] = useState(0);
+  const [uploadTotalCount, setUploadTotalCount] = useState(0);
+  const [uploadCurrentFile, setUploadCurrentFile] = useState("");
+
+  const [existingAttachments, setExistingAttachments] = useState<string[]>(
+    Array.isArray(req.attachments) 
+      ? req.attachments 
+      : (typeof req.attachments === "string" && req.attachments ? [req.attachments] : [])
+  );
   const [newAttachments, setNewAttachments] = useState<File[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -45,11 +53,45 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
     if (e.target.files) {
       const selectedFiles = Array.from(e.target.files);
       const limit = 2 * 1024 * 1024; // 2MB
-      const oversizedFiles = selectedFiles.filter(file => file.size > limit);
+
+      const allowedFormatFiles: File[] = [];
+      const unsupportedFiles: File[] = [];
+
+      for (const file of selectedFiles) {
+        const name = file.name.toLowerCase();
+        const type = file.type.toLowerCase();
+
+        const isPdf = type === "application/pdf" || name.endsWith(".pdf");
+        const isImage = type.startsWith("image/") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".gif") || name.endsWith(".webp");
+        const isDocx = type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || 
+                       type === "application/msword" || 
+                       name.endsWith(".docx") || 
+                       name.endsWith(".doc");
+
+        if (isPdf || isImage || isDocx) {
+          allowedFormatFiles.push(file);
+        } else {
+          unsupportedFiles.push(file);
+        }
+      }
+
+      if (unsupportedFiles.length > 0) {
+        alert(`Unsupported format error: Only PDF, Image, and DOCX files are allowed. The following file(s) were rejected:\n${unsupportedFiles.map(f => f.name).join("\n")}`);
+        if (triggerToast) {
+          triggerToast({
+            type: "SYSTEM_INFO",
+            message: "Unsupported format error: Only PDF, Image, and DOCX files are allowed.",
+            severity: "HIGH",
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+
+      const oversizedFiles = allowedFormatFiles.filter(file => file.size > limit);
       if (oversizedFiles.length > 0) {
         alert(`The following file(s) exceed the 2MB size limit and were rejected:\n${oversizedFiles.map(f => `${f.name} (${(f.size / (1024 * 1024)).toFixed(2)} MB)`).join("\n")}`);
       }
-      const allowedFiles = selectedFiles.filter(file => file.size <= limit);
+      const allowedFiles = allowedFormatFiles.filter(file => file.size <= limit);
       setNewAttachments(prev => [...prev, ...allowedFiles]);
     }
   };
@@ -129,13 +171,8 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
               };
               img.src = result;
             } else {
-              // Non-image files like PDFs. If they are small enough (< 300KB), preserve base64. 
-              // Otherwise, store a simulated lightweight reference to avoid Firestore limit.
-              if (file.size > 300 * 1024) {
-                resolve(`${file.name} (Simulated)::data:text/plain;base64,U2ltdWxhdGVkIGZpbGUgZGF0YSBkdWUgdG8gc2l6ZSBsaW1pdHM=`);
-              } else {
-                resolve(`${file.name}::${result}`);
-              }
+              // Non-image files like PDFs. Preserve full base64 content so they are uploaded to Google Drive and saved.
+              resolve(`${file.name}::${result}`);
             }
           };
           reader.onerror = () => {
@@ -146,7 +183,17 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
       });
 
       const encodedNew = await Promise.all(readPromises);
-      const finalAttachments = [...existingAttachments, ...encodedNew];
+      const combinedAttachments = [...existingAttachments, ...encodedNew];
+      
+      setUploadCompletedCount(0);
+      setUploadTotalCount(combinedAttachments.length);
+      setUploadCurrentFile("");
+
+      const finalAttachments = await uploadAttachmentsToLocalServer(combinedAttachments, (completed, total, lastFile) => {
+        setUploadCompletedCount(completed);
+        setUploadTotalCount(total);
+        setUploadCurrentFile(lastFile);
+      });
 
       const matchingProject = projects.find(p => p.groupId === selectedGroup || p.name === selectedGroup);
       const finalProjectId = projectId || (matchingProject ? matchingProject.id : "");
@@ -507,6 +554,46 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
               )}
             </div>
           </div>
+
+          {/* Visual upload progress bar */}
+          {saving && uploadTotalCount > 0 && (
+            <div className="p-4 bg-slate-50 border border-slate-200/60 rounded-xl space-y-2.5 shadow-inner">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 bg-sky-50 rounded-lg text-sky-600 animate-pulse">
+                    <Loader2 size={14} className="animate-spin" />
+                  </div>
+                  <div>
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-700">
+                      Uploading Attachments
+                    </h4>
+                    <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">
+                      Transferring to local server storage
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold text-sky-600 font-mono bg-sky-50 px-2 py-0.5 rounded-md border border-sky-100">
+                  {uploadCompletedCount} / {uploadTotalCount} ({Math.round((uploadCompletedCount / uploadTotalCount) * 100)}%)
+                </span>
+              </div>
+              
+              {/* Progress Track */}
+              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-sky-500 rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${Math.round((uploadCompletedCount / uploadTotalCount) * 100)}%` }}
+                />
+              </div>
+
+              {/* Current File Info */}
+              {uploadCurrentFile && (
+                <div className="flex items-center gap-1.5 text-slate-500 text-[10px] font-medium">
+                  <span className="font-bold text-slate-400 uppercase text-[9px] tracking-wider">Active:</span>
+                  <span className="truncate max-w-[400px] font-mono text-slate-600">{uploadCurrentFile}</span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Action buttons */}
           <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">

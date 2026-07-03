@@ -168,3 +168,37 @@ CREATE POLICY insert_audit_logs ON audit_logs
   WITH CHECK (
     auth.uid() IS NOT NULL
   );
+
+
+-- -------------------------------------------------------------
+-- 6. Policies for Shared Reference Tables (Church Groups, Vendors, Ledger Books, Supplementary Budgets)
+-- -------------------------------------------------------------
+
+-- 6.1 church_groups
+ALTER TABLE church_groups ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS select_church_groups ON church_groups;
+CREATE POLICY select_church_groups ON church_groups FOR SELECT USING (true);
+DROP POLICY IF EXISTS write_church_groups ON church_groups;
+CREATE POLICY write_church_groups ON church_groups FOR ALL USING (true);
+
+-- 6.2 vendors
+ALTER TABLE vendors ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS select_vendors ON vendors;
+CREATE POLICY select_vendors ON vendors FOR SELECT USING (true);
+DROP POLICY IF EXISTS write_vendors ON vendors;
+CREATE POLICY write_vendors ON vendors FOR ALL USING (true);
+
+-- 6.3 ledger_books
+ALTER TABLE ledger_books ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS select_ledger_books ON ledger_books;
+CREATE POLICY select_ledger_books ON ledger_books FOR SELECT USING (true);
+DROP POLICY IF EXISTS write_ledger_books ON ledger_books;
+CREATE POLICY write_ledger_books ON ledger_books FOR ALL USING (true);
+
+-- 6.4 supplementary_budgets
+ALTER TABLE supplementary_budgets ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS select_supplementary_budgets ON supplementary_budgets;
+CREATE POLICY select_supplementary_budgets ON supplementary_budgets FOR SELECT USING (true);
+DROP POLICY IF EXISTS write_supplementary_budgets ON supplementary_budgets;
+CREATE POLICY write_supplementary_budgets ON supplementary_budgets FOR ALL USING (true);
+

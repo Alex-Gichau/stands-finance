@@ -3,7 +3,48 @@ import fs from "fs";
 import path from "path";
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+const uploadsDir = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use("/uploads", express.static(uploadsDir));
+
+// Local File Upload Endpoint (VPS Local Storage Support)
+app.post("/api/attachments/upload", async (req, res) => {
+  const { fileName, dataUrl } = req.body;
+  if (!fileName || !dataUrl) {
+    return res.status(400).json({ error: "Missing fileName or dataUrl payload." });
+  }
+  
+  try {
+    const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      return res.status(400).json({ error: "Invalid dataUrl format. Must be a valid base64 data URL." });
+    }
+    
+    const mimeType = matches[1];
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, "base64");
+    
+    const cleanFileName = fileName.replace(/[^a-zA-Z0-9_.-]/g, "_");
+    const uniquePrefix = Math.random().toString(36).substring(2, 10) + "_" + Date.now();
+    const uniqueFileName = `${uniquePrefix}_${cleanFileName}`;
+    const filePath = path.join(uploadsDir, uniqueFileName);
+    
+    fs.writeFileSync(filePath, buffer);
+    
+    const fileUrl = `/uploads/${uniqueFileName}`;
+    console.log(`[Local Upload] Saved file to VPS local disk: ${fileUrl}`);
+    
+    res.json({ success: true, url: fileUrl });
+  } catch (err: any) {
+    console.error("[Local Upload] Failed saving file:", err.message || err);
+    res.status(500).json({ error: `Failed to store attachment locally: ${err.message || err}` });
+  }
+});
 
 interface Activity {
   action: string;

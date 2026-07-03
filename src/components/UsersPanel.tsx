@@ -48,6 +48,7 @@ export const UsersPanel: React.FC = () => {
     deleteUser,
     adminForceLogoutUser,
     churchGroups,
+    lastGroupsSync,
     addChurchGroup,
     deleteChurchGroup,
     addSystemLog,
@@ -56,6 +57,22 @@ export const UsersPanel: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState<string>("ALL");
   const [activeTab, setActiveTab] = useState<"users" | "groups">("users");
+
+  // Group search & filtering states under identity & affiliations
+  const [groupSearchTerm, setGroupSearchTerm] = useState("");
+
+  const filteredChurchGroups = React.useMemo(() => {
+    return churchGroups.filter((group) => {
+      // Apply text search
+      if (groupSearchTerm.trim()) {
+        const query = groupSearchTerm.toLowerCase();
+        const matchesName = group.name.toLowerCase().includes(query);
+        const matchesDesc = (group.description || "").toLowerCase().includes(query);
+        return matchesName || matchesDesc;
+      }
+      return true;
+    });
+  }, [churchGroups, groupSearchTerm]);
 
   // Group modal states
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
@@ -262,9 +279,14 @@ export const UsersPanel: React.FC = () => {
     setEditError(null);
     setEditSuccess(null);
 
+    const finalGroups = editGroups.filter(Boolean);
+    if (finalGroups.length === 0) {
+      setEditError("Ministry Group Affiliations: You must select at least one ministry group for permission scoping.");
+      return;
+    }
+
     setIsSaving(true);
     try {
-      const finalGroups = editGroups.filter(Boolean);
       const primaryGroup = finalGroups[0] || editGroup.trim() || "";
       await updateUserProfile(editingUser.id, {
         name: editName.trim(),
@@ -365,7 +387,18 @@ export const UsersPanel: React.FC = () => {
             activeTab === "users" ? "bg-white dark:bg-slate-900 text-primary dark:text-blue-400 shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
           )}
         >
-          User Directory
+          <div className="flex items-center gap-2">
+            <span>User Directory</span>
+            <div className="flex items-center gap-1">
+              <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full text-[9px]">
+                {users.length}
+              </span>
+              <span className="bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-2 py-0.5 rounded-full text-[9px] flex items-center gap-1" title="Online Users">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                {users.filter(u => u.isOnline).length}
+              </span>
+            </div>
+          </div>
         </button>
         <button 
           onClick={() => setActiveTab("groups")}
@@ -517,7 +550,7 @@ export const UsersPanel: React.FC = () => {
                           {user.groups && user.groups.length > 1 && (
                             <div className="flex flex-wrap gap-1 mt-1 pl-4">
                               {user.groups.slice(1).map((g, idx) => (
-                                <span key={idx} className="text-[8px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                <span key={`group-tag-${g}-${idx}`} className="text-[8px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                                   {g}
                                 </span>
                               ))}
@@ -635,7 +668,7 @@ export const UsersPanel: React.FC = () => {
             </tbody>
           </table>
           
-          {filteredUsers.length === 0 && syncingTargets.has("users") && (
+          {filteredUsers.length === 0 && loading && (
             <div className="py-8 w-full flex flex-col gap-3 px-6">
               {[1, 2, 3, 4, 5].map(i => (
                 <div key={i} className="w-full h-16 bg-slate-100 dark:bg-slate-800 rounded-2xl animate-pulse" />
@@ -643,7 +676,7 @@ export const UsersPanel: React.FC = () => {
             </div>
           )}
 
-          {filteredUsers.length === 0 && !syncingTargets.has("users") && (
+          {filteredUsers.length === 0 && !loading && (
             <div className="py-16 flex flex-col items-center justify-center text-slate-400">
               <h4 className="text-[10px] font-black uppercase tracking-widest mb-1">No Members Found</h4>
               <p className="text-[10px]">Adjust your search query or role filter.</p>
@@ -654,6 +687,28 @@ export const UsersPanel: React.FC = () => {
       </>
       ) : (
         <>
+          {/* Church Groups Search and Affiliations filter layer */}
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-4 mb-6">
+            <div className="relative w-full">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input 
+                type="text" 
+                placeholder="Search groups under identity, affiliations, description, or name..."
+                value={groupSearchTerm}
+                onChange={(e) => setGroupSearchTerm(e.target.value)}
+                className="w-full pl-12 pr-10 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-xl text-sm focus:border-primary/40 focus:ring-4 focus:ring-primary/5 outline-none transition-all"
+              />
+              {groupSearchTerm && (
+                <button 
+                  onClick={() => setGroupSearchTerm("")}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  CLEAR
+                </button>
+              )}
+            </div>
+          </div>
+
           {churchGroups.length === 0 && loading && (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
@@ -679,63 +734,89 @@ export const UsersPanel: React.FC = () => {
             </div>
           )}
 
-          {churchGroups.length > 0 && (
+          {/* Search filtering with 0 matches */}
+          {churchGroups.length > 0 && filteredChurchGroups.length === 0 && (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-12 rounded-2xl flex flex-col items-center justify-center text-center mb-6">
+              <Search size={32} className="text-slate-300 mb-3" />
+              <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest mb-1">
+                No matching church groups found
+              </h4>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-sm mb-4">
+                No groups matched your search keyword: <strong className="text-slate-700 dark:text-slate-300">"{groupSearchTerm}"</strong>
+              </p>
+              <button 
+                onClick={() => {
+                  setGroupSearchTerm("");
+                }}
+                className="btn-primary px-5 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-xl shadow-md cursor-pointer"
+              >
+                Clear Search
+              </button>
+            </div>
+          )}
+
+          {filteredChurchGroups.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               <AnimatePresence mode="popLayout">
-                {churchGroups.map((group) => (
-              <motion.div
-                key={group.id}
-                layout
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                onClick={() => setSelectedGroupForMembers(group)}
-                className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm group hover:border-primary/50 hover:shadow-md transition-all cursor-pointer hover:scale-[1.01]"
+                {filteredChurchGroups.map((group) => {
+                  return (
+                    <motion.div
+                      key={group.id}
+                      layout
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      onClick={() => setSelectedGroupForMembers(group)}
+                      className="bg-white dark:bg-slate-900 p-4.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm group hover:border-primary/50 hover:shadow-md transition-all cursor-pointer hover:scale-[1.01]"
+                    >
+                      <div className="flex justify-between items-start mb-2.5">
+                        <div className="w-10 h-10 bg-slate-50 dark:bg-slate-950 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-primary/10 group-hover:text-primary transition-all">
+                          <Building2 size={20} />
+                        </div>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteChurchGroup(group.id);
+                          }}
+                          className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-full transition-all"
+                          title="Delete Group"
+                        >
+                          <XCircle size={16} />
+                        </button>
+                      </div>
+
+                      <h3 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight mb-1 truncate" title={group.name}>
+                        {group.name}
+                      </h3>
+
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed min-h-[2.5rem] line-clamp-2" title={group.description || "No description provided."}>
+                        {group.description || "No description provided."}
+                      </p>
+                      
+                      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Users size={12} className="text-slate-400" />
+                          <span className="text-[9px] font-black text-primary dark:text-blue-400 uppercase tracking-widest bg-primary/5 dark:bg-blue-500/5 px-1.5 py-0.5 rounded-md">
+                            {users.filter(u => u.group === group.name).length} MEMBERS
+                          </span>
+                        </div>
+                        <span className="text-[8px] font-mono text-slate-300 dark:text-slate-600" title={group.id}>#{group.id.toUpperCase().substring(0, 5)}</span>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+              <button 
+                onClick={() => setIsGroupModalOpen(true)}
+                className="border-2 border-dashed border-slate-200 dark:border-slate-800 p-4.5 rounded-2xl flex flex-col items-center justify-center gap-2 text-slate-400 hover:border-primary/40 hover:text-primary transition-all group min-h-[142px]"
               >
-                <div className="flex justify-between items-start mb-3">
-                  <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-primary/10 group-hover:text-primary transition-all">
-                    <Building2 size={20} />
-                  </div>
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteChurchGroup(group.id);
-                    }}
-                    className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-all"
-                    title="Delete Group"
-                  >
-                    <XCircle size={16} />
-                  </button>
+                <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-950 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Building2 size={20} />
                 </div>
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-tight mb-1 truncate" title={group.name}>
-                  {group.name}
-                </h3>
-                <p className="text-[11px] text-slate-500 leading-relaxed min-h-[2.5rem] line-clamp-2" title={group.description || "No description provided."}>
-                  {group.description || "No description provided."}
-                </p>
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Users size={12} className="text-slate-400" />
-                    <span className="text-[9px] font-black text-primary uppercase tracking-widest bg-primary/5 px-1.5 py-0.5 rounded-md">
-                      {users.filter(u => u.group === group.name).length} MEMBERS
-                    </span>
-                  </div>
-                  <span className="text-[8px] font-mono text-slate-300" title={group.id}>#{group.id.toUpperCase().substring(0, 5)}</span>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-          <button 
-            onClick={() => setIsGroupModalOpen(true)}
-            className="border-2 border-dashed border-slate-200 p-4.5 rounded-2xl flex flex-col items-center justify-center gap-2 text-slate-400 hover:border-primary/40 hover:text-primary transition-all group min-h-[142px]"
-          >
-            <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Building2 size={20} />
+                <span className="text-[9px] font-black uppercase tracking-[0.15em]">REGISTER NEW GROUP</span>
+              </button>
             </div>
-            <span className="text-[9px] font-black uppercase tracking-[0.15em]">REGISTER NEW GROUP</span>
-          </button>
-        </div>
-        )}
+          )}
         </>
       )}
 
@@ -935,98 +1016,131 @@ export const UsersPanel: React.FC = () => {
                       </select>
                     </div>
 
-                    <div className="space-y-2 animate-in slide-in-from-top-2 duration-300 relative" ref={dropdownRef}>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Ministry Group Affiliations (Select One or More)</label>
-                      <div 
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 min-h-[46px] flex flex-wrap gap-2 items-center cursor-text transition-colors focus-within:border-indigo-600 focus-within:ring-2 focus-within:ring-indigo-600/10"
-                        onClick={() => setIsGroupDropdownOpen(true)}
-                      >
-                        {(isModalOpen ? groups : editGroups).map(g => (
-                          <span key={g} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-bold uppercase tracking-wider rounded-md">
-                            {g}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (isModalOpen) {
-                                  const next = groups.filter(item => item !== g);
-                                  setGroups(next);
-                                  setGroup(next[0] || "");
-                                } else {
-                                  const next = editGroups.filter(item => item !== g);
-                                  setEditGroups(next);
-                                  setEditGroup(next[0] || "");
-                                }
-                              }}
-                              className="hover:text-indigo-900 transition-colors"
-                            >
-                              <X size={12} />
-                            </button>
-                          </span>
-                        ))}
-                        <input
-                          type="text"
-                          className="flex-1 min-w-[120px] bg-transparent text-sm font-medium outline-none placeholder:text-slate-400"
-                          placeholder={(isModalOpen ? groups : editGroups).length === 0 ? "Search and select groups..." : "Add more..."}
-                          value={groupSearchQuery}
-                          onChange={(e) => {
-                            setGroupSearchQuery(e.target.value);
-                            setIsGroupDropdownOpen(true);
-                          }}
-                          onFocus={() => setIsGroupDropdownOpen(true)}
-                        />
-                      </div>
-                      
-                      <AnimatePresence>
-                        {isGroupDropdownOpen && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -5 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -5 }}
-                            className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg shadow-slate-200/50 overflow-hidden z-[100]"
-                          >
-                            <div className="max-h-[220px] overflow-y-auto p-1.5 space-y-0.5">
-                              {churchGroups
-                                .filter(cg => cg.name.toLowerCase().includes(groupSearchQuery.toLowerCase()))
-                                .filter(cg => !(isModalOpen ? groups : editGroups).includes(cg.name))
-                                .map(cg => (
-                                  <button
-                                    key={cg.id}
-                                    type="button"
-                                    onClick={() => {
-                                      if (isModalOpen) {
-                                        const next = Array.from(new Set([...groups, cg.name]));
-                                        setGroups(next);
-                                        setGroup(next[0] || "");
-                                      } else {
-                                        const next = Array.from(new Set([...editGroups, cg.name]));
-                                        setEditGroups(next);
-                                        setEditGroup(next[0] || "");
-                                      }
-                                      setGroupSearchQuery("");
-                                      // keep dropdown open for fast multiple selections
-                                    }}
-                                    className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-50 transition-colors flex flex-col gap-0.5"
-                                  >
-                                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">{cg.name}</span>
-                                    {cg.description && (
-                                      <span className="text-[10px] text-slate-500 truncate max-w-full block">{cg.description}</span>
-                                    )}
-                                  </button>
-                                ))
-                              }
-                              {churchGroups
-                                .filter(cg => cg.name.toLowerCase().includes(groupSearchQuery.toLowerCase()))
-                                .filter(cg => !(isModalOpen ? groups : editGroups).includes(cg.name)).length === 0 && (
-                                <div className="px-3 py-4 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                  No groups found
-                                </div>
-                              )}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
+                     <div className="space-y-2 animate-in slide-in-from-top-2 duration-300 relative" ref={dropdownRef}>
+                       <div className="flex justify-between items-center ml-1">
+                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
+                           Ministry Group Affiliations (Select One or More)
+                         </label>
+                         {lastGroupsSync && (
+                           <span 
+                             className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 rounded-md flex items-center gap-1 cursor-help"
+                             title={`Fresh from Supabase. Last synchronized: ${lastGroupsSync.toLocaleString()}`}
+                           >
+                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block"></span>
+                             Synced {lastGroupsSync.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                           </span>
+                         )}
+                       </div>
+                       <div 
+                         className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 min-h-[46px] flex flex-wrap gap-2 items-center cursor-text transition-colors focus-within:border-indigo-600 focus-within:ring-2 focus-within:ring-indigo-600/10"
+                         onClick={() => setIsGroupDropdownOpen(true)}
+                       >
+                         {(isModalOpen ? groups : editGroups).map((g, idx) => (
+                           <span key={`user-group-${g}-${idx}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-bold uppercase tracking-wider rounded-md">
+                             {g}
+                             <button
+                               type="button"
+                               onClick={(e) => {
+                                 e.stopPropagation();
+                                 if (isModalOpen) {
+                                   const next = groups.filter(item => item !== g);
+                                   setGroups(next);
+                                   setGroup(next[0] || "");
+                                 } else {
+                                   const next = editGroups.filter(item => item !== g);
+                                   setEditGroups(next);
+                                   setEditGroup(next[0] || "");
+                                 }
+                               }}
+                               className="hover:text-indigo-900 transition-colors"
+                             >
+                               <X size={12} />
+                             </button>
+                           </span>
+                         ))}
+                         <input
+                           type="text"
+                           className="flex-1 min-w-[120px] bg-transparent text-sm font-medium outline-none placeholder:text-slate-400"
+                           placeholder={(isModalOpen ? groups : editGroups).length === 0 ? "Search and select groups..." : "Add more..."}
+                           value={groupSearchQuery}
+                           onChange={(e) => {
+                             setGroupSearchQuery(e.target.value);
+                             setIsGroupDropdownOpen(true);
+                           }}
+                           onFocus={() => setIsGroupDropdownOpen(true)}
+                         />
+                       </div>
+                       
+                       <AnimatePresence>
+                         {isGroupDropdownOpen && (
+                           <motion.div
+                             initial={{ opacity: 0, y: -5 }}
+                             animate={{ opacity: 1, y: 0 }}
+                             exit={{ opacity: 0, y: -5 }}
+                             className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg shadow-slate-200/50 overflow-hidden z-[100] flex flex-col"
+                           >
+                             <div className="p-2 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+                               <Search size={14} className="text-slate-400 shrink-0" />
+                               <input
+                                 type="text"
+                                 className="w-full bg-transparent text-xs font-semibold outline-none text-slate-700 placeholder:text-slate-400"
+                                 placeholder="Search ministry groups..."
+                                 value={groupSearchQuery}
+                                 onChange={(e) => setGroupSearchQuery(e.target.value)}
+                                 autoFocus
+                               />
+                               {groupSearchQuery && (
+                                 <button
+                                   type="button"
+                                   onClick={() => setGroupSearchQuery("")}
+                                   className="text-[10px] text-slate-400 hover:text-slate-600 font-bold uppercase px-1"
+                                 >
+                                   Clear
+                                 </button>
+                               )}
+                             </div>
+                             <div className="max-h-[180px] overflow-y-auto p-1.5 space-y-0.5">
+                               {churchGroups
+                                 .filter(cg => cg.name.toLowerCase().includes(groupSearchQuery.toLowerCase()))
+                                 .filter(cg => !(isModalOpen ? groups : editGroups).includes(cg.name))
+                                 .map(cg => (
+                                   <button
+                                     key={cg.id}
+                                     type="button"
+                                     onClick={() => {
+                                       if (isModalOpen) {
+                                         const next = Array.from(new Set([...groups, cg.name]));
+                                         setGroups(next);
+                                         setGroup(next[0] || "");
+                                       } else {
+                                         const next = Array.from(new Set([...editGroups, cg.name]));
+                                         setEditGroups(next);
+                                         setEditGroup(next[0] || "");
+                                       }
+                                       setGroupSearchQuery("");
+                                       // keep dropdown open for fast multiple selections
+                                     }}
+                                     className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-50 transition-colors flex flex-col gap-0.5"
+                                   >
+                                     <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">{cg.name}</span>
+                                     {cg.description && (
+                                       <span className="text-[10px] text-slate-500 truncate max-w-full block">{cg.description}</span>
+                                     )}
+                                   </button>
+                                 ))
+                               }
+                               {churchGroups
+                                 .filter(cg => cg.name.toLowerCase().includes(groupSearchQuery.toLowerCase()))
+                                 .filter(cg => !(isModalOpen ? groups : editGroups).includes(cg.name)).length === 0 && (
+                                 <div className="px-3 py-4 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                   No groups found
+                                 </div>
+                               )}
+                             </div>
+                           </motion.div>
+                         )}
+                       </AnimatePresence>
+                     </div>
 
                     {((isModalOpen ? role : editRole) === UserRole.APPROVER_L1 || (isModalOpen ? role : editRole) === UserRole.APPROVER_L2) && (
                       <div className="space-y-1.5 animate-in slide-in-from-top-2 duration-300">
@@ -1115,7 +1229,7 @@ export const UsersPanel: React.FC = () => {
                   >
                     {(isSubmitting || isSaving) ? <Loader2 size={16} className="animate-spin" /> : <Shield size={16} />}
                     <span className="text-[10px] md:text-xs uppercase tracking-widest font-black">
-                      {isModalOpen ? "AUTHORIZE TRANSACTION" : "CONSOLIDATE UPDATE"}
+                      {isModalOpen ? "CONFIRM AUTHORIZATION" : "CONFIRM UPDATE"}
                     </span>
                   </button>
                 </div>
