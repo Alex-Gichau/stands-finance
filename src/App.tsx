@@ -36,6 +36,7 @@ import { ProductTour } from "./components/ProductTour";
 import { FeedbackModal } from "./components/FeedbackModal";
 import TransactionsPanel from "./components/TransactionsPanel";
 import { BugReportModal } from "./components/BugReportModal";
+import { ContactFinanceModal } from "./components/ContactFinanceModal";
 import { UserRole, BudgetAlert, SearchFilter, PermissionConfig } from "./types";
 import { 
   Bell, 
@@ -264,6 +265,11 @@ function AppContent() {
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Contact finance office states
+  const [showContactFinanceModal, setShowContactFinanceModal] = useState(false);
+  const [financeEmailSubject, setFinanceEmailSubject] = useState("");
+  const [financeEmailBody, setFinanceEmailBody] = useState("");
 
   // Connection listeners for dynamic online/offline monitoring
   useEffect(() => {
@@ -2721,6 +2727,18 @@ function AppContent() {
                         <Bug size={14} className="text-slate-400" />
                         REPORT BUG / FEEDBACK
                       </button>
+                      <button
+                        onClick={() => {
+                          setShowContactFinanceModal(true);
+                          setIsProfileOpen(false);
+                          setFinanceEmailSubject("");
+                          setFinanceEmailBody("");
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-left cursor-pointer"
+                      >
+                        <Mail size={14} className="text-slate-400" />
+                        CONTACT FINANCE OFFICE
+                      </button>
 
                       <div className="h-[1px] bg-slate-50 my-1" />
 
@@ -2901,6 +2919,12 @@ function AppContent() {
       <BugReportModal 
         isOpen={isBugReportOpen}
         onClose={() => setIsBugReportOpen(false)}
+        currentUser={currentUser}
+      />
+
+      <ContactFinanceModal
+        isOpen={showContactFinanceModal}
+        onClose={() => setShowContactFinanceModal(false)}
         currentUser={currentUser}
       />
     </div>
