@@ -51,7 +51,7 @@ import {
 } from "lucide-react";
 import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
-import { formatCurrency, formatDate, cn, getDaysSinceSubmission } from "../lib/utils";
+import { formatCurrency, formatDate, cn, getDaysSinceSubmission, normalizeAttachmentUrl } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { printRequisitions, downloadRequisitionsHtml, downloadRequisitionsCsv, downloadRequisitionsPdf, printRequisitionVoucher, printRequisitionReceipt } from "../utils/exportUtils";
 import { NewRequisitionForm } from "./NewRequisitionForm";
@@ -593,6 +593,8 @@ const DocumentPreviewModal = ({
       dName = String(doc);
       dUrl = String(doc);
     }
+    
+    dUrl = normalizeAttachmentUrl(dUrl);
     
     let filenameNoSim = dName.replace(" (Simulated)", "");
 
@@ -2875,9 +2877,17 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                        const parts = attachment.split("::");
                        name = parts[0];
                        url = parts[1];
+                     } else if (typeof attachment === 'string' && (attachment.startsWith("http") || attachment.startsWith("/"))) {
+                       const parts = attachment.split("/");
+                       const last = parts[parts.length - 1];
+                       if (last && last.includes(".")) {
+                         name = last;
+                       }
                      }
                      
-                     const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(name) || (typeof url === 'string' && (url.startsWith('data:image/') || url.startsWith('blob:')));
+                     url = normalizeAttachmentUrl(url);
+                     
+                     const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(name) || /\.(jpg|jpeg|png|gif|webp)$/i.test(url) || (typeof url === 'string' && (url.startsWith('data:image/') || url.startsWith('blob:')));
                      const fileExt = name.split('.').pop()?.toUpperCase() || "DOC";
                      return (
                     <div 

@@ -304,6 +304,11 @@ export interface SystemSettings {
   currentFiscalYear?: number;
   fiscalYearStatus?: "OPEN" | "CLOSED" | "ARCHIVED";
   notificationEmail?: string;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUser?: string;
+  smtpPass?: string;
+  smtpSecure?: boolean;
   centralVaultLiquidity?: number;
   announcementMessage?: string;
   announcementType?: "info" | "warning" | "alert" | "success";

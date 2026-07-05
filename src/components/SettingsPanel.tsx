@@ -37,7 +37,8 @@ import {
   RefreshCw,
   Trash2,
   Power,
-  LogOut
+  LogOut,
+  Download
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { cn, sendSlackNotification } from "../lib/utils";
@@ -71,6 +72,90 @@ export const SettingsPanel: React.FC = () => {
 
   const [isBackingUp, setIsBackingUp] = React.useState(false);
   const [backupResult, setBackupResult] = React.useState<any | null>(null);
+
+  // Dynamic Email Systems Logs States
+  const [emailLogs, setEmailLogs] = React.useState<any[]>([]);
+  const [loadingEmailLogs, setLoadingEmailLogs] = React.useState(false);
+
+  const fetchEmailLogs = async () => {
+    setLoadingEmailLogs(true);
+    try {
+      const response = await fetch("/api/email-logs");
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        setEmailLogs(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch email logs:", err);
+    } finally {
+      setLoadingEmailLogs(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchEmailLogs();
+  }, []);
+
+  // Snapshot Backup Ledger States
+  const [isLocalBackingUp, setIsLocalBackingUp] = React.useState(false);
+  const [localBackupResult, setLocalBackupResult] = React.useState<any | null>(null);
+  const [localBackupsList, setLocalBackupsList] = React.useState<any[]>([]);
+  const [loadingBackupsList, setLoadingBackupsList] = React.useState(false);
+
+  const fetchLocalBackupsList = async () => {
+    setLoadingBackupsList(true);
+    try {
+      const response = await fetch("/api/backup/ledger/list");
+      const data = await response.json();
+      if (data.success) {
+        setLocalBackupsList(data.backups || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch local backups:", err);
+    } finally {
+      setLoadingBackupsList(false);
+    }
+  };
+
+  const runLocalBackup = async () => {
+    setIsLocalBackingUp(true);
+    setLocalBackupResult(null);
+    try {
+      const response = await fetch("/api/backup/ledger", { method: "POST" });
+      const data = await response.json();
+      setLocalBackupResult(data);
+      if (response.ok && data.success) {
+        triggerToast({
+          type: "SYSTEM_INFO",
+          severity: "MEDIUM",
+          message: data.message || "Redundant snapshot database backup created successfully!",
+          timestamp: new Date().toISOString()
+        });
+        fetchLocalBackupsList();
+      } else {
+        triggerToast({
+          type: "SYSTEM_INFO",
+          severity: "HIGH",
+          message: data.error || "Failed to create database snapshot.",
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (err: any) {
+      setLocalBackupResult({ success: false, error: err.message || "Failed to connect to backup API." });
+      triggerToast({
+        type: "SYSTEM_INFO",
+        severity: "HIGH",
+        message: err.message || "Failed to contact database backup API.",
+        timestamp: new Date().toISOString()
+      });
+    } finally {
+      setIsLocalBackingUp(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchLocalBackupsList();
+  }, []);
 
   const [useSupabase, setUseSupabase] = React.useState(isSupabaseEnabled());
 
@@ -462,8 +547,36 @@ export const SettingsPanel: React.FC = () => {
   ];
   const updateInterval = INTERVAL_MODES[sliderIndex].value;
 
+  const [isTestingEmail, setIsTestingEmail] = React.useState(false);
   const handleTestEmail = async () => {
-    alert("Email test functionality is currently disabled as the Firebase backend has been removed. Please configure an alternative notification service.");
+    setIsTestingEmail(true);
+    try {
+      const response = await fetch("/api/test-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: systemSettings.notificationEmail || "ict.team@pceastandrews.org",
+          smtpConfig: {
+            smtpHost: systemSettings.smtpHost,
+            smtpPort: systemSettings.smtpPort,
+            smtpUser: systemSettings.smtpUser,
+            smtpPass: systemSettings.smtpPass,
+            smtpSecure: systemSettings.smtpSecure,
+          }
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        alert(`❌ SMTP Test Failed:\n${data.error || "Unknown server error"}`);
+      } else {
+        alert(`🟢 SMTP Test Successful!\n${data.message}`);
+        fetchEmailLogs();
+      }
+    } catch (err: any) {
+      alert(`❌ SMTP Connection Failed: ${err.message || err}`);
+    } finally {
+      setIsTestingEmail(false);
+    }
   };
 
   const lastTenLogs = systemLogs.slice(0, 10);
@@ -549,33 +662,194 @@ export const SettingsPanel: React.FC = () => {
 
           {/* Email Notification Configuration */}
           {(currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN) && (
-            <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm p-8 space-y-4">
-              <h3 className="text-xs font-black text-foreground uppercase tracking-[0.2em] flex items-center gap-2">
-                <Mail size={16} className="text-primary" />
-                Notification Configuration
-              </h3>
-              <p className="text-[10px] text-muted font-medium italic">Configure the target email for automated requisition alerts.</p>
-              
-              <div className="flex gap-3">
-                <input
-                  type="email"
-                  placeholder="admin@church.org"
-                  className="flex-1 px-4 py-3 bg-slate-50 border border-border rounded-xl text-xs font-bold focus:border-primary/50 outline-none transition-colors"
-                  value={systemSettings.notificationEmail || ""}
-                  onChange={(e) => updateSystemSettings({ ...systemSettings, notificationEmail: e.target.value })}
-                />
+            <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm p-8 space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <h3 className="text-xs font-black text-foreground uppercase tracking-[0.2em] flex items-center gap-2">
+                    <Mail size={16} className="text-primary" />
+                    Email Notification & SMTP Router
+                  </h3>
+                  <p className="text-[10px] text-muted font-medium italic">Configure SMTP relays and central administrative alert handlers.</p>
+                </div>
                 <button
-                  onClick={handleTestEmail}
-                  className="px-6 bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
+                  onClick={fetchEmailLogs}
+                  disabled={loadingEmailLogs}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-border rounded-lg text-[9px] font-black uppercase tracking-wider hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
-                  Test Config
+                  <RefreshCw size={10} className={cn("text-slate-500", loadingEmailLogs && "animate-spin")} />
+                  Refresh Audit logs
                 </button>
-                <button
-                  onClick={() => alert("Email notification settings saved.")}
-                  className="px-6 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-colors"
-                >
-                  Save Email
-                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Destination Config */}
+                <div className="space-y-4">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Routing Handlers</h4>
+                  
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider block">Target Audit Email Address</label>
+                    <input
+                      type="email"
+                      placeholder="ict.team@pceastandrews.org"
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/50 border border-border rounded-xl text-xs font-bold focus:border-primary/50 outline-none transition-colors"
+                      value={systemSettings.notificationEmail || ""}
+                      onChange={(e) => updateSystemSettings({ ...systemSettings, notificationEmail: e.target.value })}
+                    />
+                    <span className="text-[9px] text-slate-400 leading-normal block">This address receives carbon copy audits of all submitted, approved, disbursed, or rejected requisitions.</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider block">SMTP Mail Server (Host)</label>
+                    <input
+                      type="text"
+                      placeholder="smtp.gmail.com"
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/50 border border-border rounded-xl text-xs font-bold focus:border-primary/50 outline-none transition-colors"
+                      value={systemSettings.smtpHost || ""}
+                      onChange={(e) => updateSystemSettings({ ...systemSettings, smtpHost: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider block">SMTP Port</label>
+                      <input
+                        type="number"
+                        placeholder="587"
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/50 border border-border rounded-xl text-xs font-bold focus:border-primary/50 outline-none transition-colors"
+                        value={systemSettings.smtpPort || ""}
+                        onChange={(e) => updateSystemSettings({ ...systemSettings, smtpPort: e.target.value ? parseInt(e.target.value) : undefined })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider block">Encryption</label>
+                      <label className="flex items-center gap-2 px-4 py-3 bg-slate-50 dark:bg-slate-900/50 border border-border rounded-xl cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
+                          checked={!!systemSettings.smtpSecure || systemSettings.smtpPort === 465}
+                          disabled={systemSettings.smtpPort === 465}
+                          onChange={(e) => updateSystemSettings({ ...systemSettings, smtpSecure: e.target.checked })}
+                        />
+                        <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                          {systemSettings.smtpPort === 465 ? "Direct SSL/TLS" : "Auto STARTTLS"}
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Authentication Config */}
+                <div className="space-y-4">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Authentication Credentials</h4>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider block">SMTP Username</label>
+                    <input
+                      type="text"
+                      placeholder="ict.team@pceastandrews.org"
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/50 border border-border rounded-xl text-xs font-bold focus:border-primary/50 outline-none transition-colors"
+                      value={systemSettings.smtpUser || ""}
+                      onChange={(e) => updateSystemSettings({ ...systemSettings, smtpUser: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider block">SMTP Password</label>
+                    <input
+                      type="password"
+                      placeholder="••••••••••••••••"
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/50 border border-border rounded-xl text-xs font-bold focus:border-primary/50 outline-none transition-colors"
+                      value={systemSettings.smtpPass || ""}
+                      onChange={(e) => updateSystemSettings({ ...systemSettings, smtpPass: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={handleTestEmail}
+                      disabled={isTestingEmail}
+                      className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-border rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      {isTestingEmail ? (
+                        <>
+                          <RefreshCw size={12} className="animate-spin" />
+                          Testing Connection...
+                        </>
+                      ) : (
+                        "Verify SMTP Connection"
+                      )}
+                    </button>
+                    <button
+                      onClick={() => {
+                        triggerToast({
+                          type: "SYSTEM_INFO",
+                          severity: "MEDIUM",
+                          message: "Email notification configuration persisted successfully.",
+                          timestamp: new Date().toISOString()
+                        });
+                      }}
+                      className="px-6 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors"
+                    >
+                      Apply Changes
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* SMTP Deliverability Audit Panel */}
+              <div className="border-t border-border pt-6 space-y-3">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <History size={12} className="text-slate-400" />
+                  SMTP Deliverability Audit & Dispatch History
+                </h4>
+                <p className="text-[10px] text-muted font-medium italic">Audit the real-time mail transport pipeline activity below.</p>
+
+                <div className="bg-slate-50 dark:bg-slate-950/40 rounded-2xl border border-border overflow-hidden max-h-60 overflow-y-auto">
+                  {emailLogs.length === 0 ? (
+                    <div className="p-8 text-center">
+                      <p className="text-[10px] font-bold text-muted uppercase tracking-widest">No mail dispatcher activities logged yet</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {emailLogs.map((log, idx) => {
+                        let statusColor = "bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-400";
+                        let statusLabel = log.action;
+                        if (log.action === "EMAIL_DISPATCH") {
+                          statusColor = "bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/30";
+                          statusLabel = "SMTP Delivered";
+                        } else if (log.action === "EMAIL_SIMULATED") {
+                          statusColor = "bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-900/30";
+                          statusLabel = "SMTP Simulated";
+                        } else if (log.action === "EMAIL_SKIPPED") {
+                          statusColor = "bg-rose-50 text-rose-700 border-rose-100 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-900/30";
+                          statusLabel = "SMTP Skipped";
+                        } else if (log.action === "EMAIL_TEST") {
+                          statusColor = "bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-900/30";
+                          statusLabel = "Connection Verified";
+                        }
+
+                        return (
+                          <div key={idx} className="p-4 hover:bg-slate-100/50 dark:hover:bg-slate-900/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="space-y-1 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={cn("text-[9px] font-black uppercase tracking-widest px-2 py-0.5 border rounded-md", statusColor)}>
+                                  {statusLabel}
+                                </span>
+                                <span className="text-[10px] font-black text-slate-700 dark:text-slate-300">
+                                  {log.performedBy || "System"}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">{log.details}</p>
+                            </div>
+                            <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-tighter shrink-0">
+                              {log.timestamp ? new Date(log.timestamp).toLocaleString() : ""}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </section>
           )}
@@ -1545,6 +1819,145 @@ export const SettingsPanel: React.FC = () => {
                 )}
               </button>
             </section>
+
+            {/* Redundant Backup Ledger Section */}
+            {(currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN) && (
+              <section className="bg-card rounded-[2rem] border border-border p-8 shadow-sm transition-all space-y-6">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-bold text-lg">
+                    🛡️
+                  </span>
+                  <div>
+                    <h3 className="text-xs font-black text-foreground uppercase tracking-[0.2em]">Backup Ledger snapshots</h3>
+                    <p className="text-[9px] text-indigo-500 font-mono font-bold uppercase tracking-widest mt-1">
+                      JSON Database State Snapshot
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-muted leading-relaxed font-semibold">
+                  Generates a full JSON backup snapshot of all public PostgreSQL database tables. This provides a secure, redundant, and portable offline-ready file copy of the complete system ledger.
+                </p>
+
+                {localBackupResult && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`p-4 rounded-2xl border text-[10px] font-mono leading-relaxed space-y-2 ${
+                      localBackupResult.success
+                        ? "bg-emerald-500/5 border-emerald-200/50 text-emerald-800 dark:text-emerald-300 dark:border-emerald-900/30"
+                        : "bg-rose-500/5 border-rose-200/50 text-rose-800 dark:text-rose-300 dark:border-rose-900/30"
+                    }`}
+                  >
+                    <div className="font-bold uppercase tracking-wider flex items-center gap-1.5 text-[11px] text-slate-800 dark:text-slate-100">
+                      {localBackupResult.success ? "🟢 Snapshot Created Successfully" : "🔴 Snapshot Creation Failed"}
+                    </div>
+                    <div className="space-y-1">
+                      {localBackupResult.success ? (
+                        <>
+                          <div>File: <span className="font-bold">{localBackupResult.filename}</span></div>
+                          {localBackupResult.metadata && (
+                            <>
+                              <div>Time: {new Date(localBackupResult.metadata.timestamp).toLocaleString()}</div>
+                              <div>Mode: {localBackupResult.metadata.mode}</div>
+                              <div>Tables Captured: {localBackupResult.metadata.totalTables}</div>
+                            </>
+                          )}
+                          <div className="mt-2 pt-2 border-t border-emerald-200/30">
+                            <a
+                              href={`/api/backup/ledger/download/${localBackupResult.filename}`}
+                              download
+                              className="text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 dark:hover:text-emerald-300 underline font-semibold inline-flex items-center gap-1 font-sans cursor-pointer text-xs"
+                            >
+                              📥 Download Snapshot File
+                            </a>
+                          </div>
+                        </>
+                      ) : (
+                        <div>Error: {localBackupResult.error || "Unknown backup compile failure."}</div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={runLocalBackup}
+                  disabled={isLocalBackingUp}
+                  className={`w-full py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm ${
+                    isLocalBackingUp
+                      ? "bg-slate-100 text-slate-400 dark:bg-slate-800"
+                      : "bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-lg hover:shadow-indigo-200/50"
+                  }`}
+                >
+                  {isLocalBackingUp ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      Capturing Database Snapshot...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={14} />
+                      Generate Redundant JSON Snapshot
+                    </>
+                  )}
+                </button>
+
+                {/* List of Previous Backups */}
+                <div className="space-y-3 pt-4 border-t border-border">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-foreground uppercase tracking-wider">
+                      Available Snapshots ({localBackupsList.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={fetchLocalBackupsList}
+                      disabled={loadingBackupsList}
+                      className="text-[9px] font-bold text-indigo-600 hover:text-indigo-500 uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                    >
+                      <RefreshCw size={10} className={loadingBackupsList ? "animate-spin" : ""} />
+                      Refresh
+                    </button>
+                  </div>
+
+                  {localBackupsList.length === 0 ? (
+                    <p className="text-[10px] text-muted-foreground font-semibold italic text-center py-4">
+                      No redundant JSON snapshots recorded. Trigger a new one above.
+                    </p>
+                  ) : (
+                    <div className="max-h-60 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
+                      {localBackupsList.map((backup) => {
+                        const sizeKb = (backup.sizeBytes / 1024).toFixed(1);
+                        const tablesCount = backup.metadata?.totalTables || 0;
+                        return (
+                          <div
+                            key={backup.filename}
+                            className="p-3 rounded-xl border border-border bg-slate-500/5 dark:bg-slate-950/20 hover:border-slate-300 dark:hover:border-slate-800 transition-colors flex items-center justify-between gap-4"
+                          >
+                            <div className="space-y-1 min-w-0">
+                              <p className="text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate font-mono">
+                                {backup.filename}
+                              </p>
+                              <p className="text-[9px] text-muted-foreground font-medium">
+                                {new Date(backup.createdAt).toLocaleString()} • {sizeKb} KB • {tablesCount} Tables
+                              </p>
+                            </div>
+                            <a
+                              href={`/api/backup/ledger/download/${backup.filename}`}
+                              download
+                              className="flex-shrink-0 p-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 rounded-lg text-indigo-600 dark:text-indigo-400 transition-colors cursor-pointer"
+                              title="Download JSON Snapshot"
+                            >
+                              <Download size={13} />
+                            </a>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
 
             {/* API Notification Control Center (Slack Integration - Prompt 6) */}
             <section className="bg-card rounded-[2rem] border border-border p-8 shadow-sm transition-all space-y-6">

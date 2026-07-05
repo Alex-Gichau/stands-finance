@@ -6,7 +6,7 @@
 import React, { useState } from "react";
 import { X, Maximize2, ExternalLink, Download, ZoomIn, ZoomOut, RotateCw, RotateCcw, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { cn } from "../lib/utils";
+import { cn, normalizeAttachmentUrl } from "../lib/utils";
 
 interface ReceiptGalleryProps {
   receipts: string[];
@@ -82,44 +82,47 @@ export const ReceiptGallery: React.FC<ReceiptGalleryProps> = ({ receipts }) => {
       </div>
       
       <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-        {receipts.map((receipt, index) => (
-          <motion.div
-            key={`${receipt}-${index}`}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => downloadImage(receipt, `receipt_${index + 1}.png`)}
-            className="relative flex-shrink-0 w-32 h-44 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 cursor-pointer group shadow-sm"
-          >
-            <img 
-              src={receipt} 
-              alt={`Receipt ${index + 1}`} 
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-            <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3">
-              <Download size={24} className="text-white" />
-              <span className="text-[8px] font-black text-white uppercase tracking-widest">Download</span>
-            </div>
-            
-            {/* Overlay button for expansion instead of whole card click */}
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                openImage(receipt);
-              }}
-              className="absolute top-2 right-2 p-2 bg-white/20 backdrop-blur-md rounded-full text-white opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all hover:bg-white/40"
-              title="Expand View"
+        {receipts.map((receipt, index) => {
+          const normalizedReceipt = normalizeAttachmentUrl(receipt);
+          return (
+            <motion.div
+              key={`${receipt}-${index}`}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => downloadImage(normalizedReceipt, `receipt_${index + 1}.png`)}
+              className="relative flex-shrink-0 w-32 h-44 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 cursor-pointer group shadow-sm"
             >
-              <Maximize2 size={14} />
-            </button>
-
-            <div className="absolute bottom-2 left-2 right-2">
-              <div className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg border border-white/50 text-[8px] font-black text-slate-900 truncate uppercase tracking-tighter shadow-sm">
-                Receipt #{index + 1}
+              <img 
+                src={normalizedReceipt} 
+                alt={`Receipt ${index + 1}`} 
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3">
+                <Download size={24} className="text-white" />
+                <span className="text-[8px] font-black text-white uppercase tracking-widest">Download</span>
               </div>
-            </div>
-          </motion.div>
-        ))}
+              
+              {/* Overlay button for expansion instead of whole card click */}
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openImage(normalizedReceipt);
+                }}
+                className="absolute top-2 right-2 p-2 bg-white/20 backdrop-blur-md rounded-full text-white opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all hover:bg-white/40"
+                title="Expand View"
+              >
+                <Maximize2 size={14} />
+              </button>
+
+              <div className="absolute bottom-2 left-2 right-2">
+                <div className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg border border-white/50 text-[8px] font-black text-slate-900 truncate uppercase tracking-tighter shadow-sm">
+                  Receipt #{index + 1}
+                </div>
+              </div>
+            </motion.div>
+          );
+        })}
       </div>
 
       <AnimatePresence>

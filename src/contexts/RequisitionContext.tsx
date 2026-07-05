@@ -2628,27 +2628,10 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   ]);
 
   // Proactive automatic data migration to Supabase to fulfill "Permanents copy all data to supabase"
+  // [Option B: Bypass / Disable Firestore Migration applied]
   useEffect(() => {
-    if (!isSupabaseEnabled() || !currentUserId || !currentUserIsApproved) return;
-    if (localStorage.getItem("MIGRATED_TO_SUPABASE_AUTO") === "true") return;
-
-    const runAutoMigration = async () => {
-      try {
-        console.log("[RequisitionContext] Proactively copying all data to Supabase...");
-        const result = await databaseService.migrateFirestoreToSupabase();
-        if (result.success) {
-          console.log("[RequisitionContext] Automatic Supabase data copy finished successfully!");
-          localStorage.setItem("MIGRATED_TO_SUPABASE_AUTO", "true");
-        } else {
-          console.info("[RequisitionContext] Automatic Supabase data copy bypass:", result.error);
-        }
-      } catch (err) {
-        console.info("[RequisitionContext] Automatic Supabase data copy bypass:", err);
-      }
-    };
-
-    runAutoMigration();
-  }, [currentUserId, currentUserIsApproved]);
+    console.log("[RequisitionContext] Firestore-to-Supabase automatic migration is explicitly bypassed/disabled.");
+  }, []);
 
 
 
@@ -3193,8 +3176,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [db]);
 
-  const sendEmailNotification = useCallback(async (req: Requisition, status: string, details?: string) => {
-    let targetEmail = req.requesterEmail;
+  const sendEmailNotification = useCallback(async (req: Requisition, status: string, details?: string, toOverride?: string) => {
+    let targetEmail = toOverride || req.requesterEmail;
     
     if (!targetEmail) {
       // Fallback: search in loaded users
@@ -3206,6 +3189,14 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       console.log("Cannot send email: Requisition has no requesterEmail and no matching user found", req.id);
       return;
     }
+
+    const smtpConfig = {
+      smtpHost: systemSettings?.smtpHost,
+      smtpPort: systemSettings?.smtpPort,
+      smtpUser: systemSettings?.smtpUser,
+      smtpPass: systemSettings?.smtpPass,
+      smtpSecure: systemSettings?.smtpSecure,
+    };
     
     try {
       await fetch("/api/send-email", {
@@ -3213,18 +3204,40 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: targetEmail,
-          requesterName: req.requesterName,
+          requesterName: toOverride ? "Administrator/ICT Approver Team" : req.requesterName,
           amount: req.amount,
           title: req.title,
           requisitionId: req.id,
           status: status,
-          details: details
+          details: details,
+          smtpConfig: smtpConfig
         })
       });
+
+      // Send copy to ICT Team / Admin if it is a major state transition
+      const adminEmail = systemSettings?.notificationEmail || "ict.team@pceastandrews.org";
+      if (!toOverride && adminEmail && adminEmail !== targetEmail) {
+        if (status === "SUBMITTED" || status === "APPROVED_L1" || status === "APPROVED_L2" || status === "DISBURSED" || status === "REJECTED") {
+          fetch("/api/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: adminEmail,
+              requesterName: "Administrator/ICT Approver Team",
+              amount: req.amount,
+              title: `[ADMIN ALERT] Requisition Activity: '${req.title}'`,
+              requisitionId: req.id,
+              status: status,
+              details: `This is an administrative audit copy. Triggered status: ${status} for requester ${req.requesterName} (${req.requesterEmail || "no email"}).\nNotes: ${details || "None."}`,
+              smtpConfig: smtpConfig
+            })
+          }).catch(e => console.error("Admin background email copy dispatch failed:", e));
+        }
+      }
     } catch (err) {
       console.error("Failed to trigger email notification:", err);
     }
-  }, [users]);
+  }, [users, systemSettings]);
 
   const syncRequisitionToGoogleSheets = useCallback(async (req: Requisition) => {
     try {

@@ -5,6 +5,18 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function normalizeAttachmentUrl(url: string | null | undefined): string {
+  if (!url || typeof url !== "string") return "";
+  
+  // Convert absolute VPS HTTP URLs containing /uploads/ to relative /uploads/ path
+  if (url.startsWith("http://") && url.includes("/uploads/")) {
+    const parts = url.split("/uploads/");
+    return "/uploads/" + parts[1];
+  }
+  
+  return url;
+}
+
 export function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-KE", {
     style: "currency",

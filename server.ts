@@ -800,6 +800,13 @@ async function startServer() {
 
   // Export from Firestore and Import to Supabase PostgreSQL Database
   app.post("/api/config/migrate-data", async (req, res) => {
+    console.log("[DataMigration] Data migration explicitly bypassed/disabled per Option B config.");
+    return res.status(200).json({
+      success: true,
+      message: "Option B applied: Firestore-to-Supabase data migration is bypassed/disabled.",
+      stats: { bypassed: true }
+    });
+
     const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
     const expectedRef = supabaseUrl.match(/https:\/\/(.*?)\.supabase\.co/)?.[1] || "unknown";
     const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.SUPABASE_DIRECT_URL;
@@ -1256,17 +1263,26 @@ async function startServer() {
 
   // API Route for Sending Email
   app.post("/api/send-email", async (req, res) => {
-    const { to, requesterName, amount, title, requisitionId, status, details } = req.body;
+    const { to, requesterName, amount, title, requisitionId, status, details, smtpConfig } = req.body;
     
-    if (!process.env.SMTP_PASS) {
-      console.warn("SMTP_PASS is not configured. Email will be logged but not sent.");
+    const activeSmtpPass = smtpConfig?.smtpPass || process.env.SMTP_PASS;
+    const activeSmtpUser = smtpConfig?.smtpUser || process.env.SMTP_USER || "ict.team@pceastandrews.org";
+    const activeSmtpHost = smtpConfig?.smtpHost || process.env.SMTP_HOST || "smtp.gmail.com";
+    const activeSmtpPort = parseInt(smtpConfig?.smtpPort || process.env.SMTP_PORT || "587");
+    
+    // In Nodemailer, secure: true is only for port 465 (direct SSL/TLS). 
+    // All other ports (e.g., 587) start with plaintext and upgrade via STARTTLS, requiring secure: false.
+    const activeSmtpSecure = activeSmtpPort === 465;
+
+    if (!activeSmtpPass) {
+      console.warn("SMTP_PASS is not configured. Email will be logged as skipped.");
       persistActivity({
         action: "EMAIL_SKIPPED",
-        details: `Mail to ${to} skipped (No Credentials). Requisition: ${title}`,
+        details: `Mail to ${to} skipped (No Credentials). Requisition: ${title || "N/A"}`,
         performedBy: "SYSTEM_MAILER",
         timestamp: new Date().toISOString()
       });
-      return res.json({ success: true, message: "SMTP not configured, activity recorded." });
+      return res.json({ success: true, message: "SMTP not configured, activity recorded.", simulated: true });
     }
 
     try {
@@ -1280,84 +1296,147 @@ async function startServer() {
         case "SUBMITTED":
           subject = `[Submitted] Requisition #${displayId} - ${title}`;
           bodyHtml = `
-            <div style="font-family: sans-serif; padding: 20px; color: #334155;">
-              <h2 style="color: #0f172a;">Requisition Submitted</h2>
-              <p>Hello <strong>${requesterName}</strong>,</p>
-              <p>Your requisition <strong>#${displayId}: ${title}</strong> for <strong>${formattedAmount}</strong> has been successfully submitted and is now awaiting Level 1 approval.</p>
-              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-              <p style="font-size: 12px; color: #64748b;">This is an automated notification from STANDS eRequisitions.</p>
+            <div style="font-family: sans-serif; padding: 24px; color: #1e293b; background-color: #ffffff; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);">
+              <div style="background-color: #6366f1; padding: 16px 24px; border-radius: 8px 8px 0 0; color: #ffffff; font-weight: bold; font-size: 18px;">
+                📋 Requisition Submitted
+              </div>
+              <div style="padding: 24px 16px; line-height: 1.6;">
+                <p>Hello <strong>${requesterName}</strong>,</p>
+                <p>Your requisition <strong>#${displayId}: ${title}</strong> for <strong>${formattedAmount}</strong> has been successfully submitted and is now awaiting Level 1 compliance review.</p>
+                <div style="margin: 20px 0; padding: 16px; background-color: #f8fafc; border-radius: 8px; border-left: 4px solid #6366f1;">
+                  <strong>Summary of Requisition:</strong>
+                  <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 13px;">
+                    <li><strong>ID:</strong> ${displayId}</li>
+                    <li><strong>Title:</strong> ${title}</li>
+                    <li><strong>Amount:</strong> ${formattedAmount}</li>
+                    <li><strong>Submitted:</strong> ${new Date().toLocaleString()}</li>
+                  </ul>
+                </div>
+                <p>You will receive automatic alerts at each review checkpoint.</p>
+              </div>
+              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 0 16px;" />
+              <div style="padding: 16px; font-size: 11px; color: #64748b; text-align: center;">
+                This is an automated notification from STANDS eRequisitions. Sender: ${activeSmtpUser}
+              </div>
             </div>
           `;
           break;
         case "APPROVED_L1":
           subject = `[L1 Approved] Requisition #${displayId} - Compliance Cleared`;
           bodyHtml = `
-            <div style="font-family: sans-serif; padding: 20px; color: #334155;">
-              <h2 style="color: #10b981;">Level 1 Approval Granted</h2>
-              <p>Hello <strong>${requesterName}</strong>,</p>
-              <p>Your requisition <strong>#${displayId}: ${title}</strong> has passed Level 1 Compliance approval.</p>
-              <p>It is now being reviewed for Level 2 (Final) authorization.</p>
-              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-              <p style="font-size: 12px; color: #64748b;">This is an automated notification from STANDS eRequisitions.</p>
+            <div style="font-family: sans-serif; padding: 24px; color: #1e293b; background-color: #ffffff; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);">
+              <div style="background-color: #f59e0b; padding: 16px 24px; border-radius: 8px 8px 0 0; color: #ffffff; font-weight: bold; font-size: 18px;">
+                🛡️ Level 1 Compliance Approved
+              </div>
+              <div style="padding: 24px 16px; line-height: 1.6;">
+                <p>Hello <strong>${requesterName}</strong>,</p>
+                <p>Your requisition <strong>#${displayId}: ${title}</strong> has passed Level 1 compliance review.</p>
+                <p>It is now waiting for final Level 2 authorization from the administrative panel.</p>
+                ${details ? `<div style="margin: 20px 0; padding: 16px; background-color: #fffbeb; border-radius: 8px; border-left: 4px solid #f59e0b; font-size: 13px;"><strong>Note:</strong> ${details}</div>` : ""}
+              </div>
+              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 0 16px;" />
+              <div style="padding: 16px; font-size: 11px; color: #64748b; text-align: center;">
+                This is an automated notification from STANDS eRequisitions. Sender: ${activeSmtpUser}
+              </div>
             </div>
           `;
           break;
         case "APPROVED_L2":
           subject = `[Approved] Requisition #${displayId} - Final Authorization`;
           bodyHtml = `
-            <div style="font-family: sans-serif; padding: 20px; color: #334155;">
-              <h2 style="color: #059669;">Final Authorization Granted</h2>
-              <p>Hello <strong>${requesterName}</strong>,</p>
-              <p>Excellent news! Your requisition <strong>#${displayId}: ${title}</strong> has received final Level 2 authorization for <strong>${formattedAmount}</strong>.</p>
-              <p>The Finance team has been notified to initiate the disbursement process.</p>
-              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-              <p style="font-size: 12px; color: #64748b;">This is an automated notification from STANDS eRequisitions.</p>
+            <div style="font-family: sans-serif; padding: 24px; color: #1e293b; background-color: #ffffff; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);">
+              <div style="background-color: #10b981; padding: 16px 24px; border-radius: 8px 8px 0 0; color: #ffffff; font-weight: bold; font-size: 18px;">
+                🎉 Requisition Fully Authorized
+              </div>
+              <div style="padding: 24px 16px; line-height: 1.6;">
+                <p>Hello <strong>${requesterName}</strong>,</p>
+                <p>Your requisition <strong>#${displayId}: ${title}</strong> has received final Level 2 approval for <strong>${formattedAmount}</strong>!</p>
+                <p>The Finance department has been notified to process payment and release cash disbursement.</p>
+                ${details ? `<div style="margin: 20px 0; padding: 16px; background-color: #ecfdf5; border-radius: 8px; border-left: 4px solid #10b981; font-size: 13px;"><strong>Approver Note:</strong> ${details}</div>` : ""}
+              </div>
+              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 0 16px;" />
+              <div style="padding: 16px; font-size: 11px; color: #64748b; text-align: center;">
+                This is an automated notification from STANDS eRequisitions. Sender: ${activeSmtpUser}
+              </div>
             </div>
           `;
           break;
         case "DISBURSED":
           subject = `[Disbursed] Requisition #${displayId} - Funds Released`;
           bodyHtml = `
-            <div style="font-family: sans-serif; padding: 20px; color: #334155;">
-              <h2 style="color: #f59e0b;">Funds Disbursed</h2>
-              <p>Hello <strong>${requesterName}</strong>,</p>
-              <p>Funds for your requisition <strong>#${displayId}: ${title}</strong> have been disbursed.</p>
-              <p><strong>Amount:</strong> ${formattedAmount}</p>
-              ${details ? `<p><strong>Notes:</strong> ${details}</p>` : ""}
-              <p>Please check your registered payment method (M-Pesa/Bank) for the settlement.</p>
-              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-              <p style="font-size: 12px; color: #64748b;">This is an automated notification from STANDS eRequisitions.</p>
+            <div style="font-family: sans-serif; padding: 24px; color: #1e293b; background-color: #ffffff; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);">
+              <div style="background-color: #059669; padding: 16px 24px; border-radius: 8px 8px 0 0; color: #ffffff; font-weight: bold; font-size: 18px;">
+                💵 Cash Disbursed successfully
+              </div>
+              <div style="padding: 24px 16px; line-height: 1.6;">
+                <p>Hello <strong>${requesterName}</strong>,</p>
+                <p>Excellent news! Funds for your requisition <strong>#${displayId}: ${title}</strong> have been disbursed successfully.</p>
+                <div style="margin: 20px 0; padding: 16px; background-color: #f0fdf4; border-radius: 8px; border: 1px dashed #059669; text-align: center;">
+                  <span style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; font-weight: bold;">Disbursed Amount</span>
+                  <div style="font-size: 24px; font-weight: 800; color: #059669; margin: 6px 0;">${formattedAmount}</div>
+                </div>
+                ${details ? `<div style="margin: 20px 0; padding: 16px; background-color: #f8fafc; border-radius: 8px; border-left: 4px solid #64748b; font-size: 13px;"><strong>Disbursement Notes:</strong> ${details}</div>` : ""}
+                <p>Please audit your payment records (M-Pesa / Bank statement) to confirm receipt.</p>
+              </div>
+              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 0 16px;" />
+              <div style="padding: 16px; font-size: 11px; color: #64748b; text-align: center;">
+                This is an automated notification from STANDS eRequisitions. Sender: ${activeSmtpUser}
+              </div>
             </div>
           `;
           break;
         case "REJECTED":
           subject = `[Returned] Requisition #${displayId} - Revision Required`;
           bodyHtml = `
-            <div style="font-family: sans-serif; padding: 20px; color: #334155;">
-              <h2 style="color: #ef4444;">Requisition Returned</h2>
-              <p>Hello <strong>${requesterName}</strong>,</p>
-              <p>Your requisition <strong>#${displayId}: ${title}</strong> has been returned or rejected by the approval committee.</p>
-              ${details ? `<p style="background: #fef2f2; padding: 10px; border-radius: 4px; border-left: 4px solid #ef4444;"><strong>Reason:</strong> ${details}</p>` : ""}
-              <p>Please log in to the portal to review the feedback and make necessary adjustments.</p>
-              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-              <p style="font-size: 12px; color: #64748b;">This is an automated notification from STANDS eRequisitions.</p>
+            <div style="font-family: sans-serif; padding: 24px; color: #1e293b; background-color: #ffffff; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);">
+              <div style="background-color: #ef4444; padding: 16px 24px; border-radius: 8px 8px 0 0; color: #ffffff; font-weight: bold; font-size: 18px;">
+                ⚠️ Revision Required
+              </div>
+              <div style="padding: 24px 16px; line-height: 1.6;">
+                <p>Hello <strong>${requesterName}</strong>,</p>
+                <p>Your requisition <strong>#${displayId}: ${title}</strong> has been returned or rejected by the review committee.</p>
+                <div style="margin: 20px 0; padding: 16px; background-color: #fef2f2; border-radius: 8px; border-left: 4px solid #ef4444; font-size: 13px;">
+                  <strong>Feedback / Reason:</strong><br />
+                  <span style="color: #991b1b; font-weight: 600;">${details || "No explicit comments provided."}</span>
+                </div>
+                <p>You can edit and resubmit this requisition via the ledger dashboard.</p>
+              </div>
+              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 0 16px;" />
+              <div style="padding: 16px; font-size: 11px; color: #64748b; text-align: center;">
+                This is an automated notification from STANDS eRequisitions. Sender: ${activeSmtpUser}
+              </div>
             </div>
           `;
           break;
         default:
           bodyHtml = `
-            <div style="font-family: sans-serif; padding: 20px; color: #334155;">
-              <h2 style="color: #0f172a;">Requisition Update</h2>
+            <div style="font-family: sans-serif; padding: 24px; color: #1e293b; background-color: #ffffff; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px;">
+              <h2 style="color: #1e293b; margin-top: 0;">Requisition Activity Updated</h2>
               <p>Hello <strong>${requesterName}</strong>,</p>
-              <p>There is a new update regarding your requisition <strong>#${displayId}: ${title}</strong>. Current Status: ${status}.</p>
+              <p>Requisition <strong>#${displayId}: ${title}</strong> has been updated to status: <strong>${status}</strong>.</p>
+              ${details ? `<p><strong>Update Notes:</strong> ${details}</p>` : ""}
               <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-              <p style="font-size: 12px; color: #64748b;">This is an automated notification from STANDS eRequisitions.</p>
+              <p style="font-size: 11px; color: #64748b;">Automated message from STANDS eRequisitions. Sender: ${activeSmtpUser}</p>
             </div>
           `;
       }
 
-      await transporter.sendMail({
-        from: `"STANDS eRequisitions" <${process.env.SMTP_USER || "ict.team@pceastandrews.org"}>`,
+      const activeTransporter = nodemailer.createTransport({
+        host: activeSmtpHost,
+        port: activeSmtpPort,
+        secure: activeSmtpSecure,
+        auth: {
+          user: activeSmtpUser,
+          pass: activeSmtpPass,
+        },
+        tls: {
+          // Allow connection to servers with self-signed or older/expired SSL certificates
+          rejectUnauthorized: false
+        }
+      });
+
+      await activeTransporter.sendMail({
+        from: `"STANDS eRequisitions" <${activeSmtpUser}>`,
         to,
         subject,
         html: bodyHtml,
@@ -1382,6 +1461,97 @@ async function startServer() {
       });
 
       res.json({ success: true, deliveredTo: to, status, simulated: true, warning: err.message });
+    }
+  });
+
+  // API Route for Sending Test Emails
+  app.post("/api/test-email", async (req, res) => {
+    const { to, smtpConfig } = req.body;
+    
+    const activeSmtpPass = smtpConfig?.smtpPass || process.env.SMTP_PASS;
+    const activeSmtpUser = smtpConfig?.smtpUser || process.env.SMTP_USER || "ict.team@pceastandrews.org";
+    const activeSmtpHost = smtpConfig?.smtpHost || process.env.SMTP_HOST || "smtp.gmail.com";
+    const activeSmtpPort = parseInt(smtpConfig?.smtpPort || process.env.SMTP_PORT || "587");
+    
+    // Auto-resolve: direct SSL (secure: true) is only supported on port 465. 
+    // STARTTLS (secure: false) must be used for port 587 or others.
+    const activeSmtpSecure = activeSmtpPort === 465;
+
+    if (!activeSmtpPass) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "SMTP credentials not configured. Please enter a valid SMTP password to test." 
+      });
+    }
+
+    try {
+      const testTransporter = nodemailer.createTransport({
+        host: activeSmtpHost,
+        port: activeSmtpPort,
+        secure: activeSmtpSecure,
+        auth: {
+          user: activeSmtpUser,
+          pass: activeSmtpPass,
+        },
+        tls: {
+          // Allow connection to servers with self-signed or older/expired SSL certificates
+          rejectUnauthorized: false
+        }
+      });
+
+      const targetTo = to || activeSmtpUser || "ict.team@pceastandrews.org";
+
+      await testTransporter.sendMail({
+        from: `"STANDS eRequisitions [SMTP Test]" <${activeSmtpUser}>`,
+        to: targetTo,
+        subject: `[SMTP Test] Connection and Authorization Successful`,
+        html: `
+          <div style="font-family: sans-serif; padding: 24px; color: #1e293b; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #4f46e5; margin-top: 0;">🟢 SMTP Mailer Test Successful</h2>
+            <p>Hello,</p>
+            <p>This is a real-time verification email dispatched from your <strong>STANDS eRequisitions</strong> portal.</p>
+            <p>If you are reading this message, your SMTP credentials and mail server routing parameters are fully functional and authorized.</p>
+            <hr style="border: 0; border-top: 1px solid #cbd5e1; margin: 20px 0;" />
+            <div style="font-size: 11px; color: #64748b; font-family: monospace; line-height: 1.5;">
+              <div><strong>Host:</strong> ${activeSmtpHost}</div>
+              <div><strong>Port:</strong> ${activeSmtpPort}</div>
+              <div><strong>Secure:</strong> ${activeSmtpSecure ? "Yes" : "No"}</div>
+              <div><strong>Authenticated User:</strong> ${activeSmtpUser}</div>
+              <div><strong>Time Stamp:</strong> ${new Date().toLocaleString()}</div>
+            </div>
+          </div>
+        `,
+      });
+
+      persistActivity({
+        action: "EMAIL_TEST",
+        details: `Successful SMTP configuration test sent to ${targetTo} from ${activeSmtpUser}`,
+        performedBy: "SYSTEM_MAILER",
+        timestamp: new Date().toISOString()
+      });
+
+      res.json({ success: true, message: `Test email dispatched successfully to ${targetTo}!` });
+    } catch (err: any) {
+      console.error("Test SMTP failed:", err);
+      res.status(500).json({ success: false, error: err.message || "Failed to send test email." });
+    }
+  });
+
+  // API Route for retrieving Email dispatch logs
+  app.get("/api/email-logs", (req, res) => {
+    try {
+      const activities = restoreActivities();
+      const emailActivities = activities.filter((act: any) => 
+        act && (
+          act.action === "EMAIL_DISPATCH" || 
+          act.action === "EMAIL_SIMULATED" || 
+          act.action === "EMAIL_SKIPPED" || 
+          act.action === "EMAIL_TEST"
+        )
+      ).reverse(); // latest first
+      res.json(emailActivities);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to load email logs" });
     }
   });
 
@@ -4026,6 +4196,158 @@ async function startServer() {
         message: err.message || "Failed to authenticate. Google Service Account credentials not parsed or missing private keys."
       });
     }
+  });
+
+  // Local JSON Backup Ledger endpoints
+  app.post("/api/backup/ledger", async (req, res) => {
+    const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.SUPABASE_DIRECT_URL || "";
+    const backupsDir = path.join(process.cwd(), "backups");
+    
+    if (!fs.existsSync(backupsDir)) {
+      fs.mkdirSync(backupsDir, { recursive: true });
+    }
+
+    if (!dbUrl) {
+      console.warn("[Local Backup Ledger] DATABASE_URL is not set. Saving empty/simulated backup snapshot.");
+      const timestamp = new Date().toISOString();
+      const filename = `ledger_backup_offline_${Date.now()}.json`;
+      const filePath = path.join(backupsDir, filename);
+      
+      const payload = {
+        metadata: {
+          timestamp,
+          mode: "offline_simulated",
+          totalTables: 0,
+          notes: "Supabase connection string is missing. Simulated backup generated successfully."
+        },
+        data: {}
+      };
+
+      fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
+      return res.json({
+        success: true,
+        message: "Offline backup created successfully as database URL was not found.",
+        filename,
+        metadata: payload.metadata
+      });
+    }
+
+    const client = new pg.Client({
+      connectionString: dbUrl,
+      ssl: dbUrl.includes("supabase.co") || dbUrl.includes("supabase.com") || dbUrl.includes("pooler.supabase") 
+        ? { rejectUnauthorized: false } 
+        : undefined,
+    });
+
+    try {
+      await client.connect();
+      
+      // Discover all public tables
+      const tablesRes = await client.query(`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        ORDER BY table_name;
+      `);
+      
+      const tableData: Record<string, any[]> = {};
+      const tableCounts: Record<string, number> = {};
+      
+      for (const row of tablesRes.rows) {
+        const tableName = row.table_name;
+        try {
+          const dataRes = await client.query(`SELECT * FROM "${tableName}";`);
+          tableData[tableName] = dataRes.rows;
+          tableCounts[tableName] = dataRes.rowCount || 0;
+        } catch (tableErr: any) {
+          console.error(`[Local Backup Ledger] Failed to backup table ${tableName}:`, tableErr.message || tableErr);
+          tableData[tableName] = [];
+          tableCounts[tableName] = -1;
+        }
+      }
+      
+      const timestamp = new Date().toISOString();
+      const filename = `ledger_backup_${Date.now()}.json`;
+      const filePath = path.join(backupsDir, filename);
+      
+      const payload = {
+        metadata: {
+          timestamp,
+          mode: "online_pg",
+          totalTables: tablesRes.rows.length,
+          tableCounts
+        },
+        data: tableData
+      };
+      
+      fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
+      
+      await client.end();
+      
+      return res.json({
+        success: true,
+        message: `Successfully captured redundant snapshot containing ${tablesRes.rows.length} database tables!`,
+        filename,
+        metadata: payload.metadata
+      });
+    } catch (err: any) {
+      console.error("[Local Backup Ledger API Error]:", err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Failed to compile database snapshot."
+      });
+    }
+  });
+
+  app.get("/api/backup/ledger/list", async (req, res) => {
+    const backupsDir = path.join(process.cwd(), "backups");
+    if (!fs.existsSync(backupsDir)) {
+      return res.json({ success: true, backups: [] });
+    }
+    
+    try {
+      const files = fs.readdirSync(backupsDir);
+      const backups = files
+        .filter(f => f.endsWith(".json"))
+        .map(f => {
+          const filePath = path.join(backupsDir, f);
+          const stats = fs.statSync(filePath);
+          
+          let fileMeta: any = null;
+          try {
+            const content = fs.readFileSync(filePath, "utf-8");
+            const parsed = JSON.parse(content);
+            fileMeta = parsed.metadata || null;
+          } catch (_) {}
+          
+          return {
+            filename: f,
+            sizeBytes: stats.size,
+            createdAt: stats.mtime.toISOString(),
+            metadata: fileMeta
+          };
+        })
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        
+      return res.json({ success: true, backups });
+    } catch (err: any) {
+      console.error("[Local Backup List Error]:", err);
+      return res.status(500).json({ success: false, error: err.message || "Failed to list backups." });
+    }
+  });
+
+  app.get("/api/backup/ledger/download/:filename", async (req, res) => {
+    const { filename } = req.params;
+    if (!filename || filename.includes("/") || filename.includes("..") || !filename.endsWith(".json")) {
+      return res.status(400).json({ error: "Invalid backup filename." });
+    }
+    
+    const filePath = path.join(process.cwd(), "backups", filename);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "Backup file not found." });
+    }
+    
+    return res.download(filePath, filename);
   });
 
   // Vite middleware for development

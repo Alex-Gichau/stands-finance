@@ -2507,10 +2507,12 @@ function AppContent() {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 mt-2 w-80 bg-card rounded-xl border border-border shadow-xl overflow-hidden z-50 text-left"
+                    className="absolute right-0 mt-2 w-80 bg-card rounded-2xl border border-border shadow-xl overflow-hidden z-50 text-left backdrop-blur-md"
                   >
-                    <div className="px-4 py-3 bg-background/50 border-b border-border flex items-center justify-between">
-                      <span className="text-xs font-bold text-foreground uppercase tracking-widest">Active Alerts ({unreadNotificationsCount})</span>
+                    <div className="px-4 py-3.5 bg-background/50 border-b border-border flex items-center justify-between">
+                      <span className="text-[10px] font-black text-foreground uppercase tracking-widest flex items-center gap-1.5">
+                        🔔 Active Alerts ({unreadNotificationsCount})
+                      </span>
                       {unreadNotificationsCount > 0 && (
                         <button 
                           onClick={() => {
@@ -2523,119 +2525,151 @@ function AppContent() {
                             setShowReportReminder(false);
                             setIsNotificationsOpen(false);
                           }}
-                          className="text-[9px] font-bold text-primary uppercase tracking-tight hover:underline cursor-pointer"
+                          className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:underline cursor-pointer"
                         >
                           Clear All
                         </button>
                       )}
                     </div>
 
-                    <div className="max-h-96 overflow-y-auto divide-y divide-slate-100 scrollbar-hide">
+                    <div className="max-h-96 overflow-y-auto divide-y divide-border/20 scrollbar-hide">
                       {notificationItems.length === 0 ? (
-                        <div className="py-8 text-center text-slate-400 space-y-2 px-4">
-                          <Bell size={24} className="mx-auto opacity-20" />
-                          <p className="text-[10px] font-bold uppercase tracking-widest">ledger cleared</p>
+                        <div className="py-12 text-center text-slate-400 space-y-2 px-6">
+                          <Bell size={24} className="mx-auto opacity-20 text-indigo-500" />
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">ledger cleared</p>
                           <p className="text-[10px] text-slate-400 leading-relaxed">All member feeds and approvals are synchronized.</p>
                         </div>
                       ) : (() => {
                         const unread = notificationItems.filter(item => !readNoticeIds.includes(item.id));
                         const read = notificationItems.filter(item => readNoticeIds.includes(item.id));
 
-                        return (
-                          <>
-                            {unread.map(item => (
-                              <div 
-                                key={`dropdown-unread-${item.id}`} 
-                                onClick={() => {
-                                  if (item.requisition) {
-                                    setSelectedReqForNoticeDetail(item.requisition);
-                                    setIsNotificationsOpen(false);
-                                  }
+                        const renderItem = (item: any, isUnread: boolean) => {
+                          let icon = <Info size={12} />;
+                          let bgClass = "from-sky-500/5 to-transparent";
+                          let iconContainer = "border-sky-100 bg-sky-50 text-sky-500 dark:border-sky-950/20 dark:bg-sky-950/40 dark:text-sky-400";
+
+                          switch (item.type) {
+                            case "MEMBER_APPROVAL":
+                            case "FINANCE_DISBURSEMENT_REQUIRED":
+                              icon = <AlertTriangle size={12} />;
+                              bgClass = "from-amber-500/5 to-transparent";
+                              iconContainer = "border-amber-100 bg-amber-50 text-amber-500 dark:border-amber-950/20 dark:bg-amber-950/40 dark:text-amber-400";
+                              break;
+                            case "REQ_APPROVED":
+                              icon = <Check size={12} />;
+                              bgClass = "from-emerald-500/5 to-transparent";
+                              iconContainer = "border-emerald-100 bg-emerald-50 text-emerald-500 dark:border-emerald-950/20 dark:bg-emerald-950/40 dark:text-emerald-400";
+                              break;
+                            case "REQ_RECEIVED":
+                              icon = <Info size={12} />;
+                              bgClass = "from-indigo-500/5 to-transparent";
+                              iconContainer = "border-indigo-100 bg-indigo-50 text-indigo-500 dark:border-indigo-950/20 dark:bg-indigo-950/40 dark:text-indigo-400";
+                              break;
+                          }
+
+                          return (
+                            <div 
+                              key={`dropdown-${isUnread ? "unread" : "read"}-${item.id}`} 
+                              onClick={() => {
+                                if (item.requisition) {
+                                  setSelectedReqForNoticeDetail(item.requisition);
+                                  setIsNotificationsOpen(false);
+                                }
+                                if (isUnread) {
                                   toggleNoticeRead(item.id, true);
-                                }}
-                                className={cn(
-                                  "p-3 md:p-3.5 hover:bg-slate-50 transition-all space-y-1.5 md:space-y-2 text-[10px] md:text-xs select-none",
-                                  "border-l-2 border-indigo-500 bg-white"
-                                )}
-                              >
-                                <div className="flex items-start justify-between">
-                                  <span className={cn(
-                                    "font-bold text-[8px] md:text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded",
-                                    item.type === "MEMBER_APPROVAL" ? "bg-amber-100 text-amber-700" :
-                                    item.type === "REQ_RECEIVED" ? "bg-indigo-100 text-indigo-700" :
-                                    item.type === "REQ_APPROVED" ? "bg-emerald-100 text-emerald-700" :
-                                    "bg-rose-100 text-rose-700"
-                                  )}>
+                                }
+                              }}
+                              className={cn(
+                                "relative overflow-hidden p-3.5 hover:bg-slate-500/5 transition-all flex items-start gap-3 select-none cursor-pointer",
+                                !isUnread && "opacity-50 grayscale-[15%]"
+                              )}
+                            >
+                              {/* Soft gradient blob similar to toast */}
+                              <div className={cn("absolute inset-y-0 left-0 bg-gradient-to-r w-12 pointer-events-none", bgClass)} />
+
+                              {/* Left circular icon wrapper */}
+                              <div className="relative shrink-0 flex items-center justify-center mt-0.5">
+                                <div className={cn("flex items-center justify-center p-1 rounded-full border transition-all", iconContainer)}>
+                                  {icon}
+                                </div>
+                              </div>
+
+                              {/* Text & content area */}
+                              <div className="relative flex-1 min-w-0 pr-4">
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="text-[10px] font-bold text-foreground truncate uppercase tracking-wider">
                                     {item.title}
                                   </span>
-                                  <span className="text-[8px] font-black text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded">
-                                    NEW
-                                  </span>
+                                  {isUnread ? (
+                                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full flex-shrink-0 animate-pulse" />
+                                  ) : (
+                                    <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">READ</span>
+                                  )}
                                 </div>
-                                <p className="text-slate-600 leading-snug font-medium text-[10px] md:text-[11px]">{item.message}</p>
-                                <button 
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    await item.action();
-                                    toggleNoticeRead(item.id, true);
-                                  }}
-                                  className="w-full mt-1 py-1.5 text-center bg-slate-100 hover:bg-indigo-600 hover:text-white rounded text-[8px] md:text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer"
-                                >
-                                  {item.actionLabel}
-                                </button>
-                              </div>
-                            ))}
+                                <p className="text-[10.5px] text-muted-foreground font-medium leading-relaxed mt-0.5">
+                                  {item.message}
+                                </p>
 
-                            {unread.length > 0 && read.length > 0 && (
-                              <div className="px-4 py-2 bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                                <div className="flex-1 h-px bg-slate-200"></div>
-                                <span>History</span>
-                                <div className="flex-1 h-px bg-slate-200"></div>
-                              </div>
-                            )}
-
-                            {read.map(item => (
-                              <div 
-                                key={`dropdown-read-${item.id}`} 
-                                onClick={() => {
-                                  if (item.requisition) {
-                                    setSelectedReqForNoticeDetail(item.requisition);
-                                    setIsNotificationsOpen(false);
-                                  }
-                                }}
-                                className={cn(
-                                  "p-3 md:p-3.5 hover:bg-slate-50 transition-all space-y-1.5 md:space-y-2 text-[10px] md:text-xs select-none opacity-60 grayscale-[40%]",
-                                  item.requisition ? "cursor-pointer" : ""
-                                )}
-                              >
-                                <div className="flex items-start justify-between">
-                                  <span className="font-bold text-[8px] md:text-[9px] uppercase tracking-wider text-slate-400">
-                                    {item.title}
-                                  </span>
-                                </div>
-                                <p className="text-slate-500 leading-snug font-medium text-[10px] md:text-[11px]">{item.message}</p>
-                                <div className="flex gap-2">
-                                  <button 
+                                {/* Action button formatted as simple clean underline indicator link */}
+                                <div className="flex items-center gap-3 mt-2">
+                                  <button
+                                    type="button"
                                     onClick={async (e) => {
                                       e.stopPropagation();
                                       await item.action();
+                                      toggleNoticeRead(item.id, true);
                                     }}
-                                    className="flex-1 mt-1 py-1 text-center bg-slate-50 text-slate-400 rounded text-[8px] font-bold uppercase tracking-widest transition-all"
+                                    className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:underline cursor-pointer inline-flex items-center gap-0.5"
                                   >
-                                    RE-ACTION
+                                    {item.actionLabel} →
                                   </button>
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      toggleNoticeRead(item.id, false);
-                                    }}
-                                    className="px-2 mt-1 py-1 text-center bg-slate-50 text-slate-300 hover:text-slate-500 rounded text-[8px] font-bold uppercase tracking-widest transition-all"
-                                  >
-                                    RESTORE
-                                  </button>
+
+                                  {!isUnread && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleNoticeRead(item.id, false);
+                                      }}
+                                      className="text-[9px] font-bold text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 uppercase tracking-wider hover:underline cursor-pointer"
+                                    >
+                                      RESTORE
+                                    </button>
+                                  )}
                                 </div>
                               </div>
-                            ))}
+
+                              {/* Simple top-right close trigger */}
+                              {isUnread && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleNoticeRead(item.id, true);
+                                  }}
+                                  className="absolute top-3.5 right-3.5 text-slate-300 hover:text-slate-500 dark:text-slate-600 dark:hover:text-slate-400 transition-colors p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                                  title="Dismiss alert"
+                                >
+                                  <X size={10} />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        };
+
+                        return (
+                          <>
+                            {unread.map(item => renderItem(item, true))}
+
+                            {unread.length > 0 && read.length > 0 && (
+                              <div className="px-4 py-1.5 bg-slate-500/5 text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                <div className="flex-1 h-px bg-border/20"></div>
+                                <span>History Log</span>
+                                <div className="flex-1 h-px bg-border/20"></div>
+                              </div>
+                            )}
+
+                            {read.map(item => renderItem(item, false))}
                           </>
                         );
                       })()}
