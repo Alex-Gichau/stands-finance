@@ -36,7 +36,8 @@ app.post("/api/attachments/upload", async (req, res) => {
     
     fs.writeFileSync(filePath, buffer);
     
-    const fileUrl = `/uploads/${uniqueFileName}`;
+    const vpsIp = process.env.VPS_IP || "178.104.122.211";
+    const fileUrl = `http://${vpsIp}:3000/uploads/${uniqueFileName}`;
     console.log(`[Local Upload] Saved file to VPS local disk: ${fileUrl}`);
     
     res.json({ success: true, url: fileUrl });

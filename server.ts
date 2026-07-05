@@ -69,6 +69,143 @@ function persistActivity(activity: Activity) {
   }
 }
 
+function convertBase64ToLocalFile(attachmentStr: string, uploadsDir: string, vpsIp: string = "178.104.122.211"): string {
+  if (!attachmentStr || typeof attachmentStr !== "string") return attachmentStr;
+  
+  let fileName = "attachment";
+  let dataUrl = attachmentStr;
+  let hasPrefix = false;
+  
+  if (attachmentStr.includes("::")) {
+    const separatorIndex = attachmentStr.indexOf("::");
+    fileName = attachmentStr.substring(0, separatorIndex);
+    dataUrl = attachmentStr.substring(separatorIndex + 2);
+    hasPrefix = true;
+  }
+  
+  if (!dataUrl.startsWith("data:")) {
+    return attachmentStr;
+  }
+  
+  try {
+    const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      return attachmentStr;
+    }
+    
+    const mimeType = matches[1];
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, "base64");
+    
+    const cleanFileName = fileName.replace(/[^a-zA-Z0-9_.-]/g, "_");
+    const uniquePrefix = Math.random().toString(36).substring(2, 10) + "_" + Date.now();
+    const uniqueFileName = `${uniquePrefix}_${cleanFileName}`;
+    const filePath = path.join(uploadsDir, uniqueFileName);
+    
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    
+    fs.writeFileSync(filePath, buffer);
+    
+    const fileUrl = `http://${vpsIp}:3000/uploads/${uniqueFileName}`;
+    console.log(`[Base64 Purger] Converted base64 to VPS disk file: ${fileUrl}`);
+    
+    return hasPrefix ? `${fileName}::${fileUrl}` : fileUrl;
+  } catch (err: any) {
+    console.error(`[Base64 Purger] Failed converting base64 attachment "${fileName}":`, err.message || err);
+    return attachmentStr;
+  }
+}
+
+async function purgeBase64AttachmentsFromDb() {
+  const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.SUPABASE_DIRECT_URL || "";
+  if (!dbUrl) {
+    console.log("[Base64 Purger] DATABASE_URL is not set, skipping startup DB-level base64 purge.");
+    return;
+  }
+
+  const vpsIp = process.env.VPS_IP || "178.104.122.211";
+  const uploadsDir = path.join(process.cwd(), "uploads");
+
+  let pgClient;
+  try {
+    console.log("[Base64 Purger] Starting background base64-to-local-disk purge on database records...");
+    pgClient = new pg.Client({
+      connectionString: dbUrl,
+      ssl: dbUrl.includes("supabase.co") || dbUrl.includes("supabase.com") || dbUrl.includes("pooler.supabase")
+        ? { rejectUnauthorized: false }
+        : undefined,
+    });
+    await pgClient.connect();
+
+    const res = await pgClient.query("SELECT id, attachments, receipts FROM requisitions");
+    console.log(`[Base64 Purger] Auditing ${res.rowCount} requisitions from database.`);
+
+    let updatedCount = 0;
+    for (const row of res.rows) {
+      let isModified = false;
+      let attachments: any[] = [];
+      let receipts: any[] = [];
+
+      try {
+        attachments = typeof row.attachments === "string" ? JSON.parse(row.attachments) : (row.attachments || []);
+      } catch {
+        attachments = row.attachments || [];
+      }
+
+      try {
+        receipts = typeof row.receipts === "string" ? JSON.parse(row.receipts) : (row.receipts || []);
+      } catch {
+        receipts = row.receipts || [];
+      }
+
+      const newAttachments = attachments.map((att: any) => {
+        if (typeof att === "string") {
+          const converted = convertBase64ToLocalFile(att, uploadsDir, vpsIp);
+          if (converted !== att) {
+            isModified = true;
+          }
+          return converted;
+        }
+        return att;
+      });
+
+      const newReceipts = receipts.map((rec: any) => {
+        if (typeof rec === "string") {
+          const converted = convertBase64ToLocalFile(rec, uploadsDir, vpsIp);
+          if (converted !== rec) {
+            isModified = true;
+          }
+          return converted;
+        }
+        return rec;
+      });
+
+      if (isModified) {
+        await pgClient.query(
+          "UPDATE requisitions SET attachments = $1, receipts = $2, updated_at = NOW() WHERE id = $3",
+          [JSON.stringify(newAttachments), JSON.stringify(newReceipts), row.id]
+        );
+        updatedCount++;
+        console.log(`[Base64 Purger] Converted and updated requisition '${row.id}' files.`);
+      }
+    }
+
+    console.log(`[Base64 Purger] Base64 purge audit completed. Cleaned and updated ${updatedCount} requisition records.`);
+  } catch (err: any) {
+    console.error("[Base64 Purger] Database purge failed:", err.message || err);
+  } finally {
+    if (pgClient) {
+      try {
+        await pgClient.end();
+      } catch (endErr) {
+        console.error("[Base64 Purger] Error closing PG connection:", endErr);
+      }
+    }
+  }
+}
+
 interface SearchLog {
   query: string;
   username: string;
@@ -255,7 +392,8 @@ async function startServer() {
       
       fs.writeFileSync(filePath, buffer);
       
-      const fileUrl = `/uploads/${uniqueFileName}`;
+      const vpsIp = process.env.VPS_IP || "178.104.122.211";
+      const fileUrl = `http://${vpsIp}:3000/uploads/${uniqueFileName}`;
       console.log(`[Local Upload] Saved file to VPS local disk: ${fileUrl}`);
       
       res.json({ success: true, url: fileUrl });
@@ -3907,6 +4045,10 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    // Start background purge of legacy/accidental base64 data to VPS local files
+    purgeBase64AttachmentsFromDb().catch(err => {
+      console.error("[Startup Purge Error]:", err);
+    });
   });
 }
 

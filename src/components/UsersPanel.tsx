@@ -58,6 +58,46 @@ export const UsersPanel: React.FC = () => {
   const [filterRole, setFilterRole] = useState<string>("ALL");
   const [activeTab, setActiveTab] = useState<"users" | "groups">("users");
 
+  // Calculate users per security level
+  const securityLevelCounts = React.useMemo(() => {
+    const counts: Record<string, number> = {
+      [UserRole.CHURCH_GROUP]: 0,
+      [UserRole.APPROVER_L1]: 0,
+      [UserRole.APPROVER_L2]: 0,
+      [UserRole.FINANCE]: 0,
+      [UserRole.ADMIN]: 0,
+      [UserRole.SUPER_ADMIN]: 0,
+    };
+    users.forEach((u) => {
+      if (u.role && counts[u.role] !== undefined) {
+        counts[u.role]++;
+      }
+    });
+    return counts;
+  }, [users]);
+
+  // Calculate users per affiliated group
+  const groupCounts = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    
+    // Initialize defined groups
+    churchGroups.forEach((g) => {
+      if (g && g.name) {
+        counts[g.name] = 0;
+      }
+    });
+    
+    users.forEach((u) => {
+      const uGroups = u.groups && u.groups.length > 0 ? u.groups : (u.group ? [u.group] : ["INDEPENDENT"]);
+      uGroups.forEach((gName) => {
+        if (gName) {
+          counts[gName] = (counts[gName] || 0) + 1;
+        }
+      });
+    });
+    return counts;
+  }, [users, churchGroups]);
+
   // Group search & filtering states under identity & affiliations
   const [groupSearchTerm, setGroupSearchTerm] = useState("");
 
@@ -413,6 +453,87 @@ export const UsersPanel: React.FC = () => {
 
       {activeTab === "users" ? (
         <>
+          {/* Directory Metrics & Quick Stats: Single Horizontal Scrolling Row */}
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm mb-4">
+            <div className="flex items-center gap-4 overflow-x-auto pb-1 scrollbar-none" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              
+              {/* Security Levels */}
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                  <Shield size={12} className="text-primary" />
+                  <span>Roles:</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {Object.values(UserRole).map((role) => {
+                    const count = securityLevelCounts[role] || 0;
+                    let colorClasses = "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700/60";
+                    if (role === UserRole.SUPER_ADMIN) {
+                      colorClasses = "bg-purple-50 text-purple-700 border-purple-100 dark:bg-purple-950/20 dark:text-purple-400 dark:border-purple-900/30";
+                    } else if (role === UserRole.ADMIN) {
+                      colorClasses = "bg-indigo-50 text-indigo-700 border-indigo-100 dark:bg-indigo-950/20 dark:text-indigo-400 dark:border-indigo-900/30";
+                    } else if (role === UserRole.APPROVER_L1 || role === UserRole.APPROVER_L2) {
+                      colorClasses = "bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30";
+                    } else if (role === UserRole.FINANCE) {
+                      colorClasses = "bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900/30";
+                    } else if (role === UserRole.CHURCH_GROUP) {
+                      colorClasses = "bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30";
+                    }
+
+                    return (
+                      <div 
+                        key={role}
+                        className={cn(
+                          "px-2.5 py-1 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 transition-all hover:scale-[1.02] shrink-0",
+                          colorClasses
+                        )}
+                      >
+                        <span className="uppercase tracking-wide text-[9px] whitespace-nowrap">{role.replace('_', ' ')}</span>
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-white/60 dark:bg-black/20 font-mono">
+                          {count}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Vertical Divider */}
+              <div className="h-6 w-[1px] bg-slate-200 dark:bg-slate-800 shrink-0 self-center" />
+
+              {/* Affiliated Groups */}
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                  <Building2 size={12} className="text-teal-500 animate-pulse" />
+                  <span>Groups:</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {Object.entries(groupCounts).map(([gName, count]) => {
+                    const isIndependent = gName === "INDEPENDENT";
+                    return (
+                      <div 
+                        key={gName}
+                        className={cn(
+                          "px-2.5 py-1 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 transition-all hover:scale-[1.02] shrink-0",
+                          isIndependent 
+                            ? "bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-800/40 dark:text-slate-400 dark:border-slate-700/40"
+                            : "bg-teal-50 text-teal-700 border-teal-100 dark:bg-teal-950/20 dark:text-teal-400 dark:border-teal-900/30"
+                        )}
+                      >
+                        <span className="uppercase tracking-wide text-[9px] whitespace-nowrap max-w-[120px] truncate" title={gName}>
+                          {gName}
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-white/60 dark:bg-black/20 font-mono">
+                          {count}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+            </div>
+          </div>
+
           {/* Filter bar */}
           <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="relative flex-1 max-w-md">
@@ -454,14 +575,6 @@ export const UsersPanel: React.FC = () => {
                 <th className="px-4 md:px-8 py-4 hidden sm:table-cell">Security Level</th>
                 <th className="px-4 md:px-8 py-4 hidden md:table-cell">Affiliation / Key</th>
                 <th className="px-4 md:px-8 py-4">Status</th>
-                {currentUser?.role === UserRole.SUPER_ADMIN && (
-                  <th className="px-4 md:px-8 py-4 hidden lg:table-cell text-center">
-                    <span className="flex items-center justify-center gap-1.5">
-                      <Zap size={10} className="text-amber-500" />
-                      Usage %
-                    </span>
-                  </th>
-                )}
                 <th className="px-4 md:px-8 py-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -587,28 +700,7 @@ export const UsersPanel: React.FC = () => {
                         )}
                       </div>
                     </td>
-                    {currentUser?.role === UserRole.SUPER_ADMIN && (
-                      <td className="px-4 md:px-8 py-2 md:py-5 hidden lg:table-cell align-middle">
-                        <div className="flex flex-col items-center gap-1.5">
-                          <div className="flex items-center gap-2">
-                             <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50">
-                               <motion.div 
-                                 initial={{ width: 0 }}
-                                 animate={{ width: `${(user.isActive ? 65 : 12) + (user.id.charCodeAt(0) % 30)}%` }}
-                                 className={cn(
-                                   "h-full rounded-full",
-                                   user.isActive ? "bg-primary" : "bg-slate-300"
-                                 )}
-                               />
-                             </div>
-                             <span className="text-[10px] font-black text-slate-800 dark:text-slate-200 tabular-nums">
-                               {(user.isActive ? 65 : 12) + (user.id.charCodeAt(0) % 30)}%
-                             </span>
-                          </div>
-                          <p className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter text-center">System Activity Score</p>
-                        </div>
-                      </td>
-                    )}
+
                     <td className="px-4 md:px-8 py-3 md:py-5 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end items-center gap-1 md:gap-2">
                         {user.id !== currentUser?.id && currentUser?.role === UserRole.SUPER_ADMIN && (
