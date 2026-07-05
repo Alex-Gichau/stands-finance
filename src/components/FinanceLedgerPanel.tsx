@@ -31,7 +31,9 @@ import {
   Database,
   Flag,
   Lock,
-  ShieldCheck
+  ShieldCheck,
+  Download,
+  Calendar
 } from "lucide-react";
 import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition, Project } from "../types";
@@ -751,6 +753,80 @@ export const FinanceLedgerPanel: React.FC = () => {
     };
   }, [requisitions, projects]);
 
+  // Calculate transaction totals by last week, this week, this month, and this year
+  const timeBasedMetrics = useMemo(() => {
+    const now = new Date();
+    
+    // 1. This Year (Jan 1st of current year)
+    const startOfThisYear = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+    
+    // 2. This Month (1st of current month)
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    
+    // 3. This Week (Sunday as start of current week)
+    const startOfThisWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dayOfWeek = now.getDay(); // 0 (Sun) to 6 (Sat)
+    startOfThisWeek.setDate(now.getDate() - dayOfWeek);
+    startOfThisWeek.setHours(0, 0, 0, 0);
+    
+    // 4. Last Week (Starts 7 days before startOfThisWeek, ends at startOfThisWeek)
+    const startOfLastWeek = new Date(startOfThisWeek);
+    startOfLastWeek.setDate(startOfThisWeek.getDate() - 7);
+    
+    const endOfLastWeek = new Date(startOfThisWeek);
+
+    // Filter requisitions that represent committed ledger transactions
+    const ledgerReqs = requisitions.filter(r => 
+      r.status === RequisitionStatus.APPROVED_L2 || r.status === RequisitionStatus.DISBURSED
+    );
+
+    let lastWeekTotal = 0;
+    let lastWeekCount = 0;
+    let thisWeekTotal = 0;
+    let thisWeekCount = 0;
+    let thisMonthTotal = 0;
+    let thisMonthCount = 0;
+    let thisYearTotal = 0;
+    let thisYearCount = 0;
+
+    ledgerReqs.forEach(req => {
+      const reqDate = new Date(req.updatedAt || req.submittedAt);
+      const reqTime = reqDate.getTime();
+      const amount = req.amount || 0;
+
+      // This Year
+      if (reqTime >= startOfThisYear.getTime()) {
+        thisYearTotal += amount;
+        thisYearCount++;
+      }
+
+      // This Month
+      if (reqTime >= startOfThisMonth.getTime()) {
+        thisMonthTotal += amount;
+        thisMonthCount++;
+      }
+
+      // This Week
+      if (reqTime >= startOfThisWeek.getTime()) {
+        thisWeekTotal += amount;
+        thisWeekCount++;
+      }
+
+      // Last Week
+      if (reqTime >= startOfLastWeek.getTime() && reqTime < endOfLastWeek.getTime()) {
+        lastWeekTotal += amount;
+        lastWeekCount++;
+      }
+    });
+
+    return {
+      lastWeek: { total: lastWeekTotal, count: lastWeekCount },
+      thisWeek: { total: thisWeekTotal, count: thisWeekCount },
+      thisMonth: { total: thisMonthTotal, count: thisMonthCount },
+      thisYear: { total: thisYearTotal, count: thisYearCount }
+    };
+  }, [requisitions]);
+
   // Handle Budget top up directly in Database
   const handleBudgetTopUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -898,6 +974,93 @@ export const FinanceLedgerPanel: React.FC = () => {
   // Double entry voucher layout generator window trigger
   const printLedgerVoucher = (req: Requisition) => {
     printRequisitionVoucher(req, currentUser);
+  };
+
+  // Export general ledger transactions to CSV for Excel/Google Sheets
+  const handleDownloadCSV = async () => {
+    if (ledgerEntries.length === 0) {
+      alert("No transaction logs found to export.");
+      return;
+    }
+
+    // Define columns
+    const headers = [
+      "Voucher ID",
+      "Title",
+      "Ministry/Group",
+      "Project/Account",
+      "Payee/Vendor",
+      "Amount (KES)",
+      "Status",
+      "Submitted At",
+      "L1 Approved At",
+      "L2 Approved At",
+      "Disbursed At",
+      "Requester Name",
+      "Requester Email",
+      "Description",
+      "Fiscal Year"
+    ];
+
+    // Helper to escape CSV values
+    const escapeCSV = (val: any) => {
+      if (val === null || val === undefined) return "";
+      let str = String(val);
+      // Escape double quotes by doubling them
+      str = str.replace(/"/g, '""');
+      // Wrap in double quotes if it contains commas, double quotes, or newlines
+      if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
+        return `"${str}"`;
+      }
+      return str;
+    };
+
+    const csvRows = [];
+    csvRows.push(headers.join(","));
+
+    for (const entry of ledgerEntries) {
+      const row = [
+        escapeCSV(entry.id),
+        escapeCSV(entry.title),
+        escapeCSV(entry.groupName),
+        escapeCSV(entry.projectId || "General Budget"),
+        escapeCSV(entry.payableTo || "N/A"),
+        escapeCSV(entry.amount),
+        escapeCSV(entry.status),
+        escapeCSV(entry.submittedAt ? new Date(entry.submittedAt).toLocaleDateString() : ""),
+        escapeCSV(entry.approvedAtL1 ? new Date(entry.approvedAtL1).toLocaleDateString() : ""),
+        escapeCSV(entry.approvedAtL2 ? new Date(entry.approvedAtL2).toLocaleDateString() : ""),
+        escapeCSV(entry.disbursedAt ? new Date(entry.disbursedAt).toLocaleDateString() : ""),
+        escapeCSV(entry.requesterName),
+        escapeCSV(entry.requesterEmail || "N/A"),
+        escapeCSV(entry.description),
+        escapeCSV(entry.fiscalYear || "")
+      ];
+      csvRows.push(row.join(","));
+    }
+
+    const csvContent = csvRows.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    const filename = `PCEA_St_Andrews_Finance_Ledger_${activeYear || "Report"}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.setAttribute("download", filename);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // Optional system log auditing
+    try {
+      await addSystemLog(
+        "LEDGER_EXPORT",
+        `Exported general ledger transaction CSV containing ${ledgerEntries.length} lines for auditing.`,
+        { exportCount: ledgerEntries.length, fiscalYear: activeYear }
+      );
+    } catch (e) {
+      console.warn("Failed to log ledger export:", e);
+    }
   };
 
   // Render Yearly Budgeting & Fiscal Books
@@ -1350,6 +1513,91 @@ export const FinanceLedgerPanel: React.FC = () => {
         status={systemSettings?.fiscalYearStatus}
       />
 
+      {/* Time Horizon Transaction Volume Card Row */}
+      <div id="ledger-time-horizon-container" className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
+              <Calendar size={15} strokeWidth={2.5} />
+            </div>
+            <div>
+              <h3 id="time-horizon-header-title" className="text-xs font-black text-slate-800 uppercase tracking-widest">
+                Committed Ledger Volumes
+              </h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                Consolidated totals from approved & disbursed vouchers
+              </p>
+            </div>
+          </div>
+          <span className="text-[9px] font-mono text-slate-400 bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-md font-bold self-start sm:self-center">
+            REAL-TIME CALENDAR CALCULATION
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Last Week */}
+          <div id="metric-last-week-card" className="bg-slate-50/60 p-4 rounded-2xl border border-slate-100 flex flex-col justify-between group hover:border-indigo-100 transition-all hover:bg-white">
+            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1">
+              Last Week
+            </span>
+            <div className="space-y-1">
+              <h4 className="text-lg font-black text-slate-800 tracking-tight font-mono">
+                {formatCurrency(timeBasedMetrics.lastWeek.total)}
+              </h4>
+              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">
+                {timeBasedMetrics.lastWeek.count} approved voucher{timeBasedMetrics.lastWeek.count !== 1 ? "s" : ""}
+              </p>
+            </div>
+          </div>
+
+          {/* This Week */}
+          <div id="metric-this-week-card" className="bg-indigo-50/30 p-4 rounded-2xl border border-indigo-500/15 flex flex-col justify-between group hover:border-indigo-300 transition-all hover:bg-indigo-50/50">
+            <span className="text-[9px] font-extrabold text-indigo-500 uppercase tracking-widest block mb-1 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />
+              This Week
+            </span>
+            <div className="space-y-1">
+              <h4 className="text-lg font-black text-indigo-900 tracking-tight font-mono">
+                {formatCurrency(timeBasedMetrics.thisWeek.total)}
+              </h4>
+              <p className="text-[9px] text-indigo-500/80 font-bold uppercase tracking-wider">
+                {timeBasedMetrics.thisWeek.count} active voucher{timeBasedMetrics.thisWeek.count !== 1 ? "s" : ""}
+              </p>
+            </div>
+          </div>
+
+          {/* This Month */}
+          <div id="metric-this-month-card" className="bg-emerald-50/30 p-4 rounded-2xl border border-emerald-500/15 flex flex-col justify-between group hover:border-emerald-300 transition-all hover:bg-emerald-50/50">
+            <span className="text-[9px] font-extrabold text-emerald-600 uppercase tracking-widest block mb-1">
+              This Month
+            </span>
+            <div className="space-y-1">
+              <h4 className="text-lg font-black text-emerald-950 tracking-tight font-mono">
+                {formatCurrency(timeBasedMetrics.thisMonth.total)}
+              </h4>
+              <p className="text-[9px] text-emerald-600/80 font-bold uppercase tracking-wider">
+                {timeBasedMetrics.thisMonth.count} voucher{timeBasedMetrics.thisMonth.count !== 1 ? "s" : ""} logged
+              </p>
+            </div>
+          </div>
+
+          {/* This Year */}
+          <div id="metric-this-year-card" className="bg-blue-50/30 p-4 rounded-2xl border border-blue-500/15 flex flex-col justify-between group hover:border-blue-300 transition-all hover:bg-blue-50/50">
+            <span className="text-[9px] font-extrabold text-blue-600 uppercase tracking-widest block mb-1">
+              This Fiscal Year
+            </span>
+            <div className="space-y-1">
+              <h4 className="text-lg font-black text-blue-950 tracking-tight font-mono">
+                {formatCurrency(timeBasedMetrics.thisYear.total)}
+              </h4>
+              <p className="text-[9px] text-blue-600/80 font-bold uppercase tracking-wider">
+                {timeBasedMetrics.thisYear.count} cumulative voucher{timeBasedMetrics.thisYear.count !== 1 ? "s" : ""}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* 2. Fiscal Analytics Deck */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         
@@ -1563,6 +1811,16 @@ export const FinanceLedgerPanel: React.FC = () => {
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
+
+              {/* Export CSV Button */}
+              <button
+                onClick={handleDownloadCSV}
+                className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs rounded-lg px-3 py-1.5 font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+                title="Export current filtered ledger logs to CSV"
+              >
+                <Download size={13} strokeWidth={2.5} />
+                <span>Export CSV</span>
+              </button>
             </div>
           </div>
 
