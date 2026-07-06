@@ -31,6 +31,7 @@ import { AccessControlPanel } from "./components/AccessControlPanel";
 import { VendorsPanel } from "./components/VendorsPanel";
 import { AuditLogsPanel } from "./components/AuditLogsPanel";
 import { HelpPanel } from "./components/HelpPanel";
+import { SlackIntegrationPanel } from "./components/SlackIntegrationPanel";
 import { AnnouncementBanner } from "./components/AnnouncementBanner";
 import { ProductTour } from "./components/ProductTour";
 import { FeedbackModal } from "./components/FeedbackModal";
@@ -738,6 +739,40 @@ function AppContent() {
       window.removeEventListener("click", handleGlobalClick);
     };
   }, [currentUser, currentView]);
+
+  // Network Offline / Online Toast Notification Monitor
+  useEffect(() => {
+    const handleOnline = () => {
+      triggerToast({
+        type: "SYSTEM_INFO",
+        severity: "LOW",
+        message: "🟢 Network connection restored. Re-synchronizing live ecosystem database states...",
+        timestamp: new Date().toISOString()
+      });
+    };
+
+    const handleOffline = () => {
+      triggerToast({
+        type: "SYSTEM_INFO",
+        severity: "HIGH",
+        message: "⚠️ You are offline. Requisitions can be drafted locally, but live database sync is suspended.",
+        timestamp: new Date().toISOString()
+      });
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    // Initial check on load
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      handleOffline();
+    }
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [triggerToast]);
 
   const [showProfilePrompt, setShowProfilePrompt] = useState(false);
   const [hasPromptBeenShown, setHasPromptBeenShown] = useState(false);
@@ -1605,6 +1640,7 @@ function AppContent() {
       case "finance": return <FinanceLedgerPanel />;
       case "accessControl": return <AccessControlPanel />;
       case "auditTrail": return <AuditLogsPanel />;
+      case "slackIntegration": return <SlackIntegrationPanel />;
       case "help": return <HelpPanel onPlayTour={() => setIsTourOpen(true)} />;
       default: return <Dashboard onViewChange={setCurrentView} darkMode={darkMode} setDarkMode={handleToggleTheme} />;
     }

@@ -597,7 +597,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         [UserRole.APPROVER_L1]: ["dashboard", "requisitions", "approvals", "notifications", "finance"],
         [UserRole.APPROVER_L2]: ["dashboard", "requisitions", "approvals", "notifications", "finance"],
         [UserRole.FINANCE]: ["dashboard", "requisitions", "finance", "reports", "notifications", "settings", "auditTrail", "transactions"],
-        [UserRole.ADMIN]: ["dashboard", "requisitions", "vendors", "approvals", "finance", "reports", "users", "settings", "notifications", "auditTrail", "accessControl", "transactions"],
+        [UserRole.ADMIN]: ["dashboard", "requisitions", "vendors", "approvals", "finance", "reports", "users", "settings", "notifications", "auditTrail", "accessControl", "transactions", "slackIntegration"],
       };
       return defaults[currentUser.role]?.includes(viewId) ?? false;
     }

@@ -315,6 +315,10 @@ export interface SystemSettings {
   announcementIsActive?: boolean;
   requisitionExpiryDays?: number;
   migrationFeatureActive?: boolean;
+  slackScheduleFrequency?: "daily" | "weekly" | "off";
+  slackScheduleTime?: string;
+  slackScheduleDay?: string;
+  slackScheduledTypes?: string[];
 }
 
 export interface SupplementaryBudgetRequest {
