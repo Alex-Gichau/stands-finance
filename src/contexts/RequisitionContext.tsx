@@ -2609,27 +2609,12 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     };
 
     fetchAllFromSupabase();
-
-    // Optimizing the fetching loop step B: Use Supabase Realtime subscriptions
-    // instead of aggressively polling the database every 5 seconds.
-    const supabase = getSupabaseClient();
-    let realtimeChannel: any = null;
-    
-    if (supabase) {
-      realtimeChannel = supabase.channel('unified-db-changes')
-        .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-          if (active) {
-            fetchAllFromSupabase();
-          }
-        })
-        .subscribe();
-    }
+    // Background polling interval to keep UI reactive even without websockets
+    pollInterval = setInterval(fetchAllFromSupabase, 5000);
 
     return () => {
       active = false;
-      if (realtimeChannel && supabase) {
-        supabase.removeChannel(realtimeChannel);
-      }
+      if (pollInterval) clearInterval(pollInterval);
     };
   }, [
     currentUserId,

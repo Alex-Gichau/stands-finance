@@ -2460,6 +2460,266 @@ export const SettingsPanel: React.FC = () => {
                 </div>
               </section>
             )}
+
+            {/* API Notification Control Center (Slack Integration - Prompt 6) */}
+            <section className="bg-card rounded-[2rem] border border-border p-8 shadow-sm transition-all space-y-6">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-bold text-lg">
+                  💬
+                </span>
+                <div>
+                  <h3 className="text-xs font-black text-foreground uppercase tracking-[0.2em]">Slack Integration Commands</h3>
+                  <p className="text-[9px] text-indigo-500 font-mono font-bold uppercase tracking-widest mt-1">
+                    System Monitors & Action Hub (Prompt 6)
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-[10px] text-muted leading-relaxed font-semibold">
+                Directly configure, audit, and force-dispatch Slack notifications across workflows. Perfect for validating alerting coverage paths, interactive action attachments, and performance monitor targets.
+              </p>
+
+              {slackActionResult && (
+                <motion.div
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`p-4 rounded-2xl border text-[10px] font-mono leading-relaxed space-y-1.5 ${
+                    slackActionResult.success
+                      ? "bg-emerald-500/5 border-emerald-200/50 text-emerald-800 dark:text-emerald-300 dark:border-emerald-900/30"
+                      : "bg-rose-500/5 border-rose-200/50 text-rose-800 dark:text-rose-300 dark:border-rose-900/30"
+                  }`}
+                >
+                  <div className="font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5 text-slate-800 dark:text-slate-100">
+                    {slackActionResult.success ? "🟢 Alert Synced" : "🔴 Dispatch Failure"}
+                    {slackActionResult.mode === "simulated" && (
+                      <span className="px-1.5 py-0.5 rounded-lg border border-yellow-200 bg-yellow-50 text-[8px] text-yellow-800 font-bold dark:bg-yellow-950/20 dark:border-yellow-900/30">
+                        SIMULATED FALLBACK
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="font-bold">Command:</span> {slackActionResult.type?.toUpperCase()}
+                  </div>
+                  {slackActionResult.message && (
+                    <div>
+                      <span className="font-bold">Log:</span> {slackActionResult.message}
+                    </div>
+                  )}
+                  {slackActionResult.staleCount !== undefined && (
+                    <div>
+                      <span className="font-bold">Flagged Stale Requisitions:</span> {slackActionResult.staleCount}
+                    </div>
+                  )}
+                  {slackActionResult.anomaliesCount !== undefined && (
+                    <div>
+                      <span className="font-bold">Suspicious Velocity Profiles:</span> {slackActionResult.anomaliesCount}
+                    </div>
+                  )}
+                </motion.div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 1. Morning Briefing */}
+                <div className="p-4 rounded-2xl border border-border bg-background/50 space-y-3 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-[10px] font-extrabold uppercase text-foreground tracking-wider flex items-center gap-1.5">
+                      <span>☀️</span> Morning Operational Briefing
+                    </h4>
+                    <p className="text-[9px] text-muted font-bold mt-1 leading-relaxed">
+                      Compiles and schedules unapproved tickets into block structures for L1/L2 verifiers.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={dispatchMorningBriefing}
+                    disabled={slackActionLoading["morning"]}
+                    className="w-full py-2.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {slackActionLoading["morning"] ? (
+                      <RefreshCw size={10} className="animate-spin" />
+                    ) : (
+                      <Bell size={10} />
+                    )}
+                    Send Morning Brief
+                  </button>
+                </div>
+
+                {/* 2. EOD activity snapshot */}
+                <div className="p-4 rounded-2xl border border-border bg-background/50 space-y-3 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-[10px] font-extrabold uppercase text-foreground tracking-wider flex items-center gap-1.5">
+                      <span>🌙</span> EOD Activity Snapshot
+                    </h4>
+                    <p className="text-[9px] text-muted font-bold mt-1 leading-relaxed">
+                      Sends active user sessions, processed items count, and disbursement sums to channels.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={dispatchEodSnapshot}
+                    disabled={slackActionLoading["eod"]}
+                    className="w-full py-2.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {slackActionLoading["eod"] ? (
+                      <RefreshCw size={10} className="animate-spin" />
+                    ) : (
+                      <Activity size={10} />
+                    )}
+                    Send EOD snapshot
+                  </button>
+                </div>
+
+                {/* 3. User Analytics Leaderboard */}
+                <div className="p-4 rounded-2xl border border-border bg-background/50 space-y-3 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-[10px] font-extrabold uppercase text-foreground tracking-wider flex items-center gap-1.5">
+                      <span>🏆</span> Engagement Leaderboard
+                    </h4>
+                    <p className="text-[9px] text-muted font-bold mt-1 leading-relaxed">
+                      Ranks users dynamically from audit logs by active logins and ledger interventions.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={dispatchWeeklyLeaderboard}
+                    disabled={slackActionLoading["leaderboard"]}
+                    className="w-full py-2.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {slackActionLoading["leaderboard"] ? (
+                      <RefreshCw size={10} className="animate-spin" />
+                    ) : (
+                      <Gauge size={10} />
+                    )}
+                    Send Leaderboard
+                  </button>
+                </div>
+
+                {/* 4. Stale Requisitions sweep */}
+                <div className="p-4 rounded-2xl border border-border bg-background/50 space-y-3 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-[10px] font-extrabold uppercase text-foreground tracking-wider flex items-center gap-1.5">
+                      <span>⏳</span> Scan Stale Pending Tickets
+                    </h4>
+                    <p className="text-[9px] text-muted font-bold mt-1 leading-relaxed">
+                      Identifies and alerts of submissions stagnant for &gt;48 hours to accelerate the pipeline.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={dispatchStaleScan}
+                    disabled={slackActionLoading["stale"]}
+                    className="w-full py-2.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {slackActionLoading["stale"] ? (
+                      <RefreshCw size={10} className="animate-spin" />
+                    ) : (
+                      <Clock size={10} />
+                    )}
+                    Dispatch Stale Warnings
+                  </button>
+                </div>
+
+                {/* 5. Behavioral Anomalies scan */}
+                <div className="p-4 rounded-2xl border border-border bg-background/50 space-y-3 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-[10px] font-extrabold uppercase text-foreground tracking-wider flex items-center gap-1.5">
+                      <span>🛡️</span> Scan Irregular Velocity Spikes
+                    </h4>
+                    <p className="text-[9px] text-muted font-bold mt-1 leading-relaxed">
+                      Audits user velocity for multiple high-value acquisitions created in narrow windows.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={dispatchBehavioralAnomalies}
+                    disabled={slackActionLoading["anomalies"]}
+                    className="w-full py-2.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {slackActionLoading["anomalies"] ? (
+                      <RefreshCw size={10} className="animate-spin" />
+                    ) : (
+                      <ShieldCheck size={10} />
+                    )}
+                    Deploy Security Audit
+                  </button>
+                </div>
+
+                {/* 6. Latency alerts monitor */}
+                <div className="p-4 rounded-2xl border border-border bg-background/50 space-y-3 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-[10px] font-extrabold uppercase text-foreground tracking-wider flex items-center gap-1.5">
+                      <span>⚡</span> Simulate Lag Warning
+                    </h4>
+                    <p className="text-[9px] text-muted font-bold mt-1 leading-relaxed">
+                      Dispatches performance warning logs for DB queries exceeding SLA latency thresholds.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={dispatchLatencyAlert}
+                    disabled={slackActionLoading["latency"]}
+                    className="w-full py-2.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {slackActionLoading["latency"] ? (
+                      <RefreshCw size={10} className="animate-spin" />
+                    ) : (
+                      <Zap size={10} />
+                    )}
+                    Simulate Lag Alert
+                  </button>
+                </div>
+
+                {/* 7. Daily Search Metrics Summary */}
+                <div className="p-4 rounded-2xl border border-border bg-background/50 space-y-3 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-[10px] font-extrabold uppercase text-foreground tracking-wider flex items-center gap-1.5">
+                      <span>🔍</span> Daily Search Metrics
+                    </h4>
+                    <p className="text-[9px] text-muted font-bold mt-1 leading-relaxed">
+                      Compiles and dispatches the top 5 most searched queries of the day to the system channels.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={dispatchDailySearchSummary}
+                    disabled={slackActionLoading["search-daily"]}
+                    className="w-full py-2.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {slackActionLoading["search-daily"] ? (
+                      <RefreshCw size={10} className="animate-spin" />
+                    ) : (
+                      <Activity size={10} />
+                    )}
+                    Send Daily Search Report
+                  </button>
+                </div>
+
+                {/* 8. Weekly Search Summary */}
+                <div className="p-4 rounded-2xl border border-border bg-background/50 space-y-3 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-[10px] font-extrabold uppercase text-foreground tracking-wider flex items-center gap-1.5">
+                      <span>📊</span> Weekly Search Summary
+                    </h4>
+                    <p className="text-[9px] text-muted font-bold mt-1 leading-relaxed">
+                      Aggregates search query frequency for the last 7 days and delivers the trending top 5 list.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={dispatchWeeklySearchSummary}
+                    disabled={slackActionLoading["search-weekly"]}
+                    className="w-full py-2.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {slackActionLoading["search-weekly"] ? (
+                      <RefreshCw size={10} className="animate-spin" />
+                    ) : (
+                      <Gauge size={10} />
+                    )}
+                    Send Weekly Search Report
+                  </button>
+                </div>
+              </div>
+            </section>
           </>
           )}
 

@@ -21,9 +21,7 @@ import {
   ArrowRight,
   Sparkles,
   CheckSquare,
-  Square,
-  Send,
-  Zap
+  Square
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { UserRole } from "../types";
@@ -64,7 +62,6 @@ export const SlackIntegrationPanel: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [simulating, setSimulating] = useState(false);
   const [consoleLogs, setConsoleLogs] = useState<Array<{ text: string; type: "info" | "success" | "warning" | "error"; timestamp: string }>>([]);
-  const [immediateLoading, setImmediateLoading] = useState<{[key: string]: boolean}>({});
 
   // Available report types configuration
   const reportTypes = [
@@ -146,43 +143,20 @@ export const SlackIntegrationPanel: React.FC = () => {
     { 
       id: "anomalies", 
       name: "🛡️ Behavioral Velocity Anomalies", 
-      desc: "Audits user velocity profiles for multiple high-value acquisitions in narrow windows.",
+      desc: "Audits audit log velocity profiles for irregular high-frequency submissions.",
       endpoint: "/api/slack/alert-behavioral-anomalies",
       getPayload: () => {
-        const userHighValueSubmissionTimes: { [user: string]: number[] } = {};
-        const anomaliesList: any[] = [];
-        requisitions.forEach(r => {
-          const user = r.requesterEmail || "Member";
-          const amount = r.amount || 0;
-          if (amount >= 100000) {
-            if (!userHighValueSubmissionTimes[user]) userHighValueSubmissionTimes[user] = [];
-            const t = new Date(r.submittedAt).getTime();
-            userHighValueSubmissionTimes[user].push(t);
-          }
+        const logs = systemLogs || [];
+        const thirtyMinsAgo = Date.now() - (30 * 60 * 1000);
+        const recentSubmissions = logs.filter((l: any) => {
+          return l.action === "REQUISITION_SUBMIT" && new Date(l.timestamp).getTime() > thirtyMinsAgo;
         });
-        Object.entries(userHighValueSubmissionTimes).forEach(([user, times]) => {
-          times.sort((a, b) => a - b);
-          for (let i = 1; i < times.length; i++) {
-            const diffMs = times[i] - times[i - 1];
-            if (diffMs < (24 * 60 * 60 * 1000)) {
-              anomaliesList.push({
-                user,
-                description: `Submitted multiple high-value transactions (>= 100,000 KES) within a 24-hour window. Risk score HIGH.`,
-                timestamp: new Date(times[i]).toISOString()
-              });
-            }
-          }
+        const counts: { [user: string]: number } = {};
+        recentSubmissions.forEach((l: any) => {
+          counts[l.performedBy] = (counts[l.performedBy] || 0) + 1;
         });
-        return { anomaliesList };
-      }
-    },
-    { 
-      id: "latency", 
-      name: "⚡ Performance Latency Alert", 
-      desc: "Dispatches database query SLA violation warning telemetry logs to Slack channels.",
-      endpoint: "/api/slack/alert-latency",
-      getPayload: () => {
-        return { endpoint: "/api/check-balance", durationMs: 1420 };
+        const anomalousUsers = Object.keys(counts).filter(u => counts[u] > 3);
+        return { anomalousCount: anomalousUsers.length, users: anomalousUsers };
       }
     },
     { 
@@ -354,53 +328,6 @@ export const SlackIntegrationPanel: React.FC = () => {
       message: `Simulated schedule completed: ${successCount} sent, ${failCount} failed.`,
       timestamp: new Date().toISOString()
     });
-  };
-
-  const handleExecuteImmediately = async (id: string) => {
-    const config = reportTypes.find(t => t.id === id);
-    if (!config) return;
-
-    setImmediateLoading(prev => ({ ...prev, [id]: true }));
-    addConsoleLog(`Initiating manual dispatch for ${config.name}...`, "info");
-
-    try {
-      const payload = config.getPayload ? config.getPayload() : {};
-      const response = await fetch(config.endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      
-      const data = await response.json().catch(() => ({}));
-      
-      if (response.ok && (data.success || data.ok)) {
-        addConsoleLog(`🟢 [Success] ${config.name} delivered immediately. Status 200.`, "success");
-        triggerToast({
-          type: "SYSTEM_INFO",
-          severity: "MEDIUM",
-          message: `Successfully dispatched Slack action: ${id.toUpperCase()}`,
-          timestamp: new Date().toISOString()
-        });
-      } else {
-        addConsoleLog(`🔴 [Failed] ${config.name} dispatch error: ${data.error || "Unknown server response error."}`, "error");
-        triggerToast({
-          type: "SYSTEM_INFO",
-          severity: "HIGH",
-          message: data.error || `Failed to dispatch Slack ${id}.`,
-          timestamp: new Date().toISOString()
-        });
-      }
-    } catch (err: any) {
-      addConsoleLog(`🔴 [Failed] ${config.name} network exception: ${err.message || String(err)}`, "error");
-      triggerToast({
-        type: "SYSTEM_INFO",
-        severity: "HIGH",
-        message: err.message || `Failed to contact Slack integration endpoint.`,
-        timestamp: new Date().toISOString()
-      });
-    } finally {
-      setImmediateLoading(prev => ({ ...prev, [id]: false }));
-    }
   };
 
   return (
@@ -581,56 +508,36 @@ export const SlackIntegrationPanel: React.FC = () => {
                     key={report.id}
                     onClick={() => handleToggleType(report.id)}
                     className={cn(
-                      "p-4 rounded-2xl border transition-all flex items-center justify-between gap-3.5 cursor-pointer hover:border-primary/30",
+                      "p-4 rounded-2xl border transition-all flex items-start gap-3.5 cursor-pointer hover:border-primary/30",
                       isChecked 
                         ? "border-primary/20 bg-primary/5" 
                         : "border-border bg-background/50"
                     )}
                   >
-                    <div className="flex items-start gap-3 min-w-0 flex-1">
-                      <button
-                        type="button"
-                        className="mt-0.5 shrink-0 text-primary transition-colors focus:outline-none"
-                      >
-                        {isChecked ? (
-                          <CheckSquare size={16} className="text-primary" />
-                        ) : (
-                          <Square size={16} className="text-slate-300 dark:text-slate-700" />
-                        )}
-                      </button>
-                      
-                      <div className="space-y-1 min-w-0">
-                        <h4 className="text-[10px] font-extrabold uppercase text-foreground tracking-wider flex flex-wrap items-center gap-2">
-                          {report.name}
-                          {isChecked && (
-                            <span className="px-1.5 py-0.5 rounded text-[7px] font-black bg-emerald-500/10 text-emerald-500 uppercase border border-emerald-500/20">
-                              Included
-                            </span>
-                          )}
-                        </h4>
-                        <p className="text-[9px] text-muted font-bold leading-relaxed truncate-2-lines">
-                          {report.desc}
-                        </p>
-                      </div>
-                    </div>
-
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleExecuteImmediately(report.id);
-                      }}
-                      disabled={immediateLoading[report.id]}
-                      className="shrink-0 px-3 py-1.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl text-[8px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5"
-                      title="Send report immediately to Slack"
+                      className="mt-0.5 shrink-0 text-primary transition-colors focus:outline-none"
                     >
-                      {immediateLoading[report.id] ? (
-                        <RefreshCw size={10} className="animate-spin" />
+                      {isChecked ? (
+                        <CheckSquare size={16} className="text-primary" />
                       ) : (
-                        <Send size={10} />
+                        <Square size={16} className="text-slate-300 dark:text-slate-700" />
                       )}
-                      <span>Send Now</span>
                     </button>
+                    
+                    <div className="space-y-1">
+                      <h4 className="text-[10px] font-extrabold uppercase text-foreground tracking-wider flex items-center gap-2">
+                        {report.name}
+                        {isChecked && (
+                          <span className="px-1.5 py-0.5 rounded text-[7px] font-black bg-emerald-500/10 text-emerald-500 uppercase border border-emerald-500/20">
+                            Included
+                          </span>
+                        )}
+                      </h4>
+                      <p className="text-[9px] text-muted font-bold leading-relaxed">
+                        {report.desc}
+                      </p>
+                    </div>
                   </div>
                 );
               })}
