@@ -38,7 +38,9 @@ import {
   Trash2,
   Power,
   LogOut,
-  Download
+  Download,
+  Terminal,
+  AlertTriangle
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { cn, sendSlackNotification } from "../lib/utils";
@@ -156,6 +158,264 @@ export const SettingsPanel: React.FC = () => {
   React.useEffect(() => {
     fetchLocalBackupsList();
   }, []);
+
+  // Consolidated Super Admin Test Runner states
+  const [runningTestName, setRunningTestName] = React.useState<string | null>(null);
+  const [testResults, setTestResults] = React.useState<Record<string, any>>({});
+  const [routeToSlack, setRouteToSlack] = React.useState(true);
+
+  const executeTest = async (testName: string) => {
+    setRunningTestName(testName);
+    try {
+      const response = await fetch("/api/admin/run-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          testName,
+          routeToSlack,
+          config: {
+            smtpHost: systemSettings.smtpHost,
+            smtpPort: systemSettings.smtpPort,
+            smtpUser: systemSettings.smtpUser,
+            smtpPass: systemSettings.smtpPass,
+            smtpSecure: systemSettings.smtpSecure,
+          }
+        })
+      });
+      const data = await response.json();
+      if (data.success && data.result) {
+        setTestResults(prev => ({ ...prev, [testName]: data.result }));
+        triggerToast({
+          type: "SYSTEM_INFO",
+          severity: data.result.success ? "MEDIUM" : "HIGH",
+          message: `${data.result.name} Test Finished: ${data.result.success ? "SUCCESS" : "FAILED"}.`,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        alert(`❌ Test trigger failed: ${data.error || "Unknown server error"}`);
+      }
+    } catch (err: any) {
+      alert(`❌ Connection error: ${err.message || err}`);
+    } finally {
+      setRunningTestName(null);
+    }
+  };
+
+  // Firebase to Supabase Migration Tracker states
+  const [isMigrationTrackerHidden, setIsMigrationTrackerHidden] = React.useState(() => {
+    return localStorage.getItem("stands_migration_tracker_hidden") === "true";
+  });
+  const [migrationStatus, setMigrationStatus] = React.useState<"idle" | "running" | "paused_quota" | "paused_user" | "completed" | "error">("idle");
+  const [migrationCollectionProgress, setMigrationCollectionProgress] = React.useState<Record<string, { total: number | null; migrated: number; errors: number; status: "pending" | "migrating" | "completed" | "error" }>>({});
+  const [migrationError, setMigrationError] = React.useState<string | null>(null);
+  const [currentCollection, setCurrentCollection] = React.useState<string | null>(null);
+  const [isClearingSupabase, setIsClearingSupabase] = React.useState(false);
+  const abortMigrationRef = React.useRef(false);
+
+  const collectionsList = [
+    "users",
+    "projects",
+    "requisitions",
+    "system_logs",
+    "alerts",
+    "fiscal_years",
+    "transactions",
+    "forecast",
+    "reports",
+    "permissions",
+    "thresholds",
+    "church_groups",
+    "ledger_books",
+    "supplementary_budgets",
+    "vendors"
+  ];
+
+  const migrationStateRef = React.useRef({
+    currentCollectionIndex: 0,
+    lastId: null as string | null
+  });
+
+  const clearSupabaseData = async (): Promise<boolean> => {
+    setIsClearingSupabase(true);
+    setMigrationStatus("running");
+    setMigrationError(null);
+    try {
+      const response = await fetch("/api/admin/migration/clear-supabase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || "Failed to wipe Supabase destination tables.");
+      }
+      triggerToast({
+        type: "SYSTEM_INFO",
+        severity: "HIGH",
+        message: "Supabase data cleaned successfully! Initiating live Firestore sync...",
+        timestamp: new Date().toISOString()
+      });
+      return true;
+    } catch (err: any) {
+      setMigrationStatus("error");
+      setMigrationError("Preparation Failed: " + (err.message || String(err)));
+      return false;
+    } finally {
+      setIsClearingSupabase(false);
+    }
+  };
+
+  const runMigrationLoop = async (resume: boolean = false) => {
+    abortMigrationRef.current = false;
+    setMigrationStatus("running");
+    setMigrationError(null);
+
+    let startIndex = 0;
+    let startLastId: string | null = null;
+
+    if (resume) {
+      startIndex = migrationStateRef.current.currentCollectionIndex;
+      startLastId = migrationStateRef.current.lastId;
+      triggerToast({
+        type: "SYSTEM_INFO",
+        severity: "MEDIUM",
+        message: `Resuming migration loop starting at collection index ${startIndex} (${collectionsList[startIndex]})...`,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      migrationStateRef.current = { currentCollectionIndex: 0, lastId: null };
+      const initialProgress: any = {};
+      collectionsList.forEach(c => {
+        initialProgress[c] = { total: null, migrated: 0, errors: 0, status: "pending" };
+      });
+      setMigrationCollectionProgress(initialProgress);
+    }
+
+    const progress = resume ? { ...migrationCollectionProgress } : {};
+
+    for (let i = startIndex; i < collectionsList.length; i++) {
+      if (abortMigrationRef.current) {
+        setMigrationStatus("paused_user");
+        return;
+      }
+
+      const collection = collectionsList[i];
+      migrationStateRef.current.currentCollectionIndex = i;
+      setCurrentCollection(collection);
+
+      // Initialize progress if not set
+      if (!progress[collection]) {
+        progress[collection] = { total: null, migrated: 0, errors: 0, status: "migrating" };
+      } else {
+        progress[collection] = { ...progress[collection], status: "migrating" };
+      }
+      setMigrationCollectionProgress({ ...progress });
+
+      let hasMore = true;
+      let lastId = i === startIndex ? startLastId : null;
+
+      while (hasMore) {
+        if (abortMigrationRef.current) {
+          setMigrationStatus("paused_user");
+          return;
+        }
+
+        try {
+          const limit = 50;
+          const response = await fetch("/api/admin/migration/fetch-page", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ collectionName: collection, limit, lastId })
+          });
+
+          if (response.status === 429) {
+            const data = await response.json().catch(() => ({}));
+            setMigrationStatus("paused_quota");
+            setMigrationError(data.error || "Firebase read quota/API limit exceeded. The migration progress has been safely saved. You can click 'Resume' when quotas refresh.");
+            progress[collection].status = "pending";
+            setMigrationCollectionProgress({ ...progress });
+            return;
+          }
+
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || `Server responded with status code ${response.status}`);
+          }
+
+          const data = await response.json();
+          if (!data.success) {
+            throw new Error(data.error || "An error occurred fetching the records page.");
+          }
+
+          progress[collection] = {
+            total: null,
+            migrated: (progress[collection]?.migrated || 0) + data.migrated,
+            errors: (progress[collection]?.errors || 0) + data.errors,
+            status: data.hasMore ? "migrating" : "completed"
+          };
+          setMigrationCollectionProgress({ ...progress });
+
+          lastId = data.lastId;
+          migrationStateRef.current.lastId = lastId;
+          hasMore = data.hasMore;
+
+          // Short delay to avoid overloading network/server
+          await new Promise(r => setTimeout(r, 100));
+
+        } catch (err: any) {
+          const errMsg = err.message || String(err);
+          console.error(`[Migration UI] Error migrating ${collection}:`, errMsg);
+          
+          setMigrationStatus("error");
+          setMigrationError(`Error migrating '${collection}': ` + errMsg);
+          progress[collection].status = "error";
+          setMigrationCollectionProgress({ ...progress });
+          return;
+        }
+      }
+    }
+
+    setMigrationStatus("completed");
+    setCurrentCollection(null);
+    triggerToast({
+      type: "SYSTEM_INFO",
+      severity: "LOW",
+      message: "🟢 Firebase-to-Supabase migration completed! All data persistent and deduplicated.",
+      timestamp: new Date().toISOString()
+    });
+  };
+
+  const handleStartMigration = async () => {
+    const confirmStart = window.confirm("⚠️ WARNING: This will completely WIPE your existing Supabase database tables and replicate fresh data from Firebase. Are you sure you want to proceed?");
+    if (!confirmStart) return;
+
+    const cleared = await clearSupabaseData();
+    if (cleared) {
+      await runMigrationLoop(false);
+    }
+  };
+
+  const handlePauseMigration = () => {
+    abortMigrationRef.current = true;
+    setMigrationStatus("paused_user");
+  };
+
+  const handleResumeMigration = async () => {
+    await runMigrationLoop(true);
+  };
+
+  const handleCleanupMigrationFeatures = () => {
+    const confirmCleanup = window.confirm("Are you sure you want to clean up and hide all database migration tracker tools from your Dashboard? This is recommended for production security.");
+    if (!confirmCleanup) return;
+
+    localStorage.setItem("stands_migration_tracker_hidden", "true");
+    setIsMigrationTrackerHidden(true);
+    triggerToast({
+      type: "SYSTEM_INFO",
+      severity: "LOW",
+      message: "🧹 Residual database migration tracking components safely hidden and disabled.",
+      timestamp: new Date().toISOString()
+    });
+  };
 
   const [useSupabase, setUseSupabase] = React.useState(isSupabaseEnabled());
 
@@ -925,6 +1185,248 @@ export const SettingsPanel: React.FC = () => {
                     Reset to Default (7)
                   </button>
                 </div>
+              </div>
+            </section>
+          )}
+
+          {/* Consolidated Super Admin Test Runner (Slack Router Integrated) */}
+          {currentUser?.role === UserRole.SUPER_ADMIN && (
+            <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm p-8 space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <h3 className="text-xs font-black text-foreground uppercase tracking-[0.2em] flex items-center gap-2">
+                    <Terminal size={16} className="text-primary" />
+                    Consolidated Super Admin Test Runner
+                  </h3>
+                  <p className="text-[10px] text-muted font-medium italic">Execute low-level network, database, SMTP, and encryption tests with direct Slack integration.</p>
+                </div>
+                <label className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-border rounded-lg cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
+                    checked={routeToSlack}
+                    onChange={(e) => setRouteToSlack(e.target.checked)}
+                  />
+                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">Route Results to Slack</span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Test Actions list */}
+                <div className="space-y-3">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Available Test Suites</h4>
+                  
+                  <div className="space-y-2">
+                    {[
+                      { id: "internet", label: "Internet & DNS Resolution", desc: "Verifies external network access and google.com reachability." },
+                      { id: "supabase", label: "Supabase DB Query", desc: "Tests client initialization and queries user records from the DB." },
+                      { id: "smtp", label: "SMTP Mailer Dispatch", desc: "Verifies mail host handshake and dispatches verification receipt." },
+                      { id: "environment", label: "Environment Keys Audit", desc: "Checks that all necessary credentials and webhook tokens are set." },
+                      { id: "crypto", label: "Cryptographic Operations", desc: "Validates secure SHA-256 and AES crypto hashing algorithms." },
+                    ].map((test) => (
+                      <div key={test.id} className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-border rounded-2xl hover:border-primary/30 transition-all flex items-center justify-between gap-4">
+                        <div className="space-y-1 flex-1">
+                          <p className="text-xs font-black text-foreground">{test.label}</p>
+                          <p className="text-[10px] text-muted leading-relaxed">{test.desc}</p>
+                        </div>
+                        <button
+                          onClick={() => executeTest(test.id)}
+                          disabled={runningTestName !== null}
+                          className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 transition-colors shrink-0"
+                        >
+                          {runningTestName === test.id ? "Running..." : "Run Test"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Test Results logs display */}
+                <div className="space-y-3 flex flex-col">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Test execution console</h4>
+                  <div className="bg-slate-950 text-emerald-400 font-mono text-[10px] p-5 rounded-2xl border border-border flex-1 h-80 overflow-y-auto flex flex-col justify-between">
+                    <div className="space-y-3">
+                      <p className="text-slate-500">// Select a test to begin live audit diagnostics</p>
+                      {Object.values(testResults).map((res: any, idx) => (
+                        <div key={idx} className="space-y-1 border-b border-slate-800/60 pb-3">
+                          <div className="flex items-center justify-between">
+                            <span className="font-black text-white uppercase tracking-wider">{res.name}</span>
+                            <span className={res.success ? "text-emerald-400 font-black" : "text-rose-400 font-black"}>
+                              {res.success ? "SUCCESS" : "FAILED"}
+                            </span>
+                          </div>
+                          <p className="text-slate-300 text-[11px]">{res.message}</p>
+                          <div className="mt-2 text-slate-500 space-y-0.5 text-[9px] max-h-24 overflow-y-auto">
+                            {res.logs && res.logs.map((logStr: string, lIdx: number) => (
+                              <p key={lIdx}>{logStr}</p>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="border-t border-slate-800 pt-3 text-[9px] text-slate-500 flex justify-between items-center mt-4">
+                      <span>RUNNER READY: v2026</span>
+                      <span>SLACK FEEDBACK: {routeToSlack ? "ENABLED" : "DISABLED"}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Firebase to Supabase Migration & Quota Recovery Hub */}
+          {currentUser?.role === UserRole.SUPER_ADMIN && !isMigrationTrackerHidden && (
+            <section id="migration-tracker-hub" className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm p-8 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
+                <div className="space-y-1">
+                  <h3 className="text-xs font-black text-foreground uppercase tracking-[0.2em] flex items-center gap-2">
+                    <Database size={16} className="text-primary" />
+                    Firebase to Supabase Migration & Quota Recovery Hub
+                  </h3>
+                  <p className="text-[10px] text-muted font-medium italic">
+                    Execute clean, deduplicated page-by-page database replication with automatic Firebase quota protection.
+                  </p>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-2">
+                  {migrationStatus === "idle" && (
+                    <button
+                      id="btn-start-migration"
+                      onClick={handleStartMigration}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+                    >
+                      🚀 Start Migration
+                    </button>
+                  )}
+
+                  {migrationStatus === "running" && (
+                    <button
+                      id="btn-pause-migration"
+                      onClick={handlePauseMigration}
+                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+                    >
+                      ⏸️ Pause Migration
+                    </button>
+                  )}
+
+                  {(migrationStatus === "paused_user" || migrationStatus === "paused_quota") && (
+                    <button
+                      id="btn-resume-migration"
+                      onClick={handleResumeMigration}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer animate-pulse"
+                    >
+                      ▶️ Resume Migration
+                    </button>
+                  )}
+
+                  {migrationStatus === "completed" && (
+                    <span className="px-3 py-1.5 bg-emerald-500/10 text-emerald-500 text-[10px] font-bold uppercase rounded-lg border border-emerald-500/30">
+                      🟢 Replicated successfully!
+                    </span>
+                  )}
+
+                  <button
+                    id="btn-cleanup-migration"
+                    onClick={handleCleanupMigrationFeatures}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer"
+                  >
+                    | Clean Up & Hide Tracker
+                  </button>
+                </div>
+              </div>
+
+              {/* Status banner */}
+              {isClearingSupabase && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-xl text-[10px] font-mono animate-pulse">
+                  🧹 Cleaning up all destination Supabase PostgreSQL tables... preparing fresh tables...
+                </div>
+              )}
+
+              {migrationStatus === "paused_quota" && (
+                <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-2">
+                  <div className="flex items-center gap-2 text-amber-500 font-bold uppercase text-[10px]">
+                    <AlertTriangle size={14} />
+                    Firebase Read Quota Limit Reached
+                  </div>
+                  <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                    {migrationError || "The daily or hourly read/write API limit has been reached on Firebase Firestore. The migration process has automatically paused, and your transfer state has been preserved. You can resume exactly where you left off once the quotas refresh without risking data duplication."}
+                  </p>
+                </div>
+              )}
+
+              {migrationStatus === "error" && (
+                <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl space-y-1">
+                  <div className="text-rose-500 font-bold uppercase text-[10px]">
+                    ❌ Migration Error Encountered
+                  </div>
+                  <p className="text-[10px] font-mono text-rose-400">
+                    {migrationError}
+                  </p>
+                </div>
+              )}
+
+              {/* Progress Table */}
+              <div className="border border-border/60 rounded-2xl overflow-hidden bg-slate-500/5">
+                <table className="w-full text-left border-collapse font-sans text-[10px]">
+                  <thead>
+                    <tr className="bg-slate-100 dark:bg-slate-900 border-b border-border/60">
+                      <th className="p-3 font-bold uppercase text-slate-400 tracking-wider">Collection Name</th>
+                      <th className="p-3 font-bold uppercase text-slate-400 tracking-wider text-center">Status</th>
+                      <th className="p-3 font-bold uppercase text-slate-400 tracking-wider text-right">Migrated</th>
+                      <th className="p-3 font-bold uppercase text-slate-400 tracking-wider text-right">Errors</th>
+                      <th className="p-3 font-bold uppercase text-slate-400 tracking-wider text-right w-1/3">Progress</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/40">
+                    {collectionsList.map((colName) => {
+                      const prog = migrationCollectionProgress[colName] || { total: null, migrated: 0, errors: 0, status: "pending" };
+                      const isColCurrent = currentCollection === colName;
+                      
+                      return (
+                        <tr key={colName} className={cn(
+                          "transition-colors hover:bg-slate-500/10",
+                          isColCurrent ? "bg-primary/5 font-medium" : ""
+                        )}>
+                          <td className="p-3 font-mono font-semibold text-slate-700 dark:text-slate-300">
+                            {colName}
+                          </td>
+                          <td className="p-3 text-center">
+                            {prog.status === "completed" && (
+                              <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 rounded text-[8px] font-bold uppercase">Done</span>
+                            )}
+                            {prog.status === "migrating" && (
+                              <span className="px-2 py-0.5 bg-primary/10 text-primary rounded text-[8px] font-bold uppercase animate-pulse">Syncing</span>
+                            )}
+                            {prog.status === "pending" && (
+                              <span className="px-2 py-0.5 bg-slate-200 dark:bg-slate-800 text-slate-500 rounded text-[8px] font-bold uppercase">Pending</span>
+                            )}
+                            {prog.status === "error" && (
+                              <span className="px-2 py-0.5 bg-rose-500/10 text-rose-500 rounded text-[8px] font-bold uppercase">Failed</span>
+                            )}
+                          </td>
+                          <td className="p-3 text-right font-mono font-bold text-slate-700 dark:text-slate-200">
+                            {prog.migrated.toLocaleString()}
+                          </td>
+                          <td className="p-3 text-right font-mono text-rose-500">
+                            {prog.errors > 0 ? prog.errors.toLocaleString() : "-"}
+                          </td>
+                          <td className="p-3">
+                            <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                              <div 
+                                className={cn(
+                                  "h-1.5 rounded-full transition-all duration-300",
+                                  prog.status === "completed" ? "bg-emerald-500 w-full" : 
+                                  prog.status === "migrating" ? "bg-primary animate-pulse w-3/4" : 
+                                  prog.status === "error" ? "bg-rose-500 w-1/2" : "bg-slate-300 dark:bg-slate-700 w-0"
+                                )}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </section>
           )}

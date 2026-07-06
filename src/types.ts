@@ -314,6 +314,7 @@ export interface SystemSettings {
   announcementType?: "info" | "warning" | "alert" | "success";
   announcementIsActive?: boolean;
   requisitionExpiryDays?: number;
+  migrationFeatureActive?: boolean;
 }
 
 export interface SupplementaryBudgetRequest {

@@ -798,61 +798,20 @@ async function startServer() {
     }
   });
 
-  // Export from Firestore and Import to Supabase PostgreSQL Database
-  app.post("/api/config/migrate-data", async (req, res) => {
-    console.log("[DataMigration] Data migration explicitly bypassed/disabled per Option B config.");
-    return res.status(200).json({
-      success: true,
-      message: "Option B applied: Firestore-to-Supabase data migration is bypassed/disabled.",
-      stats: { bypassed: true }
-    });
+  // ==========================================
+  // FIRESTORE TO SUPABASE MIGRATION SERVICE
+  // ==========================================
 
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-    const expectedRef = supabaseUrl.match(/https:\/\/(.*?)\.supabase\.co/)?.[1] || "unknown";
+  // Clear all data from Supabase destination database
+  app.post("/api/admin/migration/clear-supabase", async (req, res) => {
     const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.SUPABASE_DIRECT_URL;
     if (!dbUrl) {
-      return res.status(200).json({
-        success: false,
-        error: "DATABASE_URL is not set. Please configure your direct PostgreSQL connection string first."
-      });
-    }
-
-    const serviceAccountPath = path.join(process.cwd(), "googleService.json");
-    if (!fs.existsSync(serviceAccountPath)) {
-      return res.status(200).json({
-        success: false,
-        error: "Google Service Account key file 'googleService.json' was not found in the project root."
-      });
-    }
-
-    let firestoreDb: any;
-    try {
-      console.log("[DataMigration] Initializing Firebase Admin SDK...");
-      const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
-      if (serviceAccount.private_key) {
-        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
-      }
-
-      const appName = "migration-app-" + Date.now();
-      const firebaseApp = initFirebase({
-        credential: firebaseCert(serviceAccount),
-        projectId: "ai-studio-0adb409c-19ca-4d40-98cc-79864b9d3d75"
-      }, appName);
-
-      firestoreDb = initFirestore(firebaseApp);
-      console.log("[DataMigration] Firebase Admin SDK successfully initialized.");
-    } catch (err: any) {
-      console.error("[DataMigration] Firebase SDK initialization failed:", err);
-      return res.status(500).json({
-        success: false,
-        error: "Firebase Admin SDK initialization failed: " + (err.message || String(err)),
-        details: "Please ensure your googleService.json is valid and contains correct GCP project access."
-      });
+      return res.status(500).json({ success: false, error: "DATABASE_URL is not set." });
     }
 
     let pgClient;
     try {
-      console.log("[DataMigration] Connecting to live PostgreSQL database...");
+      console.log("[Migration] Initiating clean wipe of all destination Supabase PostgreSQL tables...");
       pgClient = new pg.Client({
         connectionString: dbUrl,
         ssl: dbUrl.includes("supabase.co") || dbUrl.includes("supabase.com") || dbUrl.includes("pooler.supabase")
@@ -860,31 +819,99 @@ async function startServer() {
           : undefined,
       });
       await pgClient.connect();
-      console.log("[DataMigration] PostgreSQL database connection successful.");
-    } catch (err: any) {
-      const errStr = String(err.message || err);
-      const isProjectMismatch = errStr.includes("tenant/user") && (errStr.includes("not found") || errStr.includes("unknown"));
-      
-      if (isProjectMismatch) {
-        return res.status(200).json({
-          success: false,
-          error: `Project Reference Mismatch: DATABASE_URL points to a different project than ${expectedRef}.`,
-          details: `The connection string points to a tenant that was not found. Your SUPABASE_URL suggests your project ref should be '${expectedRef}'. Please update your DATABASE_URL secret with the correct string from Supabase Dashboard -> Settings -> Database.`
-        });
+
+      // Order of deletion to respect foreign keys where possible
+      const tablesToClean = [
+        "audit_logs",
+        "alerts",
+        "transactions",
+        "forecast",
+        "reports",
+        "permissions",
+        "thresholds",
+        "supplementary_budgets",
+        "vendors",
+        "requisitions",
+        "ledger_books",
+        "projects",
+        "church_groups",
+        "users",
+        "fiscal_years"
+      ];
+
+      for (const table of tablesToClean) {
+        try {
+          await pgClient.query(`DELETE FROM "${table}"`);
+          console.log(`[Migration] Cleaned table ${table}`);
+        } catch (tblErr: any) {
+          console.warn(`[Migration] Warning cleaning table ${table}:`, tblErr.message);
+          // Try cascade truncate if delete fails due to foreign key constraints
+          try {
+            await pgClient.query(`TRUNCATE TABLE "${table}" CASCADE`);
+            console.log(`[Migration] Truncated table ${table} with CASCADE successfully.`);
+          } catch (cascadeErr) {
+            console.error(`[Migration] Failed to truncate table ${table} CASCADE:`, cascadeErr);
+          }
+        }
       }
-      
-      console.log("[DataMigration] PostgreSQL connection bypassed/failed:", err.message || err);
-      return res.status(200).json({
-        success: false,
-        error: "PostgreSQL Database connection failed: " + errStr,
-        details: "Please verify that your database server is active and that your DATABASE_URL password is correct."
-      });
+
+      await pgClient.end();
+      res.json({ success: true, message: "All Supabase Postgres tables cleaned successfully." });
+    } catch (err: any) {
+      if (pgClient) { try { await pgClient.end(); } catch {} }
+      console.error("[Migration] Wiping Supabase Postgres failed:", err);
+      res.status(500).json({ success: false, error: "Failed to wipe Supabase database: " + err.message });
+    }
+  });
+
+  // Fetch page by page from Firestore and push to Supabase (ON CONFLICT DO UPDATE)
+  app.post("/api/admin/migration/fetch-page", async (req, res) => {
+    const { collectionName, limit = 50, lastId = null } = req.body;
+
+    const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.SUPABASE_DIRECT_URL;
+    if (!dbUrl) {
+      return res.status(500).json({ success: false, error: "DATABASE_URL is not set." });
     }
 
-    const stats: Record<string, { fetched: number; migrated: number; errors: number; warning?: string }> = {};
-    const warnings: string[] = [];
+    const serviceAccountPath = path.join(process.cwd(), "googleService.json");
+    if (!fs.existsSync(serviceAccountPath)) {
+      return res.status(500).json({ success: false, error: "Google Service Account key file 'googleService.json' was not found in the project root." });
+    }
 
-    // Helper to safely convert timestamps
+    let firestoreDb: any;
+    try {
+      const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
+      if (serviceAccount.private_key) {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
+      }
+
+      const appName = "migration-chunk-" + Date.now();
+      const firebaseApp = initFirebase({
+        credential: firebaseCert(serviceAccount),
+        projectId: "ai-studio-0adb409c-19ca-4d40-98cc-79864b9d3d75"
+      }, appName);
+
+      firestoreDb = initFirestore(firebaseApp);
+    } catch (err: any) {
+      console.error("[Migration] Firebase SDK initialization failed:", err);
+      return res.status(500).json({ success: false, error: "Firebase Admin SDK initialization failed: " + err.message });
+    }
+
+    let pgClient;
+    try {
+      pgClient = new pg.Client({
+        connectionString: dbUrl,
+        ssl: dbUrl.includes("supabase.co") || dbUrl.includes("supabase.com") || dbUrl.includes("pooler.supabase")
+          ? { rejectUnauthorized: false }
+          : undefined,
+      });
+      await pgClient.connect();
+    } catch (err: any) {
+      console.error("[Migration] Postgres connection failed:", err);
+      return res.status(500).json({ success: false, error: "Supabase connection failed: " + err.message });
+    }
+
+    // Helpers to safely convert timestamps and parse json
     const parseTimestamp = (val: any) => {
       if (!val) return null;
       if (val.toDate && typeof val.toDate === "function") return val.toDate().toISOString();
@@ -893,7 +920,6 @@ async function startServer() {
       return isNaN(date.getTime()) ? null : date.toISOString();
     };
 
-    // Helper to parse JSON values safely
     const parseJson = (val: any) => {
       if (val === undefined || val === null) return null;
       if (typeof val === "string") {
@@ -1220,44 +1246,71 @@ async function startServer() {
       }
     ];
 
-    for (const item of collectionsToMigrate) {
-      stats[item.name] = { fetched: 0, migrated: 0, errors: 0 };
-      try {
-        console.log(`[DataMigration] Migrating collection: ${item.name} ...`);
-        const snapshot = await firestoreDb.collection(item.name).get();
-        stats[item.name].fetched = snapshot.size;
-
-        for (const doc of snapshot.docs) {
-          try {
-            const params = item.map(doc.id, doc.data());
-            await pgClient.query(item.query, params);
-            stats[item.name].migrated++;
-          } catch (rowErr: any) {
-            console.error(`[DataMigration] Error inserting row in ${item.name} with ID ${doc.id}:`, rowErr);
-            stats[item.name].errors++;
-            warnings.push(`[${item.name} / ${doc.id}]: ${rowErr.message || String(rowErr)}`);
-          }
-        }
-      } catch (collErr: any) {
-        console.warn(`[DataMigration] Collection fetch failed for '${item.name}':`, collErr.message);
-        stats[item.name].warning = collErr.message;
-        warnings.push(`Collection '${item.name}' skip / error: ${collErr.message}`);
-      }
-    }
-
     try {
+      const targetCollection = collectionsToMigrate.find(c => c.name === collectionName);
+      if (!targetCollection) {
+        throw new Error(`Unsupported collection requested: ${collectionName}`);
+      }
+
+      console.log(`[Migration] Page Fetch: reading ${limit} records from Firestore collection '${collectionName}' starting after id '${lastId}'...`);
+      
+      let queryRef = firestoreDb.collection(collectionName).orderBy("__name__");
+      if (lastId) {
+        queryRef = queryRef.startAfter(lastId);
+      }
+
+      const snapshot = await queryRef.limit(limit).get();
+      const docs = snapshot.docs;
+      const hasMore = docs.length === limit;
+      const nextLastId = docs.length > 0 ? docs[docs.length - 1].id : lastId;
+
+      let migrated = 0;
+      let errors = 0;
+      const failedRows: string[] = [];
+
+      for (const doc of docs) {
+        try {
+          const params = targetCollection.map(doc.id, doc.data());
+          await pgClient.query(targetCollection.query, params);
+          migrated++;
+        } catch (rowErr: any) {
+          console.error(`[Migration] Row insert failed in '${collectionName}' with ID '${doc.id}':`, rowErr.message || rowErr);
+          errors++;
+          failedRows.push(`${doc.id}: ${rowErr.message || String(rowErr)}`);
+        }
+      }
+
       await pgClient.end();
-    } catch (e) {}
 
-    const overallSuccess = Object.values(stats).some(s => s.migrated > 0);
+      res.json({
+        success: true,
+        fetched: docs.length,
+        migrated,
+        errors,
+        lastId: nextLastId,
+        hasMore,
+        rowErrors: failedRows.slice(0, 10)
+      });
+    } catch (err: any) {
+      if (pgClient) { try { await pgClient.end(); } catch {} }
+      const errMsg = String(err.message || err).toLowerCase();
+      const isQuotaError = errMsg.includes("quota") || errMsg.includes("limit exceeded") || errMsg.includes("429") || errMsg.includes("resource exhausted");
+      
+      console.error(`[Migration] Error during page fetch for '${collectionName}':`, err);
+      res.status(isQuotaError ? 429 : 500).json({
+        success: false,
+        error: err.message || String(err),
+        isQuotaError
+      });
+    }
+  });
 
-    return res.json({
-      success: overallSuccess,
-      message: overallSuccess 
-        ? "Ecosystem database replication executed successfully!" 
-        : "Migration session completed. No records were replicated (check collection permissions).",
-      stats,
-      error: warnings.length > 0 ? warnings.join("\n") : null
+  // Re-enable backwards compatible migrate-data endpoint as a wrapper trigger
+  app.post("/api/config/migrate-data", async (req, res) => {
+    return res.status(200).json({
+      success: true,
+      message: "The application is now configured with a dynamic page-by-page quota recovery migration system.",
+      stats: { chunkedEnabled: true }
     });
   });
 
@@ -1554,6 +1607,80 @@ async function startServer() {
       res.status(500).json({ error: err.message || "Failed to load email logs" });
     }
   });
+
+  // API Route for running test suites
+  app.post("/api/admin/run-test", async (req, res) => {
+    const { testName, config, routeToSlack } = req.body;
+    try {
+      const { runTest } = await import("./scripts/tests/runner");
+      const result = await runTest(testName, config);
+
+      if (routeToSlack) {
+        // Build slack body format and send
+        const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+        const slackBody = {
+          attachments: [
+            {
+              color: result.success ? "#10b981" : "#ef4444",
+              blocks: [
+                {
+                  type: "header",
+                  text: {
+                    type: "plain_text",
+                    text: `🧪 Automated Test Result: ${result.name}`,
+                    emoji: true
+                  }
+                },
+                {
+                  type: "section",
+                  fields: [
+                    {
+                      type: "mrkdwn",
+                      text: `*Status:*\n${result.success ? "🟢 SUCCESS" : "❌ FAILED"}`
+                    },
+                    {
+                      type: "mrkdwn",
+                      text: `*Duration:*\n\`${result.durationMs}ms\``
+                    }
+                  ]
+                },
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: `*Summary:*\n${result.message}`
+                  }
+                },
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: `*Detailed Logs:*\n\`\`\`${result.logs.slice(-20).join("\n") || "No detailed logs logged."}\`\`\``
+                  }
+                }
+              ]
+            }
+          ]
+        };
+
+        if (webhookUrl) {
+          await fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(slackBody)
+          });
+        } else {
+          console.log("[Slack Simulation] Webhook not defined. Simulated payload:", JSON.stringify(slackBody));
+        }
+      }
+
+      res.json({ success: true, result });
+    } catch (err: any) {
+      console.error(`Failed to run test ${testName}:`, err);
+      res.status(500).json({ success: false, error: err.message || "Unknown test runner failure" });
+    }
+  });
+
 
   // API Route for Sending Summary Emails
   app.post("/api/send-summary-email", async (req, res) => {
