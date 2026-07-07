@@ -93,6 +93,8 @@ const mapSnakeToCamel = (data: any): any => {
   return data;
 };
 
+let globalOnMutationCallback: (() => void) | null = null;
+
 const setDoc = async (docRef: any, data: any, options?: any) => {
   const supabase = getSupabaseClient();
   if (!supabase) return;
@@ -109,12 +111,15 @@ const setDoc = async (docRef: any, data: any, options?: any) => {
           const retryResult = await supabase.from(docRef.table).upsert(payload);
           if (!retryResult.error) {
             console.log(`[Supabase Self-Healing] Successfully completed setDoc on table '${docRef.table}' after filtering column '${missingColumn}'.`);
+            if (globalOnMutationCallback) globalOnMutationCallback();
             return;
           }
           error = retryResult.error;
         }
       }
       console.error(`setDoc error: table=${docRef.table}, id=${docRef.id}, message=${error.message || JSON.stringify(error)}, details=${error.details || ""}`);
+    } else {
+      if (globalOnMutationCallback) globalOnMutationCallback();
     }
   } catch (err) {
     console.error("setDoc failed:", err);
@@ -137,12 +142,15 @@ const updateDoc = async (docRef: any, data: any) => {
           const retryResult = await supabase.from(docRef.table).update(payload).eq("id", docRef.id);
           if (!retryResult.error) {
             console.log(`[Supabase Self-Healing] Successfully completed updateDoc on table '${docRef.table}' after filtering column '${missingColumn}'.`);
+            if (globalOnMutationCallback) globalOnMutationCallback();
             return;
           }
           error = retryResult.error;
         }
       }
       console.error(`updateDoc error: table=${docRef.table}, id=${docRef.id}, message=${error.message || JSON.stringify(error)}, details=${error.details || ""}`);
+    } else {
+      if (globalOnMutationCallback) globalOnMutationCallback();
     }
   } catch (err) {
     console.error("updateDoc failed:", err);
@@ -156,6 +164,8 @@ const deleteDoc = async (docRef: any) => {
     const { error } = await supabase.from(docRef.table).delete().eq("id", docRef.id);
     if (error) {
       console.error(`deleteDoc error: table=${docRef.table}, id=${docRef.id}, message=${error.message || JSON.stringify(error)}, details=${error.details || ""}`);
+    } else {
+      if (globalOnMutationCallback) globalOnMutationCallback();
     }
   } catch (err) {
     console.error("deleteDoc failed:", err);
@@ -275,6 +285,7 @@ const addDoc = async (col: any, data: any) => {
   try {
     const { data: inserted, error } = await supabase.from(col.table).insert([data]).select().single();
     if (error || !inserted) return { id: "mock" };
+    if (globalOnMutationCallback) globalOnMutationCallback();
     return { id: inserted.id };
   } catch (err) {
     console.error("addDoc failed:", err);
@@ -303,7 +314,9 @@ const onSnapshot = (queryRef: any, callback: (snap: any) => void, errorCallback?
   
   fetchData();
   
-  const channel = supabase.channel(`public:${queryRef.table}`)
+  // Return early to disable real-time streaming subscriptions to save resources
+  return () => {};
+  /* deactivated
     .on('postgres_changes', { event: '*', schema: 'public', table: queryRef.table }, () => {
        fetchData();
     })
@@ -313,8 +326,9 @@ const onSnapshot = (queryRef: any, callback: (snap: any) => void, errorCallback?
        }
     });
     
+  */
   return () => {
-    supabase.removeChannel(channel);
+    // supabase.removeChannel(channel);
   };
 };
 
@@ -442,12 +456,28 @@ interface RequisitionContextType {
   setSyncTargets: (targets: string[]) => void;
   systemLogLimit: number;
   setSystemLogLimit: (limit: number) => void;
+  refreshData: () => void;
 }
 
 const RequisitionContext = createContext<RequisitionContextType | undefined>(undefined);
 
 export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
+  const [fetchTrigger, setFetchTrigger] = useState<number>(0);
+
+  const refreshData = useCallback(() => {
+    setFetchTrigger(prev => prev + 1);
+  }, []);
+
+  useEffect(() => {
+    globalOnMutationCallback = () => {
+      setFetchTrigger(prev => prev + 1);
+    };
+    return () => {
+      globalOnMutationCallback = null;
+    };
+  }, []);
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [alerts, setAlerts] = useState<BudgetAlert[]>([]);
   const [thresholds, setThresholds] = useState<AlertThreshold[]>([]);
@@ -2609,12 +2639,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     };
 
     fetchAllFromSupabase();
-    // Background polling interval to keep UI reactive even without websockets
-    pollInterval = setInterval(fetchAllFromSupabase, 5000);
 
     return () => {
       active = false;
-      if (pollInterval) clearInterval(pollInterval);
     };
   }, [
     currentUserId,
@@ -2624,7 +2651,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     currentUserGroup,
     currentUserGroupsJSON,
     systemSettings.prototypeDataEnabled,
-    systemLogLimit
+    systemLogLimit,
+    fetchTrigger
   ]);
 
   // Proactive automatic data migration to Supabase to fulfill "Permanents copy all data to supabase"
@@ -3945,7 +3973,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       firestoreQuotaExceeded,
       setFirestoreQuotaExceeded,
       setSyncTargets,
-      syncingTargets
+      syncingTargets,
+      refreshData
     }}>
       {children}
     </RequisitionContext.Provider>
