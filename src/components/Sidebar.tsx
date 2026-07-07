@@ -21,8 +21,7 @@ import {
   Bell,
   Store,
   MoreHorizontal,
-  Activity,
-  Slack
+  Activity
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { UserRole } from "../types";
@@ -124,7 +123,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: "users", label: "Users", icon: UserCircle },
     { id: "auditTrail", label: "Audit Trail", icon: ShieldAlert, desktopOnly: true },
     { id: "accessControl", label: "Permissions", icon: ShieldCheck, desktopOnly: true },
-    { id: "slackIntegration", label: "Slack Integration", icon: Slack, desktopOnly: true },
     { id: "settings", label: "Settings", icon: Settings, desktopOnly: true },
   ];
 

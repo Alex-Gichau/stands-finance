@@ -65,9 +65,9 @@ async function startMigration() {
     console.log("🔄 Connecting to live Supabase Postgres database...");
     pgClient = new pg.Client({
       connectionString: dbUrl,
-      ssl: dbUrl.includes("supabase.co") || dbUrl.includes("supabase.com") || dbUrl.includes("pooler.supabase")
-        ? { rejectUnauthorized: false }
-        : undefined
+      ssl: dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1")
+        ? undefined
+        : { rejectUnauthorized: false }
     });
     await pgClient.connect();
     console.log("✅ Destination cluster connection successfully authenticated.");

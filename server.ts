@@ -133,9 +133,9 @@ async function purgeBase64AttachmentsFromDb() {
     console.log("[Base64 Purger] Starting background base64-to-local-disk purge on database records...");
     pgClient = new pg.Client({
       connectionString: dbUrl,
-      ssl: dbUrl.includes("supabase.co") || dbUrl.includes("supabase.com") || dbUrl.includes("pooler.supabase")
-        ? { rejectUnauthorized: false }
-        : undefined,
+      ssl: dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1")
+        ? undefined
+        : { rejectUnauthorized: false },
     });
     await pgClient.connect();
 
@@ -563,9 +563,9 @@ async function startServer() {
     if (dbUrl) {
       const client = new pg.Client({
         connectionString: dbUrl,
-        ssl: dbUrl.includes("supabase.co") || dbUrl.includes("supabase.com") || dbUrl.includes("pooler.supabase") 
-          ? { rejectUnauthorized: false } 
-          : undefined,
+        ssl: dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1")
+          ? undefined
+          : { rejectUnauthorized: false },
       });
       try {
         await client.connect();
@@ -641,8 +641,6 @@ async function startServer() {
           report.api.error = `HTTP ${response.status}: ${textErr}`;
           if (textErr.includes("relation") || response.status === 404) {
             report.recommendations.push("The Supabase REST server responded, but tables have not been initiated. Click the 'Run Supabase Database Migration' button below to create schema assets.");
-          } else if (textErr.toLowerCase().includes("upstream connect error") || textErr.toLowerCase().includes("timeout") || response.status === 503) {
-            report.recommendations.push("⚠️ SUPABASE PROJECT PAUSED/UNHEALTHY: Your database responded with a connection timeout or service unavailable error (HTTP 503). Your free-tier Supabase project is likely paused or sleeping due to inactivity. Please go to your Supabase Dashboard (https://supabase.com/dashboard/projects), open your project, and click 'Restore Project' or 'Resume'.");
           } else {
             report.recommendations.push(`REST API gateway responded with bad status status. Check key permissions or policies. Error details: ${textErr}`);
           }
@@ -679,9 +677,9 @@ async function startServer() {
       console.log("[Migration] Initializing migration client direct connection...");
       client = new pg.Client({
         connectionString: dbUrl,
-        ssl: dbUrl.includes("supabase.co") || dbUrl.includes("supabase.com") || dbUrl.includes("pooler.supabase") 
-          ? { rejectUnauthorized: false } 
-          : undefined,
+        ssl: dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1")
+          ? undefined
+          : { rejectUnauthorized: false },
       });
 
       await client.connect();
@@ -800,120 +798,86 @@ async function startServer() {
     }
   });
 
-  // ==========================================
-  // FIRESTORE TO SUPABASE MIGRATION SERVICE
-  // ==========================================
-
-  // Clear all data from Supabase destination database
-  app.post("/api/admin/migration/clear-supabase", async (req, res) => {
+  // Export from Firestore and Import to Supabase PostgreSQL Database
+  app.post("/api/config/migrate-data", async (req, res) => {
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+    const expectedRef = supabaseUrl.match(/https:\/\/(.*?)\.supabase\.co/)?.[1] || "unknown";
     const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.SUPABASE_DIRECT_URL;
     if (!dbUrl) {
-      return res.status(500).json({ success: false, error: "DATABASE_URL is not set." });
-    }
-
-    let pgClient;
-    try {
-      console.log("[Migration] Initiating clean wipe of all destination Supabase PostgreSQL tables...");
-      pgClient = new pg.Client({
-        connectionString: dbUrl,
-        ssl: dbUrl.includes("supabase.co") || dbUrl.includes("supabase.com") || dbUrl.includes("pooler.supabase")
-          ? { rejectUnauthorized: false }
-          : undefined,
+      return res.status(200).json({
+        success: false,
+        error: "DATABASE_URL is not set. Please configure your direct PostgreSQL connection string first."
       });
-      await pgClient.connect();
-
-      // Order of deletion to respect foreign keys where possible
-      const tablesToClean = [
-        "audit_logs",
-        "alerts",
-        "transactions",
-        "forecast",
-        "reports",
-        "permissions",
-        "thresholds",
-        "supplementary_budgets",
-        "vendors",
-        "requisitions",
-        "ledger_books",
-        "projects",
-        "church_groups",
-        "users",
-        "fiscal_years"
-      ];
-
-      for (const table of tablesToClean) {
-        try {
-          await pgClient.query(`DELETE FROM "${table}"`);
-          console.log(`[Migration] Cleaned table ${table}`);
-        } catch (tblErr: any) {
-          console.warn(`[Migration] Warning cleaning table ${table}:`, tblErr.message);
-          // Try cascade truncate if delete fails due to foreign key constraints
-          try {
-            await pgClient.query(`TRUNCATE TABLE "${table}" CASCADE`);
-            console.log(`[Migration] Truncated table ${table} with CASCADE successfully.`);
-          } catch (cascadeErr) {
-            console.error(`[Migration] Failed to truncate table ${table} CASCADE:`, cascadeErr);
-          }
-        }
-      }
-
-      await pgClient.end();
-      res.json({ success: true, message: "All Supabase Postgres tables cleaned successfully." });
-    } catch (err: any) {
-      if (pgClient) { try { await pgClient.end(); } catch {} }
-      console.error("[Migration] Wiping Supabase Postgres failed:", err);
-      res.status(500).json({ success: false, error: "Failed to wipe Supabase database: " + err.message });
-    }
-  });
-
-  // Fetch page by page from Firestore and push to Supabase (ON CONFLICT DO UPDATE)
-  app.post("/api/admin/migration/fetch-page", async (req, res) => {
-    const { collectionName, limit = 50, lastId = null } = req.body;
-
-    const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.SUPABASE_DIRECT_URL;
-    if (!dbUrl) {
-      return res.status(500).json({ success: false, error: "DATABASE_URL is not set." });
     }
 
     const serviceAccountPath = path.join(process.cwd(), "googleService.json");
     if (!fs.existsSync(serviceAccountPath)) {
-      return res.status(500).json({ success: false, error: "Google Service Account key file 'googleService.json' was not found in the project root." });
+      return res.status(200).json({
+        success: false,
+        error: "Google Service Account key file 'googleService.json' was not found in the project root."
+      });
     }
 
     let firestoreDb: any;
     try {
+      console.log("[DataMigration] Initializing Firebase Admin SDK...");
       const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
       if (serviceAccount.private_key) {
         serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
       }
 
-      const appName = "migration-chunk-" + Date.now();
+      const appName = "migration-app-" + Date.now();
       const firebaseApp = initFirebase({
         credential: firebaseCert(serviceAccount),
         projectId: "ai-studio-0adb409c-19ca-4d40-98cc-79864b9d3d75"
       }, appName);
 
       firestoreDb = initFirestore(firebaseApp);
+      console.log("[DataMigration] Firebase Admin SDK successfully initialized.");
     } catch (err: any) {
-      console.error("[Migration] Firebase SDK initialization failed:", err);
-      return res.status(500).json({ success: false, error: "Firebase Admin SDK initialization failed: " + err.message });
+      console.error("[DataMigration] Firebase SDK initialization failed:", err);
+      return res.status(500).json({
+        success: false,
+        error: "Firebase Admin SDK initialization failed: " + (err.message || String(err)),
+        details: "Please ensure your googleService.json is valid and contains correct GCP project access."
+      });
     }
 
     let pgClient;
     try {
+      console.log("[DataMigration] Connecting to live PostgreSQL database...");
       pgClient = new pg.Client({
         connectionString: dbUrl,
-        ssl: dbUrl.includes("supabase.co") || dbUrl.includes("supabase.com") || dbUrl.includes("pooler.supabase")
-          ? { rejectUnauthorized: false }
-          : undefined,
+        ssl: dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1")
+          ? undefined
+          : { rejectUnauthorized: false },
       });
       await pgClient.connect();
+      console.log("[DataMigration] PostgreSQL database connection successful.");
     } catch (err: any) {
-      console.error("[Migration] Postgres connection failed:", err);
-      return res.status(500).json({ success: false, error: "Supabase connection failed: " + err.message });
+      const errStr = String(err.message || err);
+      const isProjectMismatch = errStr.includes("tenant/user") && (errStr.includes("not found") || errStr.includes("unknown"));
+      
+      if (isProjectMismatch) {
+        return res.status(200).json({
+          success: false,
+          error: `Project Reference Mismatch: DATABASE_URL points to a different project than ${expectedRef}.`,
+          details: `The connection string points to a tenant that was not found. Your SUPABASE_URL suggests your project ref should be '${expectedRef}'. Please update your DATABASE_URL secret with the correct string from Supabase Dashboard -> Settings -> Database.`
+        });
+      }
+      
+      console.log("[DataMigration] PostgreSQL connection bypassed/failed:", err.message || err);
+      return res.status(200).json({
+        success: false,
+        error: "PostgreSQL Database connection failed: " + errStr,
+        details: "Please verify that your database server is active and that your DATABASE_URL password is correct."
+      });
     }
 
-    // Helpers to safely convert timestamps and parse json
+    const stats: Record<string, { fetched: number; migrated: number; errors: number; warning?: string }> = {};
+    const warnings: string[] = [];
+
+    // Helper to safely convert timestamps
     const parseTimestamp = (val: any) => {
       if (!val) return null;
       if (val.toDate && typeof val.toDate === "function") return val.toDate().toISOString();
@@ -922,6 +886,7 @@ async function startServer() {
       return isNaN(date.getTime()) ? null : date.toISOString();
     };
 
+    // Helper to parse JSON values safely
     const parseJson = (val: any) => {
       if (val === undefined || val === null) return null;
       if (typeof val === "string") {
@@ -1248,96 +1213,60 @@ async function startServer() {
       }
     ];
 
-    try {
-      const targetCollection = collectionsToMigrate.find(c => c.name === collectionName);
-      if (!targetCollection) {
-        throw new Error(`Unsupported collection requested: ${collectionName}`);
-      }
+    for (const item of collectionsToMigrate) {
+      stats[item.name] = { fetched: 0, migrated: 0, errors: 0 };
+      try {
+        console.log(`[DataMigration] Migrating collection: ${item.name} ...`);
+        const snapshot = await firestoreDb.collection(item.name).get();
+        stats[item.name].fetched = snapshot.size;
 
-      console.log(`[Migration] Page Fetch: reading ${limit} records from Firestore collection '${collectionName}' starting after id '${lastId}'...`);
-      
-      let queryRef = firestoreDb.collection(collectionName).orderBy("__name__");
-      if (lastId) {
-        queryRef = queryRef.startAfter(lastId);
-      }
-
-      const snapshot = await queryRef.limit(limit).get();
-      const docs = snapshot.docs;
-      const hasMore = docs.length === limit;
-      const nextLastId = docs.length > 0 ? docs[docs.length - 1].id : lastId;
-
-      let migrated = 0;
-      let errors = 0;
-      const failedRows: string[] = [];
-
-      for (const doc of docs) {
-        try {
-          const params = targetCollection.map(doc.id, doc.data());
-          await pgClient.query(targetCollection.query, params);
-          migrated++;
-        } catch (rowErr: any) {
-          console.error(`[Migration] Row insert failed in '${collectionName}' with ID '${doc.id}':`, rowErr.message || rowErr);
-          errors++;
-          failedRows.push(`${doc.id}: ${rowErr.message || String(rowErr)}`);
+        for (const doc of snapshot.docs) {
+          try {
+            const params = item.map(doc.id, doc.data());
+            await pgClient.query(item.query, params);
+            stats[item.name].migrated++;
+          } catch (rowErr: any) {
+            console.error(`[DataMigration] Error inserting row in ${item.name} with ID ${doc.id}:`, rowErr);
+            stats[item.name].errors++;
+            warnings.push(`[${item.name} / ${doc.id}]: ${rowErr.message || String(rowErr)}`);
+          }
         }
+      } catch (collErr: any) {
+        console.warn(`[DataMigration] Collection fetch failed for '${item.name}':`, collErr.message);
+        stats[item.name].warning = collErr.message;
+        warnings.push(`Collection '${item.name}' skip / error: ${collErr.message}`);
       }
-
-      await pgClient.end();
-
-      res.json({
-        success: true,
-        fetched: docs.length,
-        migrated,
-        errors,
-        lastId: nextLastId,
-        hasMore,
-        rowErrors: failedRows.slice(0, 10)
-      });
-    } catch (err: any) {
-      if (pgClient) { try { await pgClient.end(); } catch {} }
-      const errMsg = String(err.message || err).toLowerCase();
-      const isQuotaError = errMsg.includes("quota") || errMsg.includes("limit exceeded") || errMsg.includes("429") || errMsg.includes("resource exhausted");
-      
-      console.error(`[Migration] Error during page fetch for '${collectionName}':`, err);
-      res.status(isQuotaError ? 429 : 500).json({
-        success: false,
-        error: err.message || String(err),
-        isQuotaError
-      });
     }
-  });
 
-  // Re-enable backwards compatible migrate-data endpoint as a wrapper trigger
-  app.post("/api/config/migrate-data", async (req, res) => {
-    return res.status(200).json({
-      success: true,
-      message: "The application is now configured with a dynamic page-by-page quota recovery migration system.",
-      stats: { chunkedEnabled: true }
+    try {
+      await pgClient.end();
+    } catch (e) {}
+
+    const overallSuccess = Object.values(stats).some(s => s.migrated > 0);
+
+    return res.json({
+      success: overallSuccess,
+      message: overallSuccess 
+        ? "Ecosystem database replication executed successfully!" 
+        : "Migration session completed. No records were replicated (check collection permissions).",
+      stats,
+      error: warnings.length > 0 ? warnings.join("\n") : null
     });
   });
 
   // API Route for Sending Email
   app.post("/api/send-email", async (req, res) => {
-    const { to, requesterName, amount, title, requisitionId, status, details, smtpConfig } = req.body;
+    const { to, requesterName, amount, title, requisitionId, status, details } = req.body;
     
-    const activeSmtpPass = smtpConfig?.smtpPass || process.env.SMTP_PASS;
-    const activeSmtpUser = smtpConfig?.smtpUser || process.env.SMTP_USER || "ict.team@pceastandrews.org";
-    const activeSmtpHost = smtpConfig?.smtpHost || process.env.SMTP_HOST || "smtp.gmail.com";
-    const activeSmtpPort = parseInt(smtpConfig?.smtpPort || process.env.SMTP_PORT || "587");
-    
-    // In Nodemailer, secure: true is only for port 465 (direct SSL/TLS). 
-    // All other ports (e.g., 587) start with plaintext and upgrade via STARTTLS, requiring secure: false.
-    const activeSmtpSecure = activeSmtpPort === 465;
-
-    if (!activeSmtpPass) {
-      console.warn("SMTP_PASS is not configured. Email will be logged as skipped.");
+    if (!process.env.SMTP_PASS) {
+      console.warn("SMTP_PASS is not configured. Email will be logged but not sent.");
       persistActivity({
         action: "EMAIL_SKIPPED",
-        details: `Mail to ${to} skipped (No Credentials). Requisition: ${title || "N/A"}`,
+        details: `Mail to ${to} skipped (No Credentials). Requisition: ${title}`,
         performedBy: "SYSTEM_MAILER",
         timestamp: new Date().toISOString()
       });
-      return res.json({ success: true, message: "SMTP not configured, activity recorded.", simulated: true });
+      return res.json({ success: true, message: "SMTP not configured, activity recorded." });
     }
 
     try {
@@ -1351,147 +1280,84 @@ async function startServer() {
         case "SUBMITTED":
           subject = `[Submitted] Requisition #${displayId} - ${title}`;
           bodyHtml = `
-            <div style="font-family: sans-serif; padding: 24px; color: #1e293b; background-color: #ffffff; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);">
-              <div style="background-color: #6366f1; padding: 16px 24px; border-radius: 8px 8px 0 0; color: #ffffff; font-weight: bold; font-size: 18px;">
-                📋 Requisition Submitted
-              </div>
-              <div style="padding: 24px 16px; line-height: 1.6;">
-                <p>Hello <strong>${requesterName}</strong>,</p>
-                <p>Your requisition <strong>#${displayId}: ${title}</strong> for <strong>${formattedAmount}</strong> has been successfully submitted and is now awaiting Level 1 compliance review.</p>
-                <div style="margin: 20px 0; padding: 16px; background-color: #f8fafc; border-radius: 8px; border-left: 4px solid #6366f1;">
-                  <strong>Summary of Requisition:</strong>
-                  <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 13px;">
-                    <li><strong>ID:</strong> ${displayId}</li>
-                    <li><strong>Title:</strong> ${title}</li>
-                    <li><strong>Amount:</strong> ${formattedAmount}</li>
-                    <li><strong>Submitted:</strong> ${new Date().toLocaleString()}</li>
-                  </ul>
-                </div>
-                <p>You will receive automatic alerts at each review checkpoint.</p>
-              </div>
-              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 0 16px;" />
-              <div style="padding: 16px; font-size: 11px; color: #64748b; text-align: center;">
-                This is an automated notification from STANDS eRequisitions. Sender: ${activeSmtpUser}
-              </div>
+            <div style="font-family: sans-serif; padding: 20px; color: #334155;">
+              <h2 style="color: #0f172a;">Requisition Submitted</h2>
+              <p>Hello <strong>${requesterName}</strong>,</p>
+              <p>Your requisition <strong>#${displayId}: ${title}</strong> for <strong>${formattedAmount}</strong> has been successfully submitted and is now awaiting Level 1 approval.</p>
+              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+              <p style="font-size: 12px; color: #64748b;">This is an automated notification from STANDS eRequisitions.</p>
             </div>
           `;
           break;
         case "APPROVED_L1":
           subject = `[L1 Approved] Requisition #${displayId} - Compliance Cleared`;
           bodyHtml = `
-            <div style="font-family: sans-serif; padding: 24px; color: #1e293b; background-color: #ffffff; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);">
-              <div style="background-color: #f59e0b; padding: 16px 24px; border-radius: 8px 8px 0 0; color: #ffffff; font-weight: bold; font-size: 18px;">
-                🛡️ Level 1 Compliance Approved
-              </div>
-              <div style="padding: 24px 16px; line-height: 1.6;">
-                <p>Hello <strong>${requesterName}</strong>,</p>
-                <p>Your requisition <strong>#${displayId}: ${title}</strong> has passed Level 1 compliance review.</p>
-                <p>It is now waiting for final Level 2 authorization from the administrative panel.</p>
-                ${details ? `<div style="margin: 20px 0; padding: 16px; background-color: #fffbeb; border-radius: 8px; border-left: 4px solid #f59e0b; font-size: 13px;"><strong>Note:</strong> ${details}</div>` : ""}
-              </div>
-              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 0 16px;" />
-              <div style="padding: 16px; font-size: 11px; color: #64748b; text-align: center;">
-                This is an automated notification from STANDS eRequisitions. Sender: ${activeSmtpUser}
-              </div>
+            <div style="font-family: sans-serif; padding: 20px; color: #334155;">
+              <h2 style="color: #10b981;">Level 1 Approval Granted</h2>
+              <p>Hello <strong>${requesterName}</strong>,</p>
+              <p>Your requisition <strong>#${displayId}: ${title}</strong> has passed Level 1 Compliance approval.</p>
+              <p>It is now being reviewed for Level 2 (Final) authorization.</p>
+              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+              <p style="font-size: 12px; color: #64748b;">This is an automated notification from STANDS eRequisitions.</p>
             </div>
           `;
           break;
         case "APPROVED_L2":
           subject = `[Approved] Requisition #${displayId} - Final Authorization`;
           bodyHtml = `
-            <div style="font-family: sans-serif; padding: 24px; color: #1e293b; background-color: #ffffff; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);">
-              <div style="background-color: #10b981; padding: 16px 24px; border-radius: 8px 8px 0 0; color: #ffffff; font-weight: bold; font-size: 18px;">
-                🎉 Requisition Fully Authorized
-              </div>
-              <div style="padding: 24px 16px; line-height: 1.6;">
-                <p>Hello <strong>${requesterName}</strong>,</p>
-                <p>Your requisition <strong>#${displayId}: ${title}</strong> has received final Level 2 approval for <strong>${formattedAmount}</strong>!</p>
-                <p>The Finance department has been notified to process payment and release cash disbursement.</p>
-                ${details ? `<div style="margin: 20px 0; padding: 16px; background-color: #ecfdf5; border-radius: 8px; border-left: 4px solid #10b981; font-size: 13px;"><strong>Approver Note:</strong> ${details}</div>` : ""}
-              </div>
-              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 0 16px;" />
-              <div style="padding: 16px; font-size: 11px; color: #64748b; text-align: center;">
-                This is an automated notification from STANDS eRequisitions. Sender: ${activeSmtpUser}
-              </div>
+            <div style="font-family: sans-serif; padding: 20px; color: #334155;">
+              <h2 style="color: #059669;">Final Authorization Granted</h2>
+              <p>Hello <strong>${requesterName}</strong>,</p>
+              <p>Excellent news! Your requisition <strong>#${displayId}: ${title}</strong> has received final Level 2 authorization for <strong>${formattedAmount}</strong>.</p>
+              <p>The Finance team has been notified to initiate the disbursement process.</p>
+              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+              <p style="font-size: 12px; color: #64748b;">This is an automated notification from STANDS eRequisitions.</p>
             </div>
           `;
           break;
         case "DISBURSED":
           subject = `[Disbursed] Requisition #${displayId} - Funds Released`;
           bodyHtml = `
-            <div style="font-family: sans-serif; padding: 24px; color: #1e293b; background-color: #ffffff; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);">
-              <div style="background-color: #059669; padding: 16px 24px; border-radius: 8px 8px 0 0; color: #ffffff; font-weight: bold; font-size: 18px;">
-                💵 Cash Disbursed successfully
-              </div>
-              <div style="padding: 24px 16px; line-height: 1.6;">
-                <p>Hello <strong>${requesterName}</strong>,</p>
-                <p>Excellent news! Funds for your requisition <strong>#${displayId}: ${title}</strong> have been disbursed successfully.</p>
-                <div style="margin: 20px 0; padding: 16px; background-color: #f0fdf4; border-radius: 8px; border: 1px dashed #059669; text-align: center;">
-                  <span style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; font-weight: bold;">Disbursed Amount</span>
-                  <div style="font-size: 24px; font-weight: 800; color: #059669; margin: 6px 0;">${formattedAmount}</div>
-                </div>
-                ${details ? `<div style="margin: 20px 0; padding: 16px; background-color: #f8fafc; border-radius: 8px; border-left: 4px solid #64748b; font-size: 13px;"><strong>Disbursement Notes:</strong> ${details}</div>` : ""}
-                <p>Please audit your payment records (M-Pesa / Bank statement) to confirm receipt.</p>
-              </div>
-              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 0 16px;" />
-              <div style="padding: 16px; font-size: 11px; color: #64748b; text-align: center;">
-                This is an automated notification from STANDS eRequisitions. Sender: ${activeSmtpUser}
-              </div>
+            <div style="font-family: sans-serif; padding: 20px; color: #334155;">
+              <h2 style="color: #f59e0b;">Funds Disbursed</h2>
+              <p>Hello <strong>${requesterName}</strong>,</p>
+              <p>Funds for your requisition <strong>#${displayId}: ${title}</strong> have been disbursed.</p>
+              <p><strong>Amount:</strong> ${formattedAmount}</p>
+              ${details ? `<p><strong>Notes:</strong> ${details}</p>` : ""}
+              <p>Please check your registered payment method (M-Pesa/Bank) for the settlement.</p>
+              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+              <p style="font-size: 12px; color: #64748b;">This is an automated notification from STANDS eRequisitions.</p>
             </div>
           `;
           break;
         case "REJECTED":
           subject = `[Returned] Requisition #${displayId} - Revision Required`;
           bodyHtml = `
-            <div style="font-family: sans-serif; padding: 24px; color: #1e293b; background-color: #ffffff; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);">
-              <div style="background-color: #ef4444; padding: 16px 24px; border-radius: 8px 8px 0 0; color: #ffffff; font-weight: bold; font-size: 18px;">
-                ⚠️ Revision Required
-              </div>
-              <div style="padding: 24px 16px; line-height: 1.6;">
-                <p>Hello <strong>${requesterName}</strong>,</p>
-                <p>Your requisition <strong>#${displayId}: ${title}</strong> has been returned or rejected by the review committee.</p>
-                <div style="margin: 20px 0; padding: 16px; background-color: #fef2f2; border-radius: 8px; border-left: 4px solid #ef4444; font-size: 13px;">
-                  <strong>Feedback / Reason:</strong><br />
-                  <span style="color: #991b1b; font-weight: 600;">${details || "No explicit comments provided."}</span>
-                </div>
-                <p>You can edit and resubmit this requisition via the ledger dashboard.</p>
-              </div>
-              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 0 16px;" />
-              <div style="padding: 16px; font-size: 11px; color: #64748b; text-align: center;">
-                This is an automated notification from STANDS eRequisitions. Sender: ${activeSmtpUser}
-              </div>
+            <div style="font-family: sans-serif; padding: 20px; color: #334155;">
+              <h2 style="color: #ef4444;">Requisition Returned</h2>
+              <p>Hello <strong>${requesterName}</strong>,</p>
+              <p>Your requisition <strong>#${displayId}: ${title}</strong> has been returned or rejected by the approval committee.</p>
+              ${details ? `<p style="background: #fef2f2; padding: 10px; border-radius: 4px; border-left: 4px solid #ef4444;"><strong>Reason:</strong> ${details}</p>` : ""}
+              <p>Please log in to the portal to review the feedback and make necessary adjustments.</p>
+              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+              <p style="font-size: 12px; color: #64748b;">This is an automated notification from STANDS eRequisitions.</p>
             </div>
           `;
           break;
         default:
           bodyHtml = `
-            <div style="font-family: sans-serif; padding: 24px; color: #1e293b; background-color: #ffffff; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px;">
-              <h2 style="color: #1e293b; margin-top: 0;">Requisition Activity Updated</h2>
+            <div style="font-family: sans-serif; padding: 20px; color: #334155;">
+              <h2 style="color: #0f172a;">Requisition Update</h2>
               <p>Hello <strong>${requesterName}</strong>,</p>
-              <p>Requisition <strong>#${displayId}: ${title}</strong> has been updated to status: <strong>${status}</strong>.</p>
-              ${details ? `<p><strong>Update Notes:</strong> ${details}</p>` : ""}
+              <p>There is a new update regarding your requisition <strong>#${displayId}: ${title}</strong>. Current Status: ${status}.</p>
               <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-              <p style="font-size: 11px; color: #64748b;">Automated message from STANDS eRequisitions. Sender: ${activeSmtpUser}</p>
+              <p style="font-size: 12px; color: #64748b;">This is an automated notification from STANDS eRequisitions.</p>
             </div>
           `;
       }
 
-      const activeTransporter = nodemailer.createTransport({
-        host: activeSmtpHost,
-        port: activeSmtpPort,
-        secure: activeSmtpSecure,
-        auth: {
-          user: activeSmtpUser,
-          pass: activeSmtpPass,
-        },
-        tls: {
-          // Allow connection to servers with self-signed or older/expired SSL certificates
-          rejectUnauthorized: false
-        }
-      });
-
-      await activeTransporter.sendMail({
-        from: `"STANDS eRequisitions" <${activeSmtpUser}>`,
+      await transporter.sendMail({
+        from: `"STANDS eRequisitions" <${process.env.SMTP_USER || "ict.team@pceastandrews.org"}>`,
         to,
         subject,
         html: bodyHtml,
@@ -1518,171 +1384,6 @@ async function startServer() {
       res.json({ success: true, deliveredTo: to, status, simulated: true, warning: err.message });
     }
   });
-
-  // API Route for Sending Test Emails
-  app.post("/api/test-email", async (req, res) => {
-    const { to, smtpConfig } = req.body;
-    
-    const activeSmtpPass = smtpConfig?.smtpPass || process.env.SMTP_PASS;
-    const activeSmtpUser = smtpConfig?.smtpUser || process.env.SMTP_USER || "ict.team@pceastandrews.org";
-    const activeSmtpHost = smtpConfig?.smtpHost || process.env.SMTP_HOST || "smtp.gmail.com";
-    const activeSmtpPort = parseInt(smtpConfig?.smtpPort || process.env.SMTP_PORT || "587");
-    
-    // Auto-resolve: direct SSL (secure: true) is only supported on port 465. 
-    // STARTTLS (secure: false) must be used for port 587 or others.
-    const activeSmtpSecure = activeSmtpPort === 465;
-
-    if (!activeSmtpPass) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "SMTP credentials not configured. Please enter a valid SMTP password to test." 
-      });
-    }
-
-    try {
-      const testTransporter = nodemailer.createTransport({
-        host: activeSmtpHost,
-        port: activeSmtpPort,
-        secure: activeSmtpSecure,
-        auth: {
-          user: activeSmtpUser,
-          pass: activeSmtpPass,
-        },
-        tls: {
-          // Allow connection to servers with self-signed or older/expired SSL certificates
-          rejectUnauthorized: false
-        }
-      });
-
-      const targetTo = to || activeSmtpUser || "ict.team@pceastandrews.org";
-
-      await testTransporter.sendMail({
-        from: `"STANDS eRequisitions [SMTP Test]" <${activeSmtpUser}>`,
-        to: targetTo,
-        subject: `[SMTP Test] Connection and Authorization Successful`,
-        html: `
-          <div style="font-family: sans-serif; padding: 24px; color: #1e293b; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #4f46e5; margin-top: 0;">🟢 SMTP Mailer Test Successful</h2>
-            <p>Hello,</p>
-            <p>This is a real-time verification email dispatched from your <strong>STANDS eRequisitions</strong> portal.</p>
-            <p>If you are reading this message, your SMTP credentials and mail server routing parameters are fully functional and authorized.</p>
-            <hr style="border: 0; border-top: 1px solid #cbd5e1; margin: 20px 0;" />
-            <div style="font-size: 11px; color: #64748b; font-family: monospace; line-height: 1.5;">
-              <div><strong>Host:</strong> ${activeSmtpHost}</div>
-              <div><strong>Port:</strong> ${activeSmtpPort}</div>
-              <div><strong>Secure:</strong> ${activeSmtpSecure ? "Yes" : "No"}</div>
-              <div><strong>Authenticated User:</strong> ${activeSmtpUser}</div>
-              <div><strong>Time Stamp:</strong> ${new Date().toLocaleString()}</div>
-            </div>
-          </div>
-        `,
-      });
-
-      persistActivity({
-        action: "EMAIL_TEST",
-        details: `Successful SMTP configuration test sent to ${targetTo} from ${activeSmtpUser}`,
-        performedBy: "SYSTEM_MAILER",
-        timestamp: new Date().toISOString()
-      });
-
-      res.json({ success: true, message: `Test email dispatched successfully to ${targetTo}!` });
-    } catch (err: any) {
-      console.error("Test SMTP failed:", err);
-      res.status(500).json({ success: false, error: err.message || "Failed to send test email." });
-    }
-  });
-
-  // API Route for retrieving Email dispatch logs
-  app.get("/api/email-logs", (req, res) => {
-    try {
-      const activities = restoreActivities();
-      const emailActivities = activities.filter((act: any) => 
-        act && (
-          act.action === "EMAIL_DISPATCH" || 
-          act.action === "EMAIL_SIMULATED" || 
-          act.action === "EMAIL_SKIPPED" || 
-          act.action === "EMAIL_TEST"
-        )
-      ).reverse(); // latest first
-      res.json(emailActivities);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to load email logs" });
-    }
-  });
-
-  // API Route for running test suites
-  app.post("/api/admin/run-test", async (req, res) => {
-    const { testName, config, routeToSlack } = req.body;
-    try {
-      const { runTest } = await import("./scripts/tests/runner");
-      const result = await runTest(testName, config);
-
-      if (routeToSlack) {
-        // Build slack body format and send
-        const webhookUrl = process.env.SLACK_WEBHOOK_URL;
-        const slackBody = {
-          attachments: [
-            {
-              color: result.success ? "#10b981" : "#ef4444",
-              blocks: [
-                {
-                  type: "header",
-                  text: {
-                    type: "plain_text",
-                    text: `🧪 Automated Test Result: ${result.name}`,
-                    emoji: true
-                  }
-                },
-                {
-                  type: "section",
-                  fields: [
-                    {
-                      type: "mrkdwn",
-                      text: `*Status:*\n${result.success ? "🟢 SUCCESS" : "❌ FAILED"}`
-                    },
-                    {
-                      type: "mrkdwn",
-                      text: `*Duration:*\n\`${result.durationMs}ms\``
-                    }
-                  ]
-                },
-                {
-                  type: "section",
-                  text: {
-                    type: "mrkdwn",
-                    text: `*Summary:*\n${result.message}`
-                  }
-                },
-                {
-                  type: "section",
-                  text: {
-                    type: "mrkdwn",
-                    text: `*Detailed Logs:*\n\`\`\`${result.logs.slice(-20).join("\n") || "No detailed logs logged."}\`\`\``
-                  }
-                }
-              ]
-            }
-          ]
-        };
-
-        if (webhookUrl) {
-          await fetch(webhookUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(slackBody)
-          });
-        } else {
-          console.log("[Slack Simulation] Webhook not defined. Simulated payload:", JSON.stringify(slackBody));
-        }
-      }
-
-      res.json({ success: true, result });
-    } catch (err: any) {
-      console.error(`Failed to run test ${testName}:`, err);
-      res.status(500).json({ success: false, error: err.message || "Unknown test runner failure" });
-    }
-  });
-
 
   // API Route for Sending Summary Emails
   app.post("/api/send-summary-email", async (req, res) => {
@@ -4325,158 +4026,6 @@ async function startServer() {
         message: err.message || "Failed to authenticate. Google Service Account credentials not parsed or missing private keys."
       });
     }
-  });
-
-  // Local JSON Backup Ledger endpoints
-  app.post("/api/backup/ledger", async (req, res) => {
-    const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.SUPABASE_DIRECT_URL || "";
-    const backupsDir = path.join(process.cwd(), "backups");
-    
-    if (!fs.existsSync(backupsDir)) {
-      fs.mkdirSync(backupsDir, { recursive: true });
-    }
-
-    if (!dbUrl) {
-      console.warn("[Local Backup Ledger] DATABASE_URL is not set. Saving empty/simulated backup snapshot.");
-      const timestamp = new Date().toISOString();
-      const filename = `ledger_backup_offline_${Date.now()}.json`;
-      const filePath = path.join(backupsDir, filename);
-      
-      const payload = {
-        metadata: {
-          timestamp,
-          mode: "offline_simulated",
-          totalTables: 0,
-          notes: "Supabase connection string is missing. Simulated backup generated successfully."
-        },
-        data: {}
-      };
-
-      fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
-      return res.json({
-        success: true,
-        message: "Offline backup created successfully as database URL was not found.",
-        filename,
-        metadata: payload.metadata
-      });
-    }
-
-    const client = new pg.Client({
-      connectionString: dbUrl,
-      ssl: dbUrl.includes("supabase.co") || dbUrl.includes("supabase.com") || dbUrl.includes("pooler.supabase") 
-        ? { rejectUnauthorized: false } 
-        : undefined,
-    });
-
-    try {
-      await client.connect();
-      
-      // Discover all public tables
-      const tablesRes = await client.query(`
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        ORDER BY table_name;
-      `);
-      
-      const tableData: Record<string, any[]> = {};
-      const tableCounts: Record<string, number> = {};
-      
-      for (const row of tablesRes.rows) {
-        const tableName = row.table_name;
-        try {
-          const dataRes = await client.query(`SELECT * FROM "${tableName}";`);
-          tableData[tableName] = dataRes.rows;
-          tableCounts[tableName] = dataRes.rowCount || 0;
-        } catch (tableErr: any) {
-          console.error(`[Local Backup Ledger] Failed to backup table ${tableName}:`, tableErr.message || tableErr);
-          tableData[tableName] = [];
-          tableCounts[tableName] = -1;
-        }
-      }
-      
-      const timestamp = new Date().toISOString();
-      const filename = `ledger_backup_${Date.now()}.json`;
-      const filePath = path.join(backupsDir, filename);
-      
-      const payload = {
-        metadata: {
-          timestamp,
-          mode: "online_pg",
-          totalTables: tablesRes.rows.length,
-          tableCounts
-        },
-        data: tableData
-      };
-      
-      fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
-      
-      await client.end();
-      
-      return res.json({
-        success: true,
-        message: `Successfully captured redundant snapshot containing ${tablesRes.rows.length} database tables!`,
-        filename,
-        metadata: payload.metadata
-      });
-    } catch (err: any) {
-      console.error("[Local Backup Ledger API Error]:", err);
-      return res.status(500).json({
-        success: false,
-        error: err.message || "Failed to compile database snapshot."
-      });
-    }
-  });
-
-  app.get("/api/backup/ledger/list", async (req, res) => {
-    const backupsDir = path.join(process.cwd(), "backups");
-    if (!fs.existsSync(backupsDir)) {
-      return res.json({ success: true, backups: [] });
-    }
-    
-    try {
-      const files = fs.readdirSync(backupsDir);
-      const backups = files
-        .filter(f => f.endsWith(".json"))
-        .map(f => {
-          const filePath = path.join(backupsDir, f);
-          const stats = fs.statSync(filePath);
-          
-          let fileMeta: any = null;
-          try {
-            const content = fs.readFileSync(filePath, "utf-8");
-            const parsed = JSON.parse(content);
-            fileMeta = parsed.metadata || null;
-          } catch (_) {}
-          
-          return {
-            filename: f,
-            sizeBytes: stats.size,
-            createdAt: stats.mtime.toISOString(),
-            metadata: fileMeta
-          };
-        })
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        
-      return res.json({ success: true, backups });
-    } catch (err: any) {
-      console.error("[Local Backup List Error]:", err);
-      return res.status(500).json({ success: false, error: err.message || "Failed to list backups." });
-    }
-  });
-
-  app.get("/api/backup/ledger/download/:filename", async (req, res) => {
-    const { filename } = req.params;
-    if (!filename || filename.includes("/") || filename.includes("..") || !filename.endsWith(".json")) {
-      return res.status(400).json({ error: "Invalid backup filename." });
-    }
-    
-    const filePath = path.join(process.cwd(), "backups", filename);
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: "Backup file not found." });
-    }
-    
-    return res.download(filePath, filename);
   });
 
   // Vite middleware for development

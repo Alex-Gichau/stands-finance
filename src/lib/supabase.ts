@@ -6,33 +6,27 @@ let supabaseClientInstance: any = null;
 let dynamicSupabaseUrl: string | null = null;
 let dynamicSupabaseAnonKey: string | null = null;
 let attemptedDynamicFetch = false;
-let lastFetchTime = 0;
 
-const fetchConfigSynchronously = (force = false) => {
-  const now = Date.now();
-  if (attemptedDynamicFetch && !force && dynamicSupabaseUrl) return;
-  // If we already attempted but failed, wait at least 5 seconds before retrying, unless forced
-  if (!force && attemptedDynamicFetch && !dynamicSupabaseUrl && now - lastFetchTime < 5000) return;
-
+export const fetchConfigAsynchronously = async (force = false) => {
+  if (attemptedDynamicFetch && !force) return;
   attemptedDynamicFetch = true;
-  lastFetchTime = now;
   try {
-    const xhr = new XMLHttpRequest();
-    // Synchronous request to get live env variables backend-side
-    xhr.open("GET", "/api/config/supabase", false);
-    xhr.send();
-    if (xhr.status === 200) {
-      const data = JSON.parse(xhr.responseText);
+    const res = await fetch("/api/config/supabase");
+    if (res.ok) {
+      const data = await res.json();
       if (data.url && data.anonKey) {
         dynamicSupabaseUrl = data.url;
         dynamicSupabaseAnonKey = data.anonKey;
-        console.log("[Supabase] Successfully loaded real credentials dynamically from the backend server api.");
+        console.log("[Supabase] Successfully loaded credentials asynchronously from backend.");
       }
     }
   } catch (err) {
-    console.info("[Supabase] Issue dynamically loading credentials from server API:", err);
+    console.warn("[Supabase] Issue asynchronously loading credentials:", err);
   }
 };
+
+// Start background fetch immediately on module load
+fetchConfigAsynchronously().catch(() => {});
 
 export const getSupabaseClient = (forceRefresh = false) => {
   if (supabaseClientInstance && !forceRefresh) {
@@ -46,7 +40,6 @@ export const getSupabaseClient = (forceRefresh = false) => {
   let supabaseUrl = "";
   let supabaseAnonKey = "";
 
-  fetchConfigSynchronously(forceRefresh);
   if (dynamicSupabaseUrl && dynamicSupabaseAnonKey) {
     supabaseUrl = dynamicSupabaseUrl;
     supabaseAnonKey = dynamicSupabaseAnonKey;
@@ -81,7 +74,6 @@ export const getSupabaseClient = (forceRefresh = false) => {
  * Check if Supabase mode is requested and properly configured.
  */
 export const isSupabaseEnabled = (): boolean => {
-  fetchConfigSynchronously();
   // Try to see if we have credentials loaded either from env or dynamic fetch
   const url = dynamicSupabaseUrl || import.meta.env.VITE_SUPABASE_URL;
   const key = dynamicSupabaseAnonKey || import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -92,3 +84,4 @@ export const isSupabaseEnabled = (): boolean => {
   
   return true;
 };
+

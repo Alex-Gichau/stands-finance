@@ -93,8 +93,6 @@ const mapSnakeToCamel = (data: any): any => {
   return data;
 };
 
-let globalOnMutationCallback: (() => void) | null = null;
-
 const setDoc = async (docRef: any, data: any, options?: any) => {
   const supabase = getSupabaseClient();
   if (!supabase) return;
@@ -111,15 +109,12 @@ const setDoc = async (docRef: any, data: any, options?: any) => {
           const retryResult = await supabase.from(docRef.table).upsert(payload);
           if (!retryResult.error) {
             console.log(`[Supabase Self-Healing] Successfully completed setDoc on table '${docRef.table}' after filtering column '${missingColumn}'.`);
-            if (globalOnMutationCallback) globalOnMutationCallback();
             return;
           }
           error = retryResult.error;
         }
       }
       console.error(`setDoc error: table=${docRef.table}, id=${docRef.id}, message=${error.message || JSON.stringify(error)}, details=${error.details || ""}`);
-    } else {
-      if (globalOnMutationCallback) globalOnMutationCallback();
     }
   } catch (err) {
     console.error("setDoc failed:", err);
@@ -142,15 +137,12 @@ const updateDoc = async (docRef: any, data: any) => {
           const retryResult = await supabase.from(docRef.table).update(payload).eq("id", docRef.id);
           if (!retryResult.error) {
             console.log(`[Supabase Self-Healing] Successfully completed updateDoc on table '${docRef.table}' after filtering column '${missingColumn}'.`);
-            if (globalOnMutationCallback) globalOnMutationCallback();
             return;
           }
           error = retryResult.error;
         }
       }
       console.error(`updateDoc error: table=${docRef.table}, id=${docRef.id}, message=${error.message || JSON.stringify(error)}, details=${error.details || ""}`);
-    } else {
-      if (globalOnMutationCallback) globalOnMutationCallback();
     }
   } catch (err) {
     console.error("updateDoc failed:", err);
@@ -164,8 +156,6 @@ const deleteDoc = async (docRef: any) => {
     const { error } = await supabase.from(docRef.table).delete().eq("id", docRef.id);
     if (error) {
       console.error(`deleteDoc error: table=${docRef.table}, id=${docRef.id}, message=${error.message || JSON.stringify(error)}, details=${error.details || ""}`);
-    } else {
-      if (globalOnMutationCallback) globalOnMutationCallback();
     }
   } catch (err) {
     console.error("deleteDoc failed:", err);
@@ -285,7 +275,6 @@ const addDoc = async (col: any, data: any) => {
   try {
     const { data: inserted, error } = await supabase.from(col.table).insert([data]).select().single();
     if (error || !inserted) return { id: "mock" };
-    if (globalOnMutationCallback) globalOnMutationCallback();
     return { id: inserted.id };
   } catch (err) {
     console.error("addDoc failed:", err);
@@ -314,9 +303,7 @@ const onSnapshot = (queryRef: any, callback: (snap: any) => void, errorCallback?
   
   fetchData();
   
-  // Return early to disable real-time streaming subscriptions to save resources
-  return () => {};
-  /* deactivated
+  const channel = supabase.channel(`public:${queryRef.table}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: queryRef.table }, () => {
        fetchData();
     })
@@ -326,9 +313,8 @@ const onSnapshot = (queryRef: any, callback: (snap: any) => void, errorCallback?
        }
     });
     
-  */
   return () => {
-    // supabase.removeChannel(channel);
+    supabase.removeChannel(channel);
   };
 };
 
@@ -456,28 +442,12 @@ interface RequisitionContextType {
   setSyncTargets: (targets: string[]) => void;
   systemLogLimit: number;
   setSystemLogLimit: (limit: number) => void;
-  refreshData: () => void;
 }
 
 const RequisitionContext = createContext<RequisitionContextType | undefined>(undefined);
 
 export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
-  const [fetchTrigger, setFetchTrigger] = useState<number>(0);
-
-  const refreshData = useCallback(() => {
-    setFetchTrigger(prev => prev + 1);
-  }, []);
-
-  useEffect(() => {
-    globalOnMutationCallback = () => {
-      setFetchTrigger(prev => prev + 1);
-    };
-    return () => {
-      globalOnMutationCallback = null;
-    };
-  }, []);
-
   const [projects, setProjects] = useState<Project[]>([]);
   const [alerts, setAlerts] = useState<BudgetAlert[]>([]);
   const [thresholds, setThresholds] = useState<AlertThreshold[]>([]);
@@ -627,7 +597,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         [UserRole.APPROVER_L1]: ["dashboard", "requisitions", "approvals", "notifications", "finance"],
         [UserRole.APPROVER_L2]: ["dashboard", "requisitions", "approvals", "notifications", "finance"],
         [UserRole.FINANCE]: ["dashboard", "requisitions", "finance", "reports", "notifications", "settings", "auditTrail", "transactions"],
-        [UserRole.ADMIN]: ["dashboard", "requisitions", "vendors", "approvals", "finance", "reports", "users", "settings", "notifications", "auditTrail", "accessControl", "transactions", "slackIntegration"],
+        [UserRole.ADMIN]: ["dashboard", "requisitions", "vendors", "approvals", "finance", "reports", "users", "settings", "notifications", "auditTrail", "accessControl", "transactions"],
       };
       return defaults[currentUser.role]?.includes(viewId) ?? false;
     }
@@ -2639,9 +2609,12 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     };
 
     fetchAllFromSupabase();
+    // Background polling interval to keep UI reactive even without websockets
+    pollInterval = setInterval(fetchAllFromSupabase, 5000);
 
     return () => {
       active = false;
+      if (pollInterval) clearInterval(pollInterval);
     };
   }, [
     currentUserId,
@@ -2651,15 +2624,31 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     currentUserGroup,
     currentUserGroupsJSON,
     systemSettings.prototypeDataEnabled,
-    systemLogLimit,
-    fetchTrigger
+    systemLogLimit
   ]);
 
   // Proactive automatic data migration to Supabase to fulfill "Permanents copy all data to supabase"
-  // [Option B: Bypass / Disable Firestore Migration applied]
   useEffect(() => {
-    console.log("[RequisitionContext] Firestore-to-Supabase automatic migration is explicitly bypassed/disabled.");
-  }, []);
+    if (!isSupabaseEnabled() || !currentUserId || !currentUserIsApproved) return;
+    if (localStorage.getItem("MIGRATED_TO_SUPABASE_AUTO") === "true") return;
+
+    const runAutoMigration = async () => {
+      try {
+        console.log("[RequisitionContext] Proactively copying all data to Supabase...");
+        const result = await databaseService.migrateFirestoreToSupabase();
+        if (result.success) {
+          console.log("[RequisitionContext] Automatic Supabase data copy finished successfully!");
+          localStorage.setItem("MIGRATED_TO_SUPABASE_AUTO", "true");
+        } else {
+          console.info("[RequisitionContext] Automatic Supabase data copy bypass:", result.error);
+        }
+      } catch (err) {
+        console.info("[RequisitionContext] Automatic Supabase data copy bypass:", err);
+      }
+    };
+
+    runAutoMigration();
+  }, [currentUserId, currentUserIsApproved]);
 
 
 
@@ -3204,8 +3193,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [db]);
 
-  const sendEmailNotification = useCallback(async (req: Requisition, status: string, details?: string, toOverride?: string) => {
-    let targetEmail = toOverride || req.requesterEmail;
+  const sendEmailNotification = useCallback(async (req: Requisition, status: string, details?: string) => {
+    let targetEmail = req.requesterEmail;
     
     if (!targetEmail) {
       // Fallback: search in loaded users
@@ -3217,14 +3206,6 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       console.log("Cannot send email: Requisition has no requesterEmail and no matching user found", req.id);
       return;
     }
-
-    const smtpConfig = {
-      smtpHost: systemSettings?.smtpHost,
-      smtpPort: systemSettings?.smtpPort,
-      smtpUser: systemSettings?.smtpUser,
-      smtpPass: systemSettings?.smtpPass,
-      smtpSecure: systemSettings?.smtpSecure,
-    };
     
     try {
       await fetch("/api/send-email", {
@@ -3232,40 +3213,18 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: targetEmail,
-          requesterName: toOverride ? "Administrator/ICT Approver Team" : req.requesterName,
+          requesterName: req.requesterName,
           amount: req.amount,
           title: req.title,
           requisitionId: req.id,
           status: status,
-          details: details,
-          smtpConfig: smtpConfig
+          details: details
         })
       });
-
-      // Send copy to ICT Team / Admin if it is a major state transition
-      const adminEmail = systemSettings?.notificationEmail || "ict.team@pceastandrews.org";
-      if (!toOverride && adminEmail && adminEmail !== targetEmail) {
-        if (status === "SUBMITTED" || status === "APPROVED_L1" || status === "APPROVED_L2" || status === "DISBURSED" || status === "REJECTED") {
-          fetch("/api/send-email", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              to: adminEmail,
-              requesterName: "Administrator/ICT Approver Team",
-              amount: req.amount,
-              title: `[ADMIN ALERT] Requisition Activity: '${req.title}'`,
-              requisitionId: req.id,
-              status: status,
-              details: `This is an administrative audit copy. Triggered status: ${status} for requester ${req.requesterName} (${req.requesterEmail || "no email"}).\nNotes: ${details || "None."}`,
-              smtpConfig: smtpConfig
-            })
-          }).catch(e => console.error("Admin background email copy dispatch failed:", e));
-        }
-      }
     } catch (err) {
       console.error("Failed to trigger email notification:", err);
     }
-  }, [users, systemSettings]);
+  }, [users]);
 
   const syncRequisitionToGoogleSheets = useCallback(async (req: Requisition) => {
     try {
@@ -3973,8 +3932,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       firestoreQuotaExceeded,
       setFirestoreQuotaExceeded,
       setSyncTargets,
-      syncingTargets,
-      refreshData
+      syncingTargets
     }}>
       {children}
     </RequisitionContext.Provider>

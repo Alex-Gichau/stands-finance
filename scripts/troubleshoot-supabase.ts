@@ -48,9 +48,9 @@ async function runDiagnostics() {
     formatSectionHeader("2. Direct SQL PostgreSQL Connection Probe");
     const client = new pg.Client({
       connectionString: dbUrl,
-      ssl: dbUrl.includes("supabase.co") || dbUrl.includes("supabase.com") || dbUrl.includes("pooler.supabase")
-        ? { rejectUnauthorized: false }
-        : undefined
+      ssl: dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1")
+        ? undefined
+        : { rejectUnauthorized: false }
     });
 
     try {
