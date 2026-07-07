@@ -641,6 +641,8 @@ async function startServer() {
           report.api.error = `HTTP ${response.status}: ${textErr}`;
           if (textErr.includes("relation") || response.status === 404) {
             report.recommendations.push("The Supabase REST server responded, but tables have not been initiated. Click the 'Run Supabase Database Migration' button below to create schema assets.");
+          } else if (textErr.toLowerCase().includes("upstream connect error") || textErr.toLowerCase().includes("timeout") || response.status === 503) {
+            report.recommendations.push("⚠️ SUPABASE PROJECT PAUSED/UNHEALTHY: Your database responded with a connection timeout or service unavailable error (HTTP 503). Your free-tier Supabase project is likely paused or sleeping due to inactivity. Please go to your Supabase Dashboard (https://supabase.com/dashboard/projects), open your project, and click 'Restore Project' or 'Resume'.");
           } else {
             report.recommendations.push(`REST API gateway responded with bad status status. Check key permissions or policies. Error details: ${textErr}`);
           }
