@@ -1,4 +1,3 @@
-import { getSupabaseClient } from "./supabase";
 import { 
   Requisition, 
   Project, 
@@ -17,119 +16,103 @@ import {
   Vendor 
 } from "../types";
 
+// Helper for making API calls
+async function apiCall(endpoint: string, method: string = "GET", body?: any): Promise<any> {
+  const options: RequestInit = {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+    },
+  };
+  if (body) {
+    options.body = JSON.stringify(body);
+  }
+  const response = await fetch(endpoint, options);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`DB API Error ${response.status}: ${text || response.statusText}`);
+  }
+  return response.json();
+}
+
 export const databaseService = {
   // --- USER OPERATIONS ---
   async saveUserProfile(user: UserProfile): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error("Supabase client not initialized.");
-    
-    console.log(`[DatabaseService] Saving user profile to Supabase: ${user.email}`);
-    const { error } = await supabase
-      .from("users")
-      .upsert({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        group: user.group || null,
-        groups: user.groups || [],
-        approver_code: user.approverCode || null,
-        is_active: user.isActive,
-        is_approved: user.isApproved,
-        is_suspended: user.isSuspended,
-        phone: user.phone || null,
-        department: user.department || null,
-        photo_url: user.photoURL || null,
-        temp_password: user.tempPassword || null,
-        is_online: user.isOnline || false,
-        last_seen: user.lastSeen ? new Date(user.lastSeen).toISOString() : null,
-        idle_timeout_duration: user.idleTimeoutDuration || 15,
-        updated_at: new Date().toISOString()
-      });
-
-    if (error) throw error;
-    console.log(`[DatabaseService] Successfully saved user to Supabase`);
+    console.log(`[DatabaseService] Saving user profile to MongoDB: ${user.email}`);
+    await apiCall(`/api/db/users/${user.id}`, "POST", {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      group: user.group || null,
+      groups: user.groups || [],
+      approver_code: user.approverCode || null,
+      is_active: user.isActive,
+      is_approved: user.isApproved,
+      is_suspended: user.isSuspended,
+      phone: user.phone || null,
+      department: user.department || null,
+      photo_url: user.photoURL || null,
+      temp_password: user.tempPassword || null,
+      is_online: user.isOnline || false,
+      last_seen: user.lastSeen ? new Date(user.lastSeen).toISOString() : null,
+      idle_timeout_duration: user.idleTimeoutDuration || 15,
+      updated_at: new Date().toISOString()
+    });
   },
 
   // --- PROJECT OPERATIONS ---
   async saveProject(project: Project): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error("Supabase client not initialized.");
-    
-    console.log(`[DatabaseService] Saving project to Supabase: ${project.name}`);
-    const { error } = await supabase
-      .from("projects")
-      .upsert({
-        id: project.id,
-        name: project.name,
-        group_id: project.groupId,
-        allocated_budget: project.allocatedBudget,
-        spent_amount: project.spentAmount,
-        status: project.status,
-        color: project.color || null,
-        fiscal_year: project.fiscalYear || null,
-        requisition_limit: project.requisitionLimit || null,
-        account_number: project.accountNumber || null
-      });
-
-    if (error) throw error;
-    console.log(`[DatabaseService] Project successfully saved to Supabase: ${project.id}`);
+    console.log(`[DatabaseService] Saving project to MongoDB: ${project.name}`);
+    await apiCall(`/api/db/projects/${project.id}`, "POST", {
+      id: project.id,
+      name: project.name,
+      group_id: project.groupId,
+      allocated_budget: project.allocatedBudget,
+      spent_amount: project.spentAmount,
+      status: project.status,
+      color: project.color || null,
+      fiscal_year: project.fiscalYear || null,
+      requisition_limit: project.requisitionLimit || null,
+      account_number: project.accountNumber || null
+    });
   },
 
   async saveChurchGroup(group: ChurchGroup): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error("Supabase client not initialized.");
-    
-    console.log(`[DatabaseService] Saving church group to Supabase: ${group.name}`);
-    const { error } = await supabase
-      .from("church_groups")
-      .upsert({
-        id: group.id,
-        name: group.name,
-        description: group.description || null,
-        created_at: group.createdAt ? new Date(group.createdAt).toISOString() : new Date().toISOString()
-      });
-
-    if (error) throw error;
+    console.log(`[DatabaseService] Saving church group to MongoDB: ${group.name}`);
+    await apiCall(`/api/db/church_groups/${group.id}`, "POST", {
+      id: group.id,
+      name: group.name,
+      description: group.description || null,
+      created_at: group.createdAt ? new Date(group.createdAt).toISOString() : new Date().toISOString()
+    });
   },
 
   async deleteChurchGroup(id: string): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error("Supabase client not initialized.");
-    const { error } = await supabase.from("church_groups").delete().eq("id", id);
-    if (error) throw error;
+    console.log(`[DatabaseService] Deleting church group from MongoDB: ${id}`);
+    await apiCall(`/api/db/church_groups/${id}`, "DELETE");
   },
 
   async saveLedgerBook(book: LedgerBook): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error("Supabase client not initialized.");
-    
-    console.log(`[DatabaseService] Saving ledger book to Supabase: ${book.ministryName}`);
-    const { error } = await supabase
-      .from("ledger_books")
-      .upsert({
-        id: book.id,
-        ministry_id: book.ministryId || null,
-        ministry_name: book.ministryName,
-        book_name: book.bookName || null,
-        description: book.description || null,
-        created_at: book.createdAt ? new Date(book.createdAt).toISOString() : new Date().toISOString(),
-        created_by: book.createdBy,
-        creator_name: book.creatorName || null,
-        budget_limit: book.budgetLimit,
-        spent_amount: book.spentAmount,
-        notes: book.notes || null,
-        status: book.status || "ACTIVE"
-      });
-
-    if (error) throw error;
+    console.log(`[DatabaseService] Saving ledger book to MongoDB: ${book.ministryName}`);
+    await apiCall(`/api/db/ledger_books/${book.id}`, "POST", {
+      id: book.id,
+      ministry_id: book.ministryId || null,
+      ministry_name: book.ministryName,
+      book_name: book.bookName || null,
+      description: book.description || null,
+      created_at: book.createdAt ? new Date(book.createdAt).toISOString() : new Date().toISOString(),
+      created_by: book.createdBy,
+      creator_name: book.creatorName || null,
+      budget_limit: book.budgetLimit,
+      spent_amount: book.spentAmount,
+      notes: book.notes || null,
+      status: book.status || "ACTIVE"
+    });
   },
 
   async updateLedgerBook(id: string, data: Partial<LedgerBook>): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error("Supabase client not initialized.");
-    
-    // Map camelCase to snake_case if necessary
+    console.log(`[DatabaseService] Updating ledger book in MongoDB: ${id}`);
     const mappedData: any = {};
     if (data.ministryId !== undefined) mappedData.ministry_id = data.ministryId;
     if (data.ministryName !== undefined) mappedData.ministry_name = data.ministryName;
@@ -139,89 +122,72 @@ export const databaseService = {
     if (data.status !== undefined) mappedData.status = data.status;
     if (data.notes !== undefined) mappedData.notes = data.notes;
 
-    const { error } = await supabase.from("ledger_books").update(mappedData).eq("id", id);
-    if (error) throw error;
+    await apiCall(`/api/db/ledger_books/${id}`, "PATCH", mappedData);
   },
 
   // --- REQUISITION OPERATIONS ---
   async saveRequisition(req: Requisition): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error("Supabase client not initialized.");
-    
-    console.log(`[DatabaseService] Saving requisition to Supabase: ${req.title}`);
-    const { error } = await supabase
-      .from("requisitions")
-      .upsert({
-        id: req.id,
-        project_id: req.projectId || null,
-        title: req.title,
-        description: req.description,
-        amount: req.amount,
-        amount_words: req.amountWords || null,
-        group_id: req.groupId,
-        group_name: req.groupName,
-        requester_id: req.requesterId,
-        requester_name: req.requesterName,
-        requester_email: req.requesterEmail || null,
-        status: req.status,
-        submitted_at: req.submittedAt ? new Date(req.submittedAt).toISOString() : null,
-        updated_at: new Date(req.updatedAt || Date.now()).toISOString(),
-        expires_at: req.expiresAt ? new Date(req.expiresAt).toISOString() : null,
-        escalation_level: req.escalationLevel || 0,
-        escalation_notifications_sent: req.escalationNotificationsSent || false,
-        approved_at_l1: req.approvedAtL1 ? new Date(req.approvedAtL1).toISOString() : null,
-        approved_at_l2: req.approvedAtL2 ? new Date(req.approvedAtL2).toISOString() : null,
-        disbursed_at: req.disbursedAt ? new Date(req.disbursedAt).toISOString() : null,
-        rejection_reason: req.rejectionReason || null,
-        approval_history: req.approvalHistory || [],
-        digital_signature: req.digitalSignature || null,
-        payable_to: req.payableTo || null,
-        recurrence: req.recurrence || "NONE",
-        last_recurrence_generated_at: req.lastRecurrenceGeneratedAt ? new Date(req.lastRecurrenceGeneratedAt).toISOString() : null,
-        additional_info: req.additionalInfo || null,
-        attachments: req.attachments || [],
-        receipts: req.receipts || [],
-        flagged_for_audit: req.flaggedForAudit || false,
-        in_procurement: req.inProcurement || false,
-        requires_more_info: req.requiresMoreInfo || false,
-        fiscal_year: req.fiscalYear || null
-      });
-
-    if (error) throw error;
-    console.log(`[DatabaseService] Requisition successfully saved to Supabase: ${req.id}`);
+    console.log(`[DatabaseService] Saving requisition to MongoDB: ${req.title}`);
+    await apiCall(`/api/db/requisitions/${req.id}`, "POST", {
+      id: req.id,
+      project_id: req.projectId || null,
+      title: req.title,
+      description: req.description,
+      amount: req.amount,
+      amount_words: req.amountWords || null,
+      group_id: req.groupId,
+      group_name: req.groupName,
+      requester_id: req.requesterId,
+      requester_name: req.requesterName,
+      requester_email: req.requesterEmail || null,
+      status: req.status,
+      submitted_at: req.submittedAt ? new Date(req.submittedAt).toISOString() : null,
+      updated_at: new Date(req.updatedAt || Date.now()).toISOString(),
+      expires_at: req.expiresAt ? new Date(req.expiresAt).toISOString() : null,
+      escalation_level: req.escalationLevel || 0,
+      escalation_notifications_sent: req.escalationNotificationsSent || false,
+      approved_at_l1: req.approvedAtL1 ? new Date(req.approvedAtL1).toISOString() : null,
+      approved_at_l2: req.approvedAtL2 ? new Date(req.approvedAtL2).toISOString() : null,
+      disbursed_at: req.disbursedAt ? new Date(req.disbursedAt).toISOString() : null,
+      rejection_reason: req.rejectionReason || null,
+      approval_history: req.approvalHistory || [],
+      digital_signature: req.digitalSignature || null,
+      payable_to: req.payableTo || null,
+      recurrence: req.recurrence || "NONE",
+      last_recurrence_generated_at: req.lastRecurrenceGeneratedAt ? new Date(req.lastRecurrenceGeneratedAt).toISOString() : null,
+      additional_info: req.additionalInfo || null,
+      attachments: req.attachments || [],
+      receipts: req.receipts || [],
+      flagged_for_audit: req.flaggedForAudit || false,
+      in_procurement: req.inProcurement || false,
+      requires_more_info: req.requiresMoreInfo || false,
+      fiscal_year: req.fiscalYear || null
+    });
   },
 
   async deleteRequisition(id: string): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error("Supabase client not initialized.");
-    const { error } = await supabase.from("requisitions").delete().eq("id", id);
-    if (error) throw error;
-    console.log(`[DatabaseService] Requisition successfully deleted from Supabase: ${id}`);
+    console.log(`[DatabaseService] Deleting requisition from MongoDB: ${id}`);
+    await apiCall(`/api/db/requisitions/${id}`, "DELETE");
   },
 
   async updateProject(id: string, data: any): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error("Supabase client not initialized.");
-    const { error } = await supabase.from("projects").update(data).eq("id", id);
-    if (error) throw error;
-    console.log(`[DatabaseService] Project successfully updated in Supabase: ${id}`);
+    console.log(`[DatabaseService] Updating project in MongoDB: ${id}`);
+    await apiCall(`/api/db/projects/${id}`, "PATCH", data);
   },
 
   // --- SYSTEM LOGS OPERATIONS ---
   async saveAuditLog(log: SystemLog): Promise<void> {
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error("Supabase client not initialized.");
-    const { error } = await supabase
-      .from("audit_logs")
-      .insert({
-        action: log.action,
-        details: log.details,
-        performed_by: log.performedBy,
-        timestamp: new Date(log.timestamp).toISOString(),
-        group_id: log.groupId || null,
-        metadata: log.metadata || null
-      });
-    if (error) throw error;
+    console.log(`[DatabaseService] Saving audit log to MongoDB`);
+    const id = log.id || `log-${Math.random().toString(36).substring(2, 11)}`;
+    await apiCall(`/api/db/audit_logs/${id}`, "POST", {
+      id,
+      action: log.action,
+      details: log.details,
+      performed_by: log.performedBy,
+      timestamp: new Date(log.timestamp).toISOString(),
+      group_id: log.groupId || null,
+      metadata: log.metadata || null
+    });
   },
 
   async clearAllPrototypeData(): Promise<{success: boolean, error?: string}> {
@@ -230,35 +196,6 @@ export const databaseService = {
   },
 
   async migrateFirestoreToSupabase(setProgress?: any): Promise<{success: boolean, error?: string}> {
-    try {
-      if (setProgress) setProgress("Initializing ecosystem data transfer...");
-      const response = await fetch("/api/config/migrate-data", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" }
-      });
-      
-      let data: any;
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        data = await response.json();
-      } else {
-        const text = await response.text();
-        throw new Error(`Server responded with ${response.status}: ${text.slice(0, 200)}${text.length > 200 ? "..." : ""}`);
-      }
-
-      if (!response.ok || !data.success) {
-        return { 
-          success: false, 
-          error: data.error || data.details || data.message || "Ecosystem data replication bypassed" 
-        };
-      }
-      return data;
-    } catch (err: any) {
-      console.info("[DatabaseService] migration status/bypass:", err.message || String(err));
-      const errorMessage = err.message === "Failed to fetch" 
-        ? "Network error: Connection to migration server failed. Please ensure the server is running and your connection is stable."
-        : (err.message || String(err));
-      return { success: false, error: errorMessage };
-    }
+    return { success: false, error: "Migration removed." };
   }
 };

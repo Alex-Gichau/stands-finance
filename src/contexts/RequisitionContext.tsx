@@ -94,27 +94,15 @@ const mapSnakeToCamel = (data: any): any => {
 };
 
 const setDoc = async (docRef: any, data: any, options?: any) => {
-  const supabase = getSupabaseClient();
-  if (!supabase) return;
   let payload = mapCamelToSnake({ id: docRef.id, ...data });
   try {
-    let { error } = await supabase.from(docRef.table).upsert(payload);
-    if (error) {
-      if (error.message && error.message.includes("Could not find the") && error.message.includes("column of")) {
-        const match = error.message.match(/Could not find the '([^']+)' column/);
-        if (match && match[1]) {
-          const missingColumn = match[1];
-          console.warn(`[Supabase Self-Healing] Column '${missingColumn}' not found in table '${docRef.table}'. Filtering and retrying...`);
-          delete payload[missingColumn];
-          const retryResult = await supabase.from(docRef.table).upsert(payload);
-          if (!retryResult.error) {
-            console.log(`[Supabase Self-Healing] Successfully completed setDoc on table '${docRef.table}' after filtering column '${missingColumn}'.`);
-            return;
-          }
-          error = retryResult.error;
-        }
-      }
-      console.error(`setDoc error: table=${docRef.table}, id=${docRef.id}, message=${error.message || JSON.stringify(error)}, details=${error.details || ""}`);
+    const res = await fetch(`/api/db/${docRef.table}/${docRef.id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      console.error(`setDoc error: table=${docRef.table}, id=${docRef.id}, status=${res.status}`);
     }
   } catch (err) {
     console.error("setDoc failed:", err);
@@ -122,27 +110,15 @@ const setDoc = async (docRef: any, data: any, options?: any) => {
 };
 
 const updateDoc = async (docRef: any, data: any) => {
-  const supabase = getSupabaseClient();
-  if (!supabase) return;
   let payload = mapCamelToSnake(data);
   try {
-    let { error } = await supabase.from(docRef.table).update(payload).eq("id", docRef.id);
-    if (error) {
-      if (error.message && error.message.includes("Could not find the") && error.message.includes("column of")) {
-        const match = error.message.match(/Could not find the '([^']+)' column/);
-        if (match && match[1]) {
-          const missingColumn = match[1];
-          console.warn(`[Supabase Self-Healing] Column '${missingColumn}' not found in table '${docRef.table}'. Filtering and retrying...`);
-          delete payload[missingColumn];
-          const retryResult = await supabase.from(docRef.table).update(payload).eq("id", docRef.id);
-          if (!retryResult.error) {
-            console.log(`[Supabase Self-Healing] Successfully completed updateDoc on table '${docRef.table}' after filtering column '${missingColumn}'.`);
-            return;
-          }
-          error = retryResult.error;
-        }
-      }
-      console.error(`updateDoc error: table=${docRef.table}, id=${docRef.id}, message=${error.message || JSON.stringify(error)}, details=${error.details || ""}`);
+    const res = await fetch(`/api/db/${docRef.table}/${docRef.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      console.error(`updateDoc error: table=${docRef.table}, id=${docRef.id}, status=${res.status}`);
     }
   } catch (err) {
     console.error("updateDoc failed:", err);
@@ -150,12 +126,12 @@ const updateDoc = async (docRef: any, data: any) => {
 };
 
 const deleteDoc = async (docRef: any) => {
-  const supabase = getSupabaseClient();
-  if (!supabase) return;
   try {
-    const { error } = await supabase.from(docRef.table).delete().eq("id", docRef.id);
-    if (error) {
-      console.error(`deleteDoc error: table=${docRef.table}, id=${docRef.id}, message=${error.message || JSON.stringify(error)}, details=${error.details || ""}`);
+    const res = await fetch(`/api/db/${docRef.table}/${docRef.id}`, {
+      method: "DELETE"
+    });
+    if (!res.ok) {
+      console.error(`deleteDoc error: table=${docRef.table}, id=${docRef.id}, status=${res.status}`);
     }
   } catch (err) {
     console.error("deleteDoc failed:", err);
@@ -163,11 +139,10 @@ const deleteDoc = async (docRef: any) => {
 };
 
 const getDoc = async (docRef: any) => {
-  const supabase = getSupabaseClient();
-  if (!supabase) return { exists: () => false, data: () => ({} as any), id: docRef.id };
   try {
-    const { data, error } = await supabase.from(docRef.table).select("*").eq("id", docRef.id).single();
-    if (error || !data) return { exists: () => false, data: () => ({} as any), id: docRef.id };
+    const res = await fetch(`/api/db/${docRef.table}/${docRef.id}`);
+    if (!res.ok) return { exists: () => false, data: () => ({} as any), id: docRef.id };
+    const data = await res.json();
     return { exists: () => true, data: () => mapSnakeToCamel(data), id: docRef.id };
   } catch (err) {
     console.error("getDoc failed:", err);
@@ -245,21 +220,18 @@ const query = (col: any, ...constraints: any[]) => {
 };
 
 const getDocs = async (queryRef: any) => {
-  const supabase = getSupabaseClient();
-  if (!supabase) return { docs: [], empty: true, forEach: (cb: any) => {} };
-  
-  let q = supabase.from(queryRef.table).select("*");
-  if (queryRef.whereColumn) {
-    if (queryRef.whereOp === "==") q = q.eq(queryRef.whereColumn, queryRef.whereValue);
-    else if (queryRef.whereOp === ">") q = q.gt(queryRef.whereColumn, queryRef.whereValue);
-    else if (queryRef.whereOp === "<") q = q.lt(queryRef.whereColumn, queryRef.whereValue);
-  }
-  if (queryRef.orderColumn) q = q.order(queryRef.orderColumn, { ascending: queryRef.ascending });
-  if (queryRef.limitCount) q = q.limit(queryRef.limitCount);
-  
   try {
-    const { data, error } = await q;
-    if (error || !data) return { docs: [], empty: true, forEach: (cb: any) => {} };
+    const res = await fetch(`/api/db/${queryRef.table}`);
+    if (!res.ok) return { docs: [], empty: true, forEach: (cb: any) => {} };
+    let data = await res.json();
+    
+    if (queryRef.whereColumn && queryRef.whereValue !== undefined) {
+      const col = queryRef.whereColumn;
+      const val = queryRef.whereValue;
+      if (queryRef.whereOp === "==") data = data.filter((x: any) => x[col] === val);
+      else if (queryRef.whereOp === ">") data = data.filter((x: any) => x[col] > val);
+      else if (queryRef.whereOp === "<") data = data.filter((x: any) => x[col] < val);
+    }
     
     const docs = data.map((d: any) => ({ data: () => mapSnakeToCamel(d), id: d.id, exists: () => true }));
     return { docs, empty: docs.length === 0, forEach: (cb: any) => docs.forEach(cb) };
@@ -270,12 +242,19 @@ const getDocs = async (queryRef: any) => {
 };
 
 const addDoc = async (col: any, data: any) => {
-  const supabase = getSupabaseClient();
-  if (!supabase) return { id: "mock" };
   try {
-    const { data: inserted, error } = await supabase.from(col.table).insert([data]).select().single();
-    if (error || !inserted) return { id: "mock" };
-    return { id: inserted.id };
+    const id = data.id || `doc-${Math.random().toString(36).substring(2, 11)}`;
+    const payload = { ...data, id };
+    const res = await fetch(`/api/db/${col.table}/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      console.error(`addDoc error: table=${col.table}, status=${res.status}`);
+      return { id: "mock" };
+    }
+    return { id };
   } catch (err) {
     console.error("addDoc failed:", err);
     return { id: "mock" };
@@ -283,9 +262,6 @@ const addDoc = async (col: any, data: any) => {
 };
 
 const onSnapshot = (queryRef: any, callback: (snap: any) => void, errorCallback?: (err: any) => void) => {
-  const supabase = getSupabaseClient();
-  if (!supabase) return () => {};
-  
   const fetchData = async () => {
     try {
       if (queryRef.id) { 
@@ -302,20 +278,8 @@ const onSnapshot = (queryRef: any, callback: (snap: any) => void, errorCallback?
   };
   
   fetchData();
-  
-  const channel = supabase.channel(`public:${queryRef.table}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: queryRef.table }, () => {
-       fetchData();
-    })
-    .subscribe((status, err) => {
-       if (err) {
-         console.warn("Supabase realtime error:", err);
-       }
-    });
-    
-  return () => {
-    supabase.removeChannel(channel);
-  };
+  const interval = setInterval(fetchData, 5000);
+  return () => clearInterval(interval);
 };
 
 const handleFirestoreError = (a: any, b: any, c: any) => {};
@@ -2276,59 +2240,24 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     let active = true;
     let pollInterval: any = null;
 
-    const fetchAllFromSupabase = async () => {
-      const supabase = getSupabaseClient();
-      if (!supabase) {
-        setLoading(false);
-        return;
-      }
-
+    const fetchAllFromMongoDB = async () => {
       const hidePrototype = true;
       const isGroupUser = currentUserRole === UserRole.CHURCH_GROUP || currentUserRole === UserRole.APPROVER_L1 || currentUserRole === UserRole.APPROVER_L2;
       const filterGroups = JSON.parse(currentUserGroupsJSON) as string[];
       const parsedGroups = filterGroups.length > 0 ? filterGroups : (currentUserGroup ? [currentUserGroup] : []);
 
       try {
-        // Run all queries in parallel for peak performance
-        const [
-          resReqs,
-          resProjs,
-          resAlerts,
-          resFY,
-          resTX,
-          resForecast,
-          resReports,
-          resLogs,
-          resUsers,
-          resPerms,
-          resThresh,
-          resCG,
-          resLB,
-          resSB,
-          resVendors
-        ] = await Promise.all([
-          supabase.from("requisitions").select("*").order("submitted_at", { ascending: false }).limit(101),
-          supabase.from("projects").select("*"),
-          supabase.from("alerts").select("*").order("timestamp", { ascending: false }).limit(51),
-          supabase.from("fiscal_years").select("*"),
-          supabase.from("transactions").select("*").order("timestamp", { ascending: false }).limit(51),
-          supabase.from("forecast").select("*"),
-          supabase.from("reports").select("*").order("timestamp", { ascending: false }).limit(51),
-          supabase.from("audit_logs").select("*").order("timestamp", { ascending: false }).limit(systemLogLimit),
-          supabase.from("users").select("*"),
-          supabase.from("permissions").select("*"),
-          supabase.from("thresholds").select("*"),
-          supabase.from("church_groups").select("*"),
-          supabase.from("ledger_books").select("*"),
-          supabase.from("supplementary_budgets").select("*"),
-          supabase.from("vendors").select("*").order("created_at", { ascending: false })
-        ]);
+        const response = await fetch("/api/db-all");
+        if (!response.ok) {
+          throw new Error(`Failed to fetch database: ${response.statusText}`);
+        }
+        const dbData = await response.json();
 
         if (!active) return;
 
         // Process Requisitions
-        if (resReqs.data) {
-          let data = resReqs.data.map((r: any) => ({
+        if (dbData.requisitions) {
+          let data = dbData.requisitions.map((r: any) => ({
             id: r.id,
             projectId: r.project_id,
             title: r.title,
@@ -2374,8 +2303,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         // Process Projects
-        if (resProjs.data) {
-          let data = resProjs.data.map((p: any) => ({
+        if (dbData.projects) {
+          let data = dbData.projects.map((p: any) => ({
             id: p.id,
             name: p.name,
             groupId: p.group_id,
@@ -2398,8 +2327,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         // Process Alerts
-        if (resAlerts.data) {
-          let data = resAlerts.data.map((a: any) => ({
+        if (dbData.alerts) {
+          let data = dbData.alerts.map((a: any) => ({
             id: a.id,
             type: a.type,
             severity: a.severity,
@@ -2419,8 +2348,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         // Process Fiscal Years
-        if (resFY.data) {
-          const data = resFY.data.map((fy: any) => ({
+        if (dbData.fiscal_years) {
+          const data = dbData.fiscal_years.map((fy: any) => ({
             id: fy.id,
             year: fy.year,
             label: fy.label,
@@ -2432,8 +2361,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         // Process Transactions
-        if (resTX.data) {
-          const data = resTX.data.map((tx: any) => ({
+        if (dbData.transactions) {
+          const data = dbData.transactions.map((tx: any) => ({
             id: tx.id,
             externalRef: tx.external_ref,
             sourceSystem: tx.source_system,
@@ -2450,8 +2379,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         // Process Forecast
-        if (resForecast.data) {
-          const data = resForecast.data.map((f: any) => ({
+        if (dbData.forecast) {
+          const data = dbData.forecast.map((f: any) => ({
             month: f.month,
             projected: f.projected,
             actual: f.actual
@@ -2460,8 +2389,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         // Process Reports
-        if (resReports.data) {
-          const data = resReports.data.map((r: any) => ({
+        if (dbData.reports) {
+          const data = dbData.reports.map((r: any) => ({
             id: r.id,
             title: r.title,
             description: r.description,
@@ -2477,8 +2406,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         // Process System Logs
-        if (resLogs.data) {
-          const data = resLogs.data.map((l: any) => ({
+        if (dbData.audit_logs) {
+          const data = dbData.audit_logs.map((l: any) => ({
             id: l.id?.toString() || `log-${Math.random()}`,
             action: l.action,
             details: l.details,
@@ -2491,8 +2420,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         // Process Users
-        if (resUsers.data) {
-          const data = resUsers.data.map((u: any) => ({
+        if (dbData.users) {
+          const data = dbData.users.map((u: any) => ({
             id: u.id,
             name: u.name,
             email: u.email,
@@ -2515,8 +2444,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         // Process Permissions
-        if (resPerms.data) {
-          const data = resPerms.data.map((p: any) => ({
+        if (dbData.permissions) {
+          const data = dbData.permissions.map((p: any) => ({
             id: p.id,
             role: p.role,
             access: p.access,
@@ -2526,8 +2455,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         // Process Thresholds
-        if (resThresh.data) {
-          const data = resThresh.data.map((t: any) => ({
+        if (dbData.thresholds) {
+          const data = dbData.thresholds.map((t: any) => ({
             id: t.id,
             type: t.type,
             threshold: t.threshold,
@@ -2538,8 +2467,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         // Process Church Groups
-        if (resCG.data) {
-          const data = resCG.data.map((cg: any) => ({
+        if (dbData.church_groups) {
+          const data = dbData.church_groups.map((cg: any) => ({
             id: cg.id,
             name: cg.name,
             description: cg.description,
@@ -2550,8 +2479,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         // Process Ledger Books
-        if (resLB.data) {
-          const data = resLB.data.map((lb: any) => ({
+        if (dbData.ledger_books) {
+          const data = dbData.ledger_books.map((lb: any) => ({
             id: lb.id,
             ministryId: lb.ministry_id,
             ministryName: lb.ministry_name,
@@ -2569,8 +2498,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         // Process Supplementary Budgets
-        if (resSB.data) {
-          const data = resSB.data.map((sb: any) => ({
+        if (dbData.supplementary_budgets) {
+          const data = dbData.supplementary_budgets.map((sb: any) => ({
             id: sb.id,
             requesterId: sb.requester_id,
             requesterName: sb.requester_name,
@@ -2587,8 +2516,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         // Process Vendors
-        if (resVendors.data) {
-          const data = resVendors.data.map((v: any) => ({
+        if (dbData.vendors) {
+          const data = dbData.vendors.map((v: any) => ({
             id: v.id,
             name: v.name,
             contact: v.contact,
@@ -2602,15 +2531,15 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
       } catch (err) {
-        console.info("Critical issue pulling data from Supabase:", err);
+        console.info("Critical issue pulling data from MongoDB:", err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchAllFromSupabase();
+    fetchAllFromMongoDB();
     // Background polling interval to keep UI reactive even without websockets
-    pollInterval = setInterval(fetchAllFromSupabase, 5000);
+    pollInterval = setInterval(fetchAllFromMongoDB, 5000);
 
     return () => {
       active = false;
@@ -2627,28 +2556,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     systemLogLimit
   ]);
 
-  // Proactive automatic data migration to Supabase to fulfill "Permanents copy all data to supabase"
-  useEffect(() => {
-    if (!isSupabaseEnabled() || !currentUserId || !currentUserIsApproved) return;
-    if (localStorage.getItem("MIGRATED_TO_SUPABASE_AUTO") === "true") return;
-
-    const runAutoMigration = async () => {
-      try {
-        console.log("[RequisitionContext] Proactively copying all data to Supabase...");
-        const result = await databaseService.migrateFirestoreToSupabase();
-        if (result.success) {
-          console.log("[RequisitionContext] Automatic Supabase data copy finished successfully!");
-          localStorage.setItem("MIGRATED_TO_SUPABASE_AUTO", "true");
-        } else {
-          console.info("[RequisitionContext] Automatic Supabase data copy bypass:", result.error);
-        }
-      } catch (err) {
-        console.info("[RequisitionContext] Automatic Supabase data copy bypass:", err);
-      }
-    };
-
-    runAutoMigration();
-  }, [currentUserId, currentUserIsApproved]);
+  // Removed automatic data migration to Supabase
 
 
 

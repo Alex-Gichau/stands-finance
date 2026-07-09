@@ -151,7 +151,6 @@ export const SystemHealth: React.FC<{ updateInterval?: number }> = ({ updateInte
   };
 
   const handleTriggerSyncIncoherency = () => {
-    triggerSlackCommand("/api/slack-alert/workflow", { requisitions, type: "sync" }, "Google Sheets Sync Integrity Guard");
   };
 
   // Simulate Drive Engagement metrics check (Prompt 6)
@@ -537,32 +536,7 @@ export const SystemHealth: React.FC<{ updateInterval?: number }> = ({ updateInte
               <span className="text-[8px] text-slate-400 mt-1 block">Inspects duplicated heavy vouchers in &lt; 2 hours window</span>
             </button>
 
-            <button
-              onClick={handleTriggerSyncIncoherency}
-              className="p-2.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-slate-300 text-left rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900 transition-all font-sans"
-            >
-              <Database size={14} className="text-amber-500 mb-1" />
-              <span className="text-[9px] font-black text-slate-700 dark:text-slate-300 block leading-tight">Ledger Synchronizer</span>
-              <span className="text-[8px] text-slate-400 mt-1 block">Calculates coherence delta between Firestore & Google Sheets</span>
-            </button>
-
-            <button
-              onClick={handleTriggerDriveUploadTracking}
-              className="p-2.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-slate-300 text-left rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900 transition-all font-sans"
-            >
-              <Send size={14} className="text-blue-500 mb-1" />
-              <span className="text-[9px] font-black text-slate-700 dark:text-slate-300 block leading-tight">Drive Attachment</span>
-              <span className="text-[8px] text-slate-400 mt-1 block">Trace file additions, size properties, and secure Drive indexing</span>
-            </button>
-
-            <button
-              onClick={handleTriggerDriveEngagementAlert}
-              className="p-2.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-slate-300 text-left rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900 transition-all font-sans"
-            >
-              <Fingerprint size={14} className="text-rose-600 mb-1" />
-              <span className="text-[9px] font-black text-slate-700 dark:text-slate-300 block leading-tight">View Spike Security</span>
-              <span className="text-[8px] text-slate-400 mt-1 block">Warn of unusual document inspection rates or leaking IPs</span>
-            </button>
+  // Removed Drive/Sheets UI
           </div>
         </div>
 

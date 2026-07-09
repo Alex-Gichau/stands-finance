@@ -6,14 +6,12 @@ import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import fs from "fs";
 import { Readable } from "stream";
-import pg from "pg";
+import { MongoClient } from "mongodb";
 
 dotenv.config({ override: true });
 
 import nodemailer from "nodemailer";
 import { google } from "googleapis";
-import { initializeApp as initFirebase, cert as firebaseCert } from "firebase-admin/app";
-import { getFirestore as initFirestore } from "firebase-admin/firestore";
 
 const getFilename = () => {
   try {
@@ -118,93 +116,6 @@ function convertBase64ToLocalFile(attachmentStr: string, uploadsDir: string, vps
   }
 }
 
-async function purgeBase64AttachmentsFromDb() {
-  const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.SUPABASE_DIRECT_URL || "";
-  if (!dbUrl) {
-    console.log("[Base64 Purger] DATABASE_URL is not set, skipping startup DB-level base64 purge.");
-    return;
-  }
-
-  const vpsIp = process.env.VPS_IP || "178.104.122.211";
-  const uploadsDir = path.join(process.cwd(), "uploads");
-
-  let pgClient;
-  try {
-    console.log("[Base64 Purger] Starting background base64-to-local-disk purge on database records...");
-    pgClient = new pg.Client({
-      connectionString: dbUrl,
-      ssl: dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1")
-        ? undefined
-        : { rejectUnauthorized: false },
-    });
-    await pgClient.connect();
-
-    const res = await pgClient.query("SELECT id, attachments, receipts FROM requisitions");
-    console.log(`[Base64 Purger] Auditing ${res.rowCount} requisitions from database.`);
-
-    let updatedCount = 0;
-    for (const row of res.rows) {
-      let isModified = false;
-      let attachments: any[] = [];
-      let receipts: any[] = [];
-
-      try {
-        attachments = typeof row.attachments === "string" ? JSON.parse(row.attachments) : (row.attachments || []);
-      } catch {
-        attachments = row.attachments || [];
-      }
-
-      try {
-        receipts = typeof row.receipts === "string" ? JSON.parse(row.receipts) : (row.receipts || []);
-      } catch {
-        receipts = row.receipts || [];
-      }
-
-      const newAttachments = attachments.map((att: any) => {
-        if (typeof att === "string") {
-          const converted = convertBase64ToLocalFile(att, uploadsDir, vpsIp);
-          if (converted !== att) {
-            isModified = true;
-          }
-          return converted;
-        }
-        return att;
-      });
-
-      const newReceipts = receipts.map((rec: any) => {
-        if (typeof rec === "string") {
-          const converted = convertBase64ToLocalFile(rec, uploadsDir, vpsIp);
-          if (converted !== rec) {
-            isModified = true;
-          }
-          return converted;
-        }
-        return rec;
-      });
-
-      if (isModified) {
-        await pgClient.query(
-          "UPDATE requisitions SET attachments = $1, receipts = $2, updated_at = NOW() WHERE id = $3",
-          [JSON.stringify(newAttachments), JSON.stringify(newReceipts), row.id]
-        );
-        updatedCount++;
-        console.log(`[Base64 Purger] Converted and updated requisition '${row.id}' files.`);
-      }
-    }
-
-    console.log(`[Base64 Purger] Base64 purge audit completed. Cleaned and updated ${updatedCount} requisition records.`);
-  } catch (err: any) {
-    console.error("[Base64 Purger] Database purge failed:", err.message || err);
-  } finally {
-    if (pgClient) {
-      try {
-        await pgClient.end();
-      } catch (endErr) {
-        console.error("[Base64 Purger] Error closing PG connection:", endErr);
-      }
-    }
-  }
-}
 
 interface SearchLog {
   query: string;
@@ -403,855 +314,237 @@ async function startServer() {
     }
   });
 
-  // Check Supabase env vars
-  app.get("/api/config/supabase", (req, res) => {
-    res.json({
-      url: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "",
-      anonKey: process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "",
-      useSupabase: process.env.VITE_USE_SUPABASE || process.env.USE_SUPABASE || ""
-    });
+  // --- MONGODB CONNECTION & SETUP ---
+  const mongoUri = process.env.MONGODB_URI || "mongodb://localhost:27017/st_andrews_requisition";
+  let mongoDb: any = null;
+  let mongoConnected = false;
+
+  async function connectToMongo() {
+    try {
+      console.log(`[MongoDB] Attempting connection to local server: ${mongoUri}`);
+      const client = new MongoClient(mongoUri, { connectTimeoutMS: 4000, serverSelectionTimeoutMS: 4000 });
+      await client.connect();
+      mongoDb = client.db();
+      mongoConnected = true;
+      console.log(`[MongoDB] Successfully connected to local database: ${mongoDb.databaseName}`);
+    } catch (err: any) {
+      console.warn(`[MongoDB] Connection bypassed/failed (standard local JSON fallback active). Reason:`, err.message || err);
+    }
+  }
+
+  // Connect on startup
+  connectToMongo();
+
+  // --- MONGODB GENERIC COLLECTION REST API ---
+  const collectionsList = [
+    "requisitions", "projects", "alerts", "fiscal_years", "transactions",
+    "forecast", "reports", "audit_logs", "users", "permissions",
+    "thresholds", "church_groups", "ledger_books", "supplementary_budgets", "vendors"
+  ];
+
+  // Bulk get (load all 15 datasets at once)
+  app.get("/api/db-all", async (req, res) => {
+    try {
+      const result: any = {};
+      if (!mongoConnected || !mongoDb) {
+        // Fallback to local files for all collections
+        for (const col of collectionsList) {
+          const filePath = path.join(process.cwd(), `${col}.json`);
+          if (fs.existsSync(filePath)) {
+            result[col] = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+          } else {
+            result[col] = [];
+          }
+        }
+        return res.json(result);
+      }
+      
+      for (const col of collectionsList) {
+        const data = await mongoDb.collection(col).find({}).toArray();
+        result[col] = data.map((item: any) => {
+          const { _id, ...rest } = item;
+          return { id: rest.id || String(_id), ...rest };
+        });
+      }
+      res.json(result);
+    } catch (err: any) {
+      console.error("[MongoDB Bulk Get] Error:", err);
+      res.status(500).json({ error: err.message || err });
+    }
+  });
+
+  // Get all documents in a collection
+  app.get("/api/db/:collection", async (req, res) => {
+    const { collection } = req.params;
+    try {
+      if (!mongoConnected || !mongoDb) {
+        const filePath = path.join(process.cwd(), `${collection}.json`);
+        if (fs.existsSync(filePath)) {
+          const content = fs.readFileSync(filePath, "utf-8");
+          return res.json(JSON.parse(content));
+        }
+        return res.json([]);
+      }
+      const data = await mongoDb.collection(collection).find({}).toArray();
+      const cleanData = data.map((item: any) => {
+        const { _id, ...rest } = item;
+        return { id: rest.id || String(_id), ...rest };
+      });
+      res.json(cleanData);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || err });
+    }
+  });
+
+  // Get single document by ID in a collection
+  app.get("/api/db/:collection/:id", async (req, res) => {
+    const { collection, id } = req.params;
+    try {
+      if (!mongoConnected || !mongoDb) {
+        const filePath = path.join(process.cwd(), `${collection}.json`);
+        if (fs.existsSync(filePath)) {
+          const content = fs.readFileSync(filePath, "utf-8");
+          const list = JSON.parse(content);
+          const item = list.find((x: any) => x.id === id);
+          if (item) return res.json(item);
+        }
+        return res.status(404).json({ error: "Document not found (fallback)" });
+      }
+      const item = await mongoDb.collection(collection).findOne({ id });
+      if (!item) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      const { _id, ...rest } = item;
+      res.json({ id: rest.id || String(_id), ...rest });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || err });
+    }
+  });
+
+  // Upsert (setDoc) single document by ID
+  app.post("/api/db/:collection/:id", express.json({ limit: "50mb" }), async (req, res) => {
+    const { collection, id } = req.params;
+    const body = req.body;
+    try {
+      if (!mongoConnected || !mongoDb) {
+        const filePath = path.join(process.cwd(), `${collection}.json`);
+        let list: any[] = [];
+        if (fs.existsSync(filePath)) {
+          const content = fs.readFileSync(filePath, "utf-8");
+          list = JSON.parse(content);
+        }
+        const index = list.findIndex((x: any) => x.id === id);
+        const payload = { ...body, id };
+        if (index >= 0) {
+          list[index] = payload;
+        } else {
+          list.push(payload);
+        }
+        fs.writeFileSync(filePath, JSON.stringify(list, null, 2), "utf-8");
+        return res.json({ success: true });
+      }
+      const payload = { ...body, id };
+      await mongoDb.collection(collection).updateOne(
+        { id },
+        { $set: payload },
+        { upsert: true }
+      );
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || err });
+    }
+  });
+
+  // Update (updateDoc) single document by ID (partial update)
+  app.patch("/api/db/:collection/:id", express.json({ limit: "50mb" }), async (req, res) => {
+    const { collection, id } = req.params;
+    const body = req.body;
+    try {
+      if (!mongoConnected || !mongoDb) {
+        const filePath = path.join(process.cwd(), `${collection}.json`);
+        let list: any[] = [];
+        if (fs.existsSync(filePath)) {
+          const content = fs.readFileSync(filePath, "utf-8");
+          list = JSON.parse(content);
+        }
+        const index = list.findIndex((x: any) => x.id === id);
+        if (index >= 0) {
+          list[index] = { ...list[index], ...body };
+          fs.writeFileSync(filePath, JSON.stringify(list, null, 2), "utf-8");
+          return res.json({ success: true });
+        }
+        return res.status(404).json({ error: "Document not found (fallback)" });
+      }
+      await mongoDb.collection(collection).updateOne(
+        { id },
+        { $set: body },
+        { upsert: true }
+      );
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || err });
+    }
+  });
+
+  // Delete document
+  app.delete("/api/db/:collection/:id", async (req, res) => {
+    const { collection, id } = req.params;
+    try {
+      if (!mongoConnected || !mongoDb) {
+        const filePath = path.join(process.cwd(), `${collection}.json`);
+        if (fs.existsSync(filePath)) {
+          const content = fs.readFileSync(filePath, "utf-8");
+          let list = JSON.parse(content);
+          list = list.filter((x: any) => x.id !== id);
+          fs.writeFileSync(filePath, JSON.stringify(list, null, 2), "utf-8");
+        }
+        return res.json({ success: true });
+      }
+      await mongoDb.collection(collection).deleteOne({ id });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || err });
+    }
   });
 
   // GET health endpoint for periodic status checks in UI
   app.get("/api/system-health", async (req, res) => {
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-    const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.SUPABASE_DIRECT_URL || "";
-    const expectedRef = supabaseUrl.match(/https:\/\/(.*?)\.supabase\.co/)?.[1] || "unknown";
-
     const report: any = {
-      postgres: { status: "disconnected" },
-      recommendations: []
-    };
-
-    if (!dbUrl) {
-      report.postgres.status = "missing_config";
-      report.recommendations.push("DATABASE_URL is not set in Secrets.");
-      return res.json(report);
-    }
-
-    const start = Date.now();
-    const client = new pg.Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
-    
-    try {
-      await client.connect();
-      report.postgres.status = "ok";
-      report.postgres.latency = Date.now() - start;
-
-      // Extract ref from successful connection string if possible
-      const actualRef = dbUrl.match(/postgres\.(.*?):/)?.[1] || dbUrl.match(/db\.(.*?)\.supabase/)?.[1];
-      if (actualRef && actualRef !== expectedRef) {
-        report.recommendations.push(`⚠️ DATABASE_URL PROJECT MISMATCH: Your connection string is pointing to project '${actualRef}', but your system URL is for '${expectedRef}'. You are viewing data from the wrong project.`);
-      }
-      
-      const uCount = await client.query("SELECT COUNT(*) FROM users");
-      const rCount = await client.query("SELECT COUNT(*) FROM requisitions");
-      let cgCount = { rows: [{ count: "0" }] };
-      try {
-        cgCount = await client.query("SELECT COUNT(*) FROM church_groups");
-      } catch (e) {}
-      
-      report.postgres.counts = {
-        users: parseInt(uCount.rows[0].count),
-        requisitions: parseInt(rCount.rows[0].count),
-        churchGroups: parseInt(cgCount.rows[0].count)
-      };
-      
-      await client.end();
-    } catch (err: any) {
-      const errStr = String(err.message || err);
-      report.postgres.status = "error";
-      report.postgres.error = errStr;
-      
-      const isProjectMismatch = errStr.includes("tenant/user") && (errStr.includes("not found") || errStr.includes("unknown"));
-      if (isProjectMismatch) {
-        report.recommendations.push(`❌ DATABASE_URL PROJECT MISMATCH: Your connection string points to a different project than ${expectedRef}. Please update your DATABASE_URL secret.`);
-      } else {
-        report.recommendations.push("PostgreSQL connection failing. Check your credentials.");
-      }
-      try { await client.end(); } catch(_) {}
-    }
-
-    // Verify Google Sheets & Drive API authentication status
-    try {
-      const keyPath = path.join(process.cwd(), "googleService.json");
-      let credentials: any = null;
-      if (fs.existsSync(keyPath)) {
-        credentials = JSON.parse(fs.readFileSync(keyPath, "utf-8"));
-      } else if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-        try {
-          credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
-        } catch (_) {
-          const decoded = Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_KEY, "base64").toString("utf8");
-          credentials = JSON.parse(decoded);
-        }
-      } else if (process.env.GOOGLE_PRIVATE_KEY) {
-        credentials = {
-          client_email: process.env.GOOGLE_CLIENT_EMAIL || "stands-erequisitions@quiet-surface-499808-t9.iam.gserviceaccount.com",
-          private_key: process.env.GOOGLE_PRIVATE_KEY
-        };
-      }
-
-      if (!credentials || !credentials.client_email || !credentials.private_key) {
-        report.googleSheets = { status: "missing_config" };
-        report.recommendations.push("⚠️ GOOGLE SHEETS NOT CONFIGURED: Service account credentials are not configured. Switched to offline simulated sheets persistence.");
-      } else {
-        let cleanKey = credentials.private_key.trim();
-        if (cleanKey.startsWith('"') && cleanKey.endsWith('"')) {
-          cleanKey = cleanKey.substring(1, cleanKey.length - 1);
-        }
-        if (cleanKey.startsWith("'") && cleanKey.endsWith("'")) {
-          cleanKey = cleanKey.substring(1, cleanKey.length - 1);
-        }
-        cleanKey = cleanKey.replace(/\\n/g, "\n");
-
-        const authClient = new google.auth.JWT({
-          email: credentials.client_email,
-          key: cleanKey,
-          scopes: ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        });
-
-        await authClient.getAccessToken();
-        report.googleSheets = { status: "ok", email: credentials.client_email };
-      }
-    } catch (err: any) {
-      const errMsg = String(err.message || err);
-      report.googleSheets = { status: "error", error: errMsg };
-      
-      const isInvalidSignature = errMsg.includes("invalid_grant") || errMsg.includes("Signature");
-      if (isInvalidSignature) {
-        report.recommendations.push(
-          "📋 GOOGLE SHEETS AUTH ERROR: The Google Service Account private key is invalid or has been revoked (Invalid JWT Signature). " +
-          "Google Sheets and Drive integrations are currently running in Offline Simulated Fallback mode to prevent application disruption. " +
-          "To restore active cloud syncing, please generate a new Google Service Account private key from your Google Cloud Console (for service account 'stands-erequisitions@quiet-surface-499808-t9.iam.gserviceaccount.com') and update your secrets or replace googleService.json."
-        );
-      } else {
-        report.recommendations.push(
-          `⚠️ GOOGLE SHEETS CONNECTION ERROR: Google Sheets integration is currently falling back to Offline Simulation due to: ${errMsg}`
-        );
-      }
-    }
-
-    res.json(report);
-  });
-
-  // Get deep server-side diagnostics for Supabase connectivity (REST & SQL direct)
-  app.post("/api/config/troubleshoot", async (req, res) => {
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-    const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
-    const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.SUPABASE_DIRECT_URL || "";
-    
-    // Extract project ref for mismatch detection
-    const expectedRef = supabaseUrl.match(/https:\/\/(.*?)\.supabase\.co/)?.[1] || "unknown";
-
-    const report: {
-      env: Record<string, boolean>;
-      postgres: { connected: boolean; version?: string; tables?: { name: string; count: number }[]; error?: string };
-      api: { reachable: boolean; latencyMs?: number; error?: string };
-      recommendations: string[];
-    } = {
-      env: {
-        SUPABASE_URL: !!supabaseUrl,
-        SUPABASE_ANON_KEY: !!anonKey,
-        DATABASE_URL: !!dbUrl
+      mongodb: {
+        status: mongoConnected ? "ok" : "fallback",
+        uri: mongoUri,
+        database: mongoDb ? mongoDb.databaseName : "None (JSON Fallback)",
+        counts: {}
       },
-      postgres: { connected: false },
-      api: { reachable: false },
       recommendations: []
     };
 
-    // Test Postgres connection if configured
-    if (dbUrl) {
-      const client = new pg.Client({
-        connectionString: dbUrl,
-        ssl: dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1")
-          ? undefined
-          : { rejectUnauthorized: false },
-      });
-      try {
-        await client.connect();
-        report.postgres.connected = true;
-        
-        const verRes = await client.query("SELECT version();");
-        report.postgres.version = verRes.rows[0]?.version || "Unknown";
+    if (!mongoConnected) {
+      report.recommendations.push("ℹ️ LOCAL MONGO DISCONNECTED: MongoDB server is offline or unreachable at standard port 27017. The system is operating in fail-safe Local JSON file storage mode. Start your local MongoDB server or MongoDB Compass to connect.");
+    } else {
+      report.recommendations.push("🟢 LOCAL MONGO CONNECTED: Successfully verified live communication with local MongoDB server.");
+    }
 
-        const tablesRes = await client.query(`
-          SELECT table_name 
-          FROM information_schema.tables 
-          WHERE table_schema = 'public' 
-          ORDER BY table_name;
-        `);
-        
-        const tableList: { name: string; count: number }[] = [];
-        for (const r of tablesRes.rows) {
-          const tableName = r.table_name;
-          try {
-            const countRes = await client.query(`SELECT count(*) FROM "${tableName}";`);
-            const ct = parseInt(countRes.rows[0]?.count || "0", 10);
-            tableList.push({ name: tableName, count: ct });
-          } catch (_) {
-            tableList.push({ name: tableName, count: -1 });
-          }
-        }
-        report.postgres.tables = tableList;
-        await client.end();
-      } catch (err: any) {
-        const errStr = String(err.message || err);
-        const isAuthFailed = errStr.toLowerCase().includes("password authentication failed") ||
-                             errStr.toLowerCase().includes("password auth");
-        
-        const isProjectMismatch = errStr.includes("tenant/user") && (errStr.includes("not found") || errStr.includes("unknown"));
-
-        if (isProjectMismatch) {
-          report.postgres.error = `Project Reference Mismatch: The DATABASE_URL is pointing to an invalid or different project ref than ${expectedRef}.`;
-          report.recommendations.push(`❌ DATABASE_URL PROJECT MISMATCH: The connection string points to a tenant that was not found. Your SUPABASE_URL suggests your project ref should be '${expectedRef}'. Please update your DATABASE_URL secret with the correct string from Supabase Dashboard -> Settings -> Database.`);
-        } else if (isAuthFailed) {
-          report.postgres.error = "PostgreSQL password verification failed: Password authentication rejected by server.";
-          report.recommendations.push("🔑 DATABASE PASSWORD ERROR: The database password in your DATABASE_URL is invalid. In your AI Studio Secrets configuration, make sure you are using your actual Supabase Database Password (usually set when creating your project, NOT your Supabase website login password).");
+    try {
+      for (const col of ["users", "requisitions", "church_groups"]) {
+        if (mongoConnected && mongoDb) {
+          const ct = await mongoDb.collection(col).countDocuments();
+          report.mongodb.counts[col] = ct;
         } else {
-          report.postgres.error = errStr;
-          report.recommendations.push("Your direct SQL database connection is failing. Double check your DATABASE_URL pg connection string passwords or host configuration.");
-        }
-        try { await client.end(); } catch(_) {}
-      }
-    } else {
-      report.recommendations.push("Please configure DATABASE_URL in Secrets so the backend can verify SQL table definitions and direct query performance.");
-    }
-
-    // Test Supabase REST API connection if configured (done server-side to bypass browser CORS constraints)
-    if (supabaseUrl && anonKey) {
-      const startTime = Date.now();
-      try {
-        const cleanUrl = supabaseUrl.replace(/\/rest\/v1\/?$/, "");
-        const pingUrl = `${cleanUrl}/rest/v1/users?limit=1`;
-        
-        const response = await fetch(pingUrl, {
-          method: "GET",
-          headers: {
-            "apikey": anonKey,
-            "Authorization": `Bearer ${anonKey}`
-          }
-        });
-        
-        const latency = Date.now() - startTime;
-        report.api.reachable = response.ok;
-        report.api.latencyMs = latency;
-        
-        if (!response.ok) {
-          const textErr = await response.text();
-          report.api.error = `HTTP ${response.status}: ${textErr}`;
-          if (textErr.includes("relation") || response.status === 404) {
-            report.recommendations.push("The Supabase REST server responded, but tables have not been initiated. Click the 'Run Supabase Database Migration' button below to create schema assets.");
+          const filePath = path.join(process.cwd(), `${col}.json`);
+          if (fs.existsSync(filePath)) {
+            const list = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+            report.mongodb.counts[col] = list.length;
           } else {
-            report.recommendations.push(`REST API gateway responded with bad status status. Check key permissions or policies. Error details: ${textErr}`);
+            report.mongodb.counts[col] = 0;
           }
         }
-      } catch (apiErr: any) {
-        report.api.error = apiErr.message || JSON.stringify(apiErr);
-        report.recommendations.push("Failed to route network traffic to YOUR_SUPABASE_URL. Confirm the URL is correct, has no typos, and is fully active.");
       }
-    } else {
-      report.recommendations.push("Set your VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY variables to enable REST queries inside the client engine.");
-    }
-
-    if (report.postgres.connected && report.api.reachable) {
-      report.recommendations.push("All connections look clean! Your full-stack Supabase integration is perfectly healthy and ready.");
+    } catch (e: any) {
+      report.mongodb.counts_error = e.message || e;
     }
 
     res.json(report);
-  });
-
-  // Run SQL migration on live Supabase Database via direct connection
-  app.post("/api/config/run-migration", async (req, res) => {
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-    const expectedRef = supabaseUrl.match(/https:\/\/(.*?)\.supabase\.co/)?.[1] || "unknown";
-    const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.SUPABASE_DIRECT_URL;
-    if (!dbUrl) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "DATABASE_URL is not set in your environmental variables. Please configure your direct PostgreSQL connection string (postgresql://postgres:[password]@db.xxxx.supabase.co:5432/postgres) in the Secrets panel first."
-      });
-    }
-
-    let client;
-    try {
-      console.log("[Migration] Initializing migration client direct connection...");
-      client = new pg.Client({
-        connectionString: dbUrl,
-        ssl: dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1")
-          ? undefined
-          : { rejectUnauthorized: false },
-      });
-
-      await client.connect();
-      console.log("[Migration] Successfully connected to live PostgreSQL database!");
-    } catch (err: any) {
-      const errStr = String(err.message || err);
-      const isProjectMismatch = errStr.includes("tenant/user") && (errStr.includes("not found") || errStr.includes("unknown"));
-      
-      if (isProjectMismatch) {
-        return res.status(500).json({
-          success: false,
-          error: `Project Reference Mismatch: DATABASE_URL points to a different project than ${expectedRef}.`,
-          details: `The connection string points to a tenant that was not found. Your SUPABASE_URL suggests your project ref should be '${expectedRef}'. Please update your DATABASE_URL secret with the correct string from Supabase Dashboard -> Settings -> Database.`
-        });
-      }
-      
-      return res.status(500).json({
-        success: false,
-        error: "PostgreSQL Database connection failed: " + errStr,
-        details: "Please verify that your database server is active and that your DATABASE_URL password is correct."
-      });
-    }
-
-    try {
-      const results: string[] = [];
-
-      // 1. Run tables schema migration (0000_ambiguous_namorita.sql)
-      const migrationPath = path.join(process.cwd(), "supabase", "migrations", "0000_ambiguous_namorita.sql");
-      if (fs.existsSync(migrationPath)) {
-        console.log("[Migration] Reading tables SQL from " + migrationPath);
-        const migrationSql = fs.readFileSync(migrationPath, "utf8");
-        // Split by statement-breakpoint to execute individually
-        const statements = migrationSql.split("--> statement-breakpoint");
-        let successfulStatements = 0;
-        for (const stmt of statements) {
-          const trimmed = stmt.trim();
-          if (!trimmed) continue;
-          try {
-            await client.query(trimmed);
-            successfulStatements++;
-          } catch (err: any) {
-            // Ignore already exists
-            if (err.message.includes("already exists") || err.message.includes("already a relation")) {
-              console.log("[Migration] Column/Table relation already exists, skipping statement.");
-            } else {
-              throw err;
-            }
-          }
-        }
-        results.push(`✓ Applied ${successfulStatements} schema table and column statements.`);
-      } else {
-        results.push("⚠ Main migrations SQL file not found at " + migrationPath);
-      }
-
-      // 2. Run Policies and help functions (policies.sql)
-      const policiesPath = path.join(process.cwd(), "supabase", "policies.sql");
-      if (fs.existsSync(policiesPath)) {
-        console.log("[Migration] Reading Policies SQL from " + policiesPath);
-        const policiesSql = fs.readFileSync(policiesPath, "utf8");
-        try {
-          await client.query(policiesSql);
-          results.push("✓ Configured Row Level Security (RLS) policies and helper functions successfully.");
-        } catch (err: any) {
-          if (err.message.includes("already exists")) {
-            results.push("✓ Row Level Security helper/policies already exist (Skipped cleanly).");
-          } else {
-            console.warn("[Migration] Security policies execution note / warning:", err.message);
-            results.push("⚠ Security policies note: " + err.message);
-          }
-        }
-      } else {
-        results.push("⚠ Security policies SQL file not found at " + policiesPath);
-      }
-
-      // 3. Migrate Google Account Auth users to Supabase Auth tables (supabase_migration.sql)
-      const googleMigrationPath = path.join(process.cwd(), "supabase_migration.sql");
-      if (fs.existsSync(googleMigrationPath)) {
-        console.log("[Migration] Reading Google account auth users from " + googleMigrationPath);
-        const googleMigrationSql = fs.readFileSync(googleMigrationPath, "utf8");
-        try {
-          await client.query(googleMigrationSql);
-          results.push("✓ Successfully migrated all Google Account Auth users and identities to Supabase.");
-        } catch (err: any) {
-          console.error("[Migration] Google accounts migration failed/warned:", err.message);
-          results.push("⚠ Google accounts migration status: " + err.message);
-        }
-      } else {
-        results.push("ℹ No google_migration.sql file found at root, skipped Google user import.");
-      }
-
-      await client.end();
-      return res.json({
-        success: true,
-        message: "Supabase Relational Database migrated and structured successfully!",
-        details: results
-      });
-    } catch (error: any) {
-      console.warn("[Migration Error]", error);
-      if (client) {
-        try { await client.end(); } catch (e) {}
-      }
-      const isPasswordError = String(error.message || error).toLowerCase().includes("password authentication failed") || 
-                              String(error.message || error).toLowerCase().includes("password auth");
-                              
-      const userMessage = isPasswordError 
-        ? "PostgreSQL database authentication failed! The database password provided inside your 'DATABASE_URL' environment secret is incorrect. Please verify your direct database password in Supabase and update your Secrets."
-        : (error.message || String(error));
-
-      return res.status(500).json({
-        success: false,
-        error: userMessage,
-        details: isPasswordError 
-          ? "🔑 Incorrect password signature detected. Please ensure you are using your actual Supabase Database Password (not your Supabase dashboard login password) in your DATABASE_URL connection string."
-          : "Database connection failed. Ensure your connection string includes the correct password, and that the database server is online."
-      });
-    }
-  });
-
-  // Export from Firestore and Import to Supabase PostgreSQL Database
-  app.post("/api/config/migrate-data", async (req, res) => {
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-    const expectedRef = supabaseUrl.match(/https:\/\/(.*?)\.supabase\.co/)?.[1] || "unknown";
-    const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.SUPABASE_DIRECT_URL;
-    if (!dbUrl) {
-      return res.status(200).json({
-        success: false,
-        error: "DATABASE_URL is not set. Please configure your direct PostgreSQL connection string first."
-      });
-    }
-
-    const serviceAccountPath = path.join(process.cwd(), "googleService.json");
-    if (!fs.existsSync(serviceAccountPath)) {
-      return res.status(200).json({
-        success: false,
-        error: "Google Service Account key file 'googleService.json' was not found in the project root."
-      });
-    }
-
-    let firestoreDb: any;
-    try {
-      console.log("[DataMigration] Initializing Firebase Admin SDK...");
-      const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
-      if (serviceAccount.private_key) {
-        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
-      }
-
-      const appName = "migration-app-" + Date.now();
-      const firebaseApp = initFirebase({
-        credential: firebaseCert(serviceAccount),
-        projectId: "ai-studio-0adb409c-19ca-4d40-98cc-79864b9d3d75"
-      }, appName);
-
-      firestoreDb = initFirestore(firebaseApp);
-      console.log("[DataMigration] Firebase Admin SDK successfully initialized.");
-    } catch (err: any) {
-      console.error("[DataMigration] Firebase SDK initialization failed:", err);
-      return res.status(500).json({
-        success: false,
-        error: "Firebase Admin SDK initialization failed: " + (err.message || String(err)),
-        details: "Please ensure your googleService.json is valid and contains correct GCP project access."
-      });
-    }
-
-    let pgClient;
-    try {
-      console.log("[DataMigration] Connecting to live PostgreSQL database...");
-      pgClient = new pg.Client({
-        connectionString: dbUrl,
-        ssl: dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1")
-          ? undefined
-          : { rejectUnauthorized: false },
-      });
-      await pgClient.connect();
-      console.log("[DataMigration] PostgreSQL database connection successful.");
-    } catch (err: any) {
-      const errStr = String(err.message || err);
-      const isProjectMismatch = errStr.includes("tenant/user") && (errStr.includes("not found") || errStr.includes("unknown"));
-      
-      if (isProjectMismatch) {
-        return res.status(200).json({
-          success: false,
-          error: `Project Reference Mismatch: DATABASE_URL points to a different project than ${expectedRef}.`,
-          details: `The connection string points to a tenant that was not found. Your SUPABASE_URL suggests your project ref should be '${expectedRef}'. Please update your DATABASE_URL secret with the correct string from Supabase Dashboard -> Settings -> Database.`
-        });
-      }
-      
-      console.log("[DataMigration] PostgreSQL connection bypassed/failed:", err.message || err);
-      return res.status(200).json({
-        success: false,
-        error: "PostgreSQL Database connection failed: " + errStr,
-        details: "Please verify that your database server is active and that your DATABASE_URL password is correct."
-      });
-    }
-
-    const stats: Record<string, { fetched: number; migrated: number; errors: number; warning?: string }> = {};
-    const warnings: string[] = [];
-
-    // Helper to safely convert timestamps
-    const parseTimestamp = (val: any) => {
-      if (!val) return null;
-      if (val.toDate && typeof val.toDate === "function") return val.toDate().toISOString();
-      if (val._seconds !== undefined) return new Date(val._seconds * 1000).toISOString();
-      const date = new Date(val);
-      return isNaN(date.getTime()) ? null : date.toISOString();
-    };
-
-    // Helper to parse JSON values safely
-    const parseJson = (val: any) => {
-      if (val === undefined || val === null) return null;
-      if (typeof val === "string") {
-        try { return JSON.parse(val); } catch { return val; }
-      }
-      return val;
-    };
-
-    const collectionsToMigrate = [
-      {
-        name: "users",
-        table: "users",
-        pk: "id",
-        query: `INSERT INTO users (
-          id, name, email, role, "group", groups, approver_code, is_active, is_approved, is_suspended, 
-          phone, department, photo_url, temp_password, is_online, last_seen, idle_timeout_duration, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-        ON CONFLICT (id) DO UPDATE SET
-          name = EXCLUDED.name, email = EXCLUDED.email, role = EXCLUDED.role, "group" = EXCLUDED.group, 
-          groups = EXCLUDED.groups, approver_code = EXCLUDED.approver_code, is_active = EXCLUDED.is_active, 
-          is_approved = EXCLUDED.is_approved, is_suspended = EXCLUDED.is_suspended, phone = EXCLUDED.phone, 
-          department = EXCLUDED.department, photo_url = EXCLUDED.photo_url, temp_password = EXCLUDED.temp_password, 
-          is_online = EXCLUDED.is_online, last_seen = EXCLUDED.last_seen, idle_timeout_duration = EXCLUDED.idle_timeout_duration, 
-          updated_at = NOW()`,
-        map: (docId: string, d: any) => [
-          docId,
-          d.name || d.displayName || "Unknown User",
-          d.email || "",
-          d.role || "CHURCH_GROUP",
-          d.group || null,
-          JSON.stringify(parseJson(d.groups) || []),
-          d.approverCode || d.approver_code || null,
-          d.isActive !== undefined ? d.isActive : true,
-          d.isApproved !== undefined ? d.isApproved : true,
-          d.isSuspended !== undefined ? d.isSuspended : false,
-          d.phone || null,
-          d.department || null,
-          d.photoURL || d.photoUrl || null,
-          d.tempPassword || d.temp_password || null,
-          d.isOnline !== undefined ? d.isOnline : false,
-          parseTimestamp(d.lastSeen || d.last_seen),
-          d.idleTimeoutDuration !== undefined ? d.idleTimeoutDuration : 15,
-          parseTimestamp(d.createdAt || d.created_at) || new Date().toISOString(),
-          parseTimestamp(d.updatedAt || d.updated_at) || new Date().toISOString()
-        ]
-      },
-      {
-        name: "projects",
-        table: "projects",
-        pk: "id",
-        query: `INSERT INTO projects (
-          id, name, group_id, allocated_budget, spent_amount, status, color, fiscal_year, requisition_limit, account_number, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        ON CONFLICT (id) DO UPDATE SET
-          name = EXCLUDED.name, group_id = EXCLUDED.group_id, allocated_budget = EXCLUDED.allocated_budget, 
-          spent_amount = EXCLUDED.spent_amount, status = EXCLUDED.status, color = EXCLUDED.color, 
-          fiscal_year = EXCLUDED.fiscal_year, requisition_limit = EXCLUDED.requisition_limit, account_number = EXCLUDED.account_number`,
-        map: (docId: string, d: any) => [
-          docId,
-          d.name || "Unnamed Project",
-          d.groupId || d.group_id || "default",
-          Number(d.allocatedBudget || d.allocated_budget || 0),
-          Number(d.spentAmount || d.spent_amount || 0),
-          d.status || "ACTIVE",
-          d.color || null,
-          d.fiscalYear ? Number(d.fiscalYear) : null,
-          d.requisitionLimit ? Number(d.requisitionLimit) : null,
-          d.accountNumber || d.account_number || null,
-          parseTimestamp(d.createdAt || d.created_at) || new Date().toISOString()
-        ]
-      },
-      {
-        name: "requisitions",
-        table: "requisitions",
-        pk: "id",
-        query: `INSERT INTO requisitions (
-          id, project_id, title, description, amount, amount_words, group_id, group_name, requester_id, requester_name, 
-          requester_email, status, submitted_at, updated_at, expires_at, escalation_level, escalation_notifications_sent, 
-          approved_at_l1, approved_at_l2, disbursed_at, rejection_reason, approval_history, digital_signature, payable_to, 
-          recurrence, last_recurrence_generated_at, additional_info, attachments, receipts, flagged_for_audit, in_procurement, 
-          requires_more_info, fiscal_year
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)
-        ON CONFLICT (id) DO UPDATE SET
-          project_id = EXCLUDED.project_id, title = EXCLUDED.title, description = EXCLUDED.description, amount = EXCLUDED.amount, 
-          amount_words = EXCLUDED.amount_words, group_id = EXCLUDED.group_id, group_name = EXCLUDED.group_name, requester_id = EXCLUDED.requester_id, 
-          requester_name = EXCLUDED.requester_name, requester_email = EXCLUDED.requester_email, status = EXCLUDED.status, 
-          submitted_at = EXCLUDED.submitted_at, updated_at = EXCLUDED.updated_at, expires_at = EXCLUDED.expires_at, 
-          escalation_level = EXCLUDED.escalation_level, escalation_notifications_sent = EXCLUDED.escalation_notifications_sent, 
-          approved_at_l1 = EXCLUDED.approved_at_l1, approved_at_l2 = EXCLUDED.approved_at_l2, disbursed_at = EXCLUDED.disbursed_at, 
-          rejection_reason = EXCLUDED.rejection_reason, approval_history = EXCLUDED.approval_history, digital_signature = EXCLUDED.digital_signature, 
-          payable_to = EXCLUDED.payable_to, recurrence = EXCLUDED.recurrence, last_recurrence_generated_at = EXCLUDED.last_recurrence_generated_at, 
-          additional_info = EXCLUDED.additional_info, attachments = EXCLUDED.attachments, receipts = EXCLUDED.receipts, 
-          flagged_for_audit = EXCLUDED.flagged_for_audit, in_procurement = EXCLUDED.in_procurement, requires_more_info = EXCLUDED.requires_more_info, 
-          fiscal_year = EXCLUDED.fiscal_year`,
-        map: (docId: string, d: any) => [
-          docId,
-          d.projectId || d.project_id || null,
-          d.title || "Unnamed Requisition",
-          d.description || "",
-          Number(d.amount || 0),
-          d.amountWords || d.amount_words || null,
-          d.groupId || d.group_id || "default",
-          d.groupName || d.group_name || "Unknown Group",
-          d.requesterId || d.requester_id || "default",
-          d.requesterName || d.requester_name || "Unknown Requester",
-          d.requesterEmail || d.requester_email || null,
-          d.status || "DRAFT",
-          parseTimestamp(d.submittedAt || d.submitted_at),
-          parseTimestamp(d.updatedAt || d.updated_at) || new Date().toISOString(),
-          parseTimestamp(d.expiresAt || d.expires_at),
-          Number(d.escalationLevel || d.escalation_level || 0),
-          d.escalationNotificationsSent || d.escalation_notifications_sent || false,
-          parseTimestamp(d.approvedAtL1 || d.approved_at_l1),
-          parseTimestamp(d.approvedAtL2 || d.approved_at_l2),
-          parseTimestamp(d.disbursedAt || d.disbursed_at),
-          d.rejectionReason || d.rejection_reason || null,
-          JSON.stringify(parseJson(d.approvalHistory || d.approval_history) || []),
-          d.digitalSignature || d.digital_signature || null,
-          d.payableTo || d.payable_to || null,
-          d.recurrence || "NONE",
-          parseTimestamp(d.lastRecurrenceGeneratedAt || d.last_recurrence_generated_at),
-          d.additionalInfo || d.additional_info || null,
-          JSON.stringify(parseJson(d.attachments) || []),
-          JSON.stringify(parseJson(d.receipts) || []),
-          d.flaggedForAudit || d.flagged_for_audit || false,
-          d.inProcurement || d.in_procurement || false,
-          d.requiresMoreInfo || d.requires_more_info || false,
-          d.fiscalYear ? Number(d.fiscalYear) : null
-        ]
-      },
-      {
-        name: "system_logs",
-        table: "audit_logs",
-        pk: "id",
-        query: `INSERT INTO audit_logs (action, details, performed_by, timestamp, group_id, metadata) VALUES ($1, $2, $3, $4, $5, $6)`,
-        map: (docId: string, d: any) => [
-          d.action || "LOG",
-          d.details || "",
-          d.performedBy || d.performed_by || "System",
-          parseTimestamp(d.timestamp) || new Date().toISOString(),
-          d.groupId || d.group_id || null,
-          JSON.stringify(parseJson(d.metadata) || null)
-        ]
-      },
-      {
-        name: "alerts",
-        table: "alerts",
-        pk: "id",
-        query: `INSERT INTO alerts (id, type, severity, message, timestamp, is_read, target_role) VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (id) DO UPDATE SET type = EXCLUDED.type, severity = EXCLUDED.severity, message = EXCLUDED.message, is_read = EXCLUDED.is_read`,
-        map: (docId: string, d: any) => [
-          docId,
-          d.type || "INFO",
-          d.severity || "LOW",
-          d.message || "",
-          parseTimestamp(d.timestamp) || new Date().toISOString(),
-          d.isRead !== undefined ? d.isRead : false,
-          d.targetRole || d.target_role || null
-        ]
-      },
-      {
-        name: "fiscal_years",
-        table: "fiscal_years",
-        pk: "id",
-        query: `INSERT INTO fiscal_years (id, year, label, status, notes, created_at) VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (id) DO UPDATE SET year = EXCLUDED.year, label = EXCLUDED.label, status = EXCLUDED.status, notes = EXCLUDED.notes`,
-        map: (docId: string, d: any) => [
-          docId,
-          Number(d.year || 2026),
-          d.label || String(d.year || 2026),
-          d.status || "ACTIVE",
-          d.notes || null,
-          parseTimestamp(d.createdAt || d.created_at) || new Date().toISOString()
-        ]
-      },
-      {
-        name: "transactions",
-        table: "transactions",
-        pk: "id",
-        query: `INSERT INTO transactions (id, external_ref, source_system, amount, type, status, description, category, timestamp, performed_by, metadata) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        ON CONFLICT (id) DO UPDATE SET external_ref = EXCLUDED.external_ref, source_system = EXCLUDED.source_system, amount = EXCLUDED.amount, type = EXCLUDED.type, status = EXCLUDED.status, description = EXCLUDED.description, category = EXCLUDED.category`,
-        map: (docId: string, d: any) => [
-          docId,
-          d.externalRef || d.external_ref || null,
-          d.sourceSystem || d.source_system || "SYSTEM",
-          Number(d.amount || 0),
-          d.type || "EXPENSE",
-          d.status || "COMPLETED",
-          d.description || "",
-          d.category || "GENERAL",
-          parseTimestamp(d.timestamp) || new Date().toISOString(),
-          d.performedBy || d.performed_by || "System",
-          JSON.stringify(parseJson(d.metadata) || null)
-        ]
-      },
-      {
-        name: "forecast",
-        table: "forecast",
-        pk: "month",
-        query: `INSERT INTO forecast (month, projected, actual) VALUES ($1, $2, $3)
-        ON CONFLICT (month) DO UPDATE SET projected = EXCLUDED.projected, actual = EXCLUDED.actual`,
-        map: (docId: string, d: any) => [
-          docId || d.month,
-          Number(d.projected || 0),
-          Number(d.actual || 0)
-        ]
-      },
-      {
-        name: "reports",
-        table: "reports",
-        pk: "id",
-        query: `INSERT INTO reports (id, title, description, generated_by, generated_by_id, timestamp, period, stats, filters, item_count) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, description = EXCLUDED.description, stats = EXCLUDED.stats, filters = EXCLUDED.filters`,
-        map: (docId: string, d: any) => [
-          docId,
-          d.title || "Report",
-          d.description || "",
-          d.generatedBy || d.generated_by || "System",
-          d.generatedById || d.generated_by_id || "system",
-          parseTimestamp(d.timestamp) || new Date().toISOString(),
-          d.period || "MONTHLY",
-          JSON.stringify(parseJson(d.stats) || {}),
-          JSON.stringify(parseJson(d.filters) || {}),
-          Number(d.itemCount || d.item_count || 0)
-        ]
-      },
-      {
-        name: "permissions",
-        table: "permissions",
-        pk: "id",
-        query: `INSERT INTO permissions (id, role, access, actions) VALUES ($1, $2, $3, $4)
-        ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, access = EXCLUDED.access, actions = EXCLUDED.actions`,
-        map: (docId: string, d: any) => [
-          docId,
-          d.role || "CHURCH_GROUP",
-          JSON.stringify(parseJson(d.access) || {}),
-          JSON.stringify(parseJson(d.actions) || {})
-        ]
-      },
-      {
-        name: "thresholds",
-        table: "thresholds",
-        pk: "id",
-        query: `INSERT INTO thresholds (id, type, threshold, is_enabled, notify_email) VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (id) DO UPDATE SET type = EXCLUDED.type, threshold = EXCLUDED.threshold, is_enabled = EXCLUDED.is_enabled, notify_email = EXCLUDED.notify_email`,
-        map: (docId: string, d: any) => [
-          docId,
-          d.type || "BUDGET_ALERT",
-          Number(d.threshold || 0),
-          d.isEnabled !== undefined ? d.isEnabled : true,
-          d.notifyEmail !== undefined ? d.notifyEmail : false
-        ]
-      },
-      {
-        name: "church_groups",
-        table: "church_groups",
-        pk: "id",
-        query: `INSERT INTO church_groups (id, name, description, created_at) VALUES ($1, $2, $3, $4)
-        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description`,
-        map: (docId: string, d: any) => [
-          docId,
-          d.name || "Group",
-          d.description || null,
-          parseTimestamp(d.createdAt || d.created_at) || new Date().toISOString()
-        ]
-      },
-      {
-        name: "ledger_books",
-        table: "ledger_books",
-        pk: "id",
-        query: `INSERT INTO ledger_books (id, ministry_id, ministry_name, book_name, description, created_at, created_by, creator_name, budget_limit, spent_amount, notes, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-        ON CONFLICT (id) DO UPDATE SET ministry_id = EXCLUDED.ministry_id, ministry_name = EXCLUDED.ministry_name, book_name = EXCLUDED.book_name, budget_limit = EXCLUDED.budget_limit, spent_amount = EXCLUDED.spent_amount`,
-        map: (docId: string, d: any) => [
-          docId,
-          d.ministryId || d.ministry_id || null,
-          d.ministryName || d.ministry_name || "Unknown Ministry",
-          d.bookName || d.book_name || null,
-          d.description || null,
-          parseTimestamp(d.createdAt || d.created_at) || new Date().toISOString(),
-          d.createdBy || d.created_by || "system",
-          d.creatorName || d.creator_name || null,
-          Number(d.budgetLimit || d.budget_limit || 0),
-          Number(d.spentAmount || d.spent_amount || 0),
-          d.notes || null,
-          d.status || "ACTIVE"
-        ]
-      },
-      {
-        name: "supplementary_budgets",
-        table: "supplementary_budgets",
-        pk: "id",
-        query: `INSERT INTO supplementary_budgets (id, requester_id, requester_name, requester_email, role, project_id, project_name, amount, justification, submitted_at, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        ON CONFLICT (id) DO UPDATE SET requester_name = EXCLUDED.requester_name, requester_email = EXCLUDED.requester_email, amount = EXCLUDED.amount, status = EXCLUDED.status`,
-        map: (docId: string, d: any) => [
-          docId,
-          d.requesterId || d.requester_id || "system",
-          d.requesterName || d.requester_name || "Anonymous",
-          d.requesterEmail || d.requester_email || "",
-          d.role || "CHURCH_GROUP",
-          d.projectId || d.project_id || "default",
-          d.projectName || d.project_name || "Default Project",
-          Number(d.amount || 0),
-          d.justification || "",
-          parseTimestamp(d.submittedAt || d.submitted_at) || new Date().toISOString(),
-          d.status || "PENDING"
-        ]
-      },
-      {
-        name: "vendors",
-        table: "vendors",
-        pk: "id",
-        query: `INSERT INTO vendors (id, name, contact, location, offerings, created_at, added_by, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, contact = EXCLUDED.contact, location = EXCLUDED.location, offerings = EXCLUDED.offerings, status = EXCLUDED.status`,
-        map: (docId: string, d: any) => [
-          docId,
-          d.name || "Vendor",
-          d.contact || null,
-          d.location || null,
-          d.offerings || null,
-          parseTimestamp(d.createdAt || d.created_at) || new Date().toISOString(),
-          d.addedBy || d.added_by || "system",
-          d.status || "PENDING"
-        ]
-      }
-    ];
-
-    for (const item of collectionsToMigrate) {
-      stats[item.name] = { fetched: 0, migrated: 0, errors: 0 };
-      try {
-        console.log(`[DataMigration] Migrating collection: ${item.name} ...`);
-        const snapshot = await firestoreDb.collection(item.name).get();
-        stats[item.name].fetched = snapshot.size;
-
-        for (const doc of snapshot.docs) {
-          try {
-            const params = item.map(doc.id, doc.data());
-            await pgClient.query(item.query, params);
-            stats[item.name].migrated++;
-          } catch (rowErr: any) {
-            console.error(`[DataMigration] Error inserting row in ${item.name} with ID ${doc.id}:`, rowErr);
-            stats[item.name].errors++;
-            warnings.push(`[${item.name} / ${doc.id}]: ${rowErr.message || String(rowErr)}`);
-          }
-        }
-      } catch (collErr: any) {
-        console.warn(`[DataMigration] Collection fetch failed for '${item.name}':`, collErr.message);
-        stats[item.name].warning = collErr.message;
-        warnings.push(`Collection '${item.name}' skip / error: ${collErr.message}`);
-      }
-    }
-
-    try {
-      await pgClient.end();
-    } catch (e) {}
-
-    const overallSuccess = Object.values(stats).some(s => s.migrated > 0);
-
-    return res.json({
-      success: overallSuccess,
-      message: overallSuccess 
-        ? "Ecosystem database replication executed successfully!" 
-        : "Migration session completed. No records were replicated (check collection permissions).",
-      stats,
-      error: warnings.length > 0 ? warnings.join("\n") : null
-    });
   });
 
   // API Route for Sending Email
@@ -3370,663 +2663,6 @@ async function startServer() {
   });
 
   // API Route for Google Sheets Synchronization (Durable Persistence & Quota Fallback)
-  app.post("/api/sync-to-sheet", async (req, res) => {
-    const { requisition } = req.body;
-    if (!requisition) {
-      return res.status(400).json({ error: "No requisition payload provided for synchronization" });
-    }
-
-    const fiscalYear = requisition.fiscalYear || new Date().getFullYear();
-    const sheetTitle = `STANDS Financial Records FY${fiscalYear}`;
-    let spreadsheetId = "";
-
-    let sheets, drive;
-    try {
-      const clients = getGoogleClients();
-      sheets = clients.sheets;
-      drive = clients.drive;
-    } catch (err: any) {
-      const fallbackResult = handleOfflineFallback(requisition, sheetTitle);
-      return res.json(fallbackResult);
-    }
-
-    try {
-      // 0. Process base64 attachments to Google Drive
-      let uploadedAttachments: string[] = [];
-      if (requisition.attachments && Array.isArray(requisition.attachments) && drive) {
-        console.log(`[Google Drive Sync] Processing ${requisition.attachments.length} attachments for upload...`);
-        uploadedAttachments = await Promise.all(
-          requisition.attachments.map(att => uploadAttachmentToDrive(att, drive))
-        );
-      } else {
-        uploadedAttachments = requisition.attachments || [];
-      }
-
-      const attachmentLinks = uploadedAttachments.map(att => {
-        if (att.includes("::")) {
-          return att.split("::")[1];
-        }
-        return att;
-      }).filter(link => link && link.startsWith("http"));
-      const attachmentCell = attachmentLinks.join("\n");
-
-      // 1. Double-check and search for existing sheet matching the fiscal year (Isolation)
-      const listRes = await drive.files.list({
-        q: `name = '${sheetTitle}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`,
-        fields: "files(id, name)",
-        spaces: "drive",
-      });
-
-      if (listRes.data?.files && listRes.data.files.length > 0) {
-        spreadsheetId = listRes.data.files[0].id!;
-      } else {
-        // Create new Sheet dynamically
-        console.log(`[Google Sheets] Creating a new isolation spreadsheet for Year ${fiscalYear}: ${sheetTitle}`);
-        const createRes = await sheets.spreadsheets.create({
-          requestBody: {
-            properties: {
-              title: sheetTitle,
-            },
-            sheets: [
-              {
-                properties: {
-                  title: "Requisitions",
-                },
-              },
-            ],
-          },
-        });
-        spreadsheetId = createRes.data.spreadsheetId!;
-
-        // Share the created spreadsheet with Google Workspace administrative email
-        try {
-          await drive.permissions.create({
-            fileId: spreadsheetId,
-            requestBody: {
-              role: "writer",
-              type: "user",
-              emailAddress: "ict.team@pceastandrews.org",
-            },
-          });
-          console.log(`[Google Sheets] Shared new individual spreadsheet ${sheetTitle} with ict.team@pceastandrews.org as writer`);
-        } catch (shareErr: any) {
-          console.warn("[Google Sheets] Failed to share new individual spreadsheet with ict.team@pceastandrews.org:", shareErr.message || shareErr);
-        }
-
-        // Put initial headers (A1:O1)
-        await sheets.spreadsheets.values.update({
-          spreadsheetId,
-          range: "Requisitions!A1:O1",
-          valueInputOption: "RAW",
-          requestBody: {
-            values: [[
-              "Requisition ID",
-              "Title",
-              "Requester",
-              "Group",
-              "Amount (KES)",
-              "Status",
-              "Project",
-              "Payable To",
-              "Created At",
-              "Approved L1 At",
-              "Approved L2 At",
-              "Disbursed At",
-              "Last Synced At",
-              "Notes",
-              "Attachments (Drive Files)"
-            ]]
-          }
-        });
-      }
-
-      // 2. Prepare structured data mapping
-      const rowValues = [
-        requisition.id || "",
-        requisition.title || "",
-        requisition.requesterName || requisition.createdBy || requisition.requesterEmail || "",
-        requisition.groupName || "",
-        Number(requisition.amount || 0),
-        requisition.status || "",
-        requisition.projectName || requisition.projectId || "",
-        requisition.payableTo || "",
-        requisition.createdAt || requisition.submittedAt || "",
-        requisition.approvedAtL1 || "",
-        requisition.approvedAtL2 || "",
-        requisition.disbursedAt || "",
-        new Date().toISOString(),
-        requisition.description || requisition.justification || "",
-        attachmentCell
-      ];
-
-      // 3. Scan column A for standard row deduplication
-      const readRes = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: "Requisitions!A:A",
-      });
-      const rows = readRes.data.values || [];
-      let rowIndex = -1;
-      for (let i = 0; i < rows.length; i++) {
-        if (rows[i][0] === requisition.id) {
-          rowIndex = i + 1; // 1-based index
-          break;
-        }
-      }
-
-      if (rowIndex !== -1) {
-        // Overwrite row (A:O)
-        await sheets.spreadsheets.values.update({
-          spreadsheetId,
-          range: `Requisitions!A${rowIndex}:O${rowIndex}`,
-          valueInputOption: "USER_ENTERED",
-          requestBody: {
-            values: [rowValues],
-          },
-        });
-        console.log(`[Google Sheets] Updated requisition ${requisition.id} online at Row ${rowIndex}`);
-      } else {
-        // Append row (A:O)
-        await sheets.spreadsheets.values.append({
-          spreadsheetId,
-          range: "Requisitions!A:O",
-          valueInputOption: "USER_ENTERED",
-          insertDataOption: "INSERT_ROWS",
-          requestBody: {
-            values: [rowValues],
-          },
-        });
-        console.log(`[Google Sheets] Appended search index record for ${requisition.id} online`);
-      }
-
-      return res.json({
-        success: true,
-        mode: "online",
-        spreadsheetId,
-        spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
-        sheetTitle,
-        uploadedAttachments
-      });
-    } catch (err: any) {
-      console.warn(`[Google Sheets Sync API Error]: ${err.message || err}. Falling back to simulation.`, err);
-      const fallbackResult = handleOfflineFallback(requisition, sheetTitle);
-      return res.json(fallbackResult);
-    }
-  });
-
-  // Helper to ensure a specific tab is created in a Google Spreadsheet if not already present, returning its sheetId
-  async function ensureSheetTabExists(sheetsClient: any, spreadsheetId: string, tabName: string): Promise<number | null> {
-    try {
-      const meta = await sheetsClient.spreadsheets.get({ spreadsheetId });
-      const found = meta.data.sheets.find((s: any) => s.properties?.title === tabName);
-      if (found) {
-        return found.properties?.sheetId ?? null;
-      }
-      const res = await sheetsClient.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          requests: [
-            {
-              addSheet: {
-                properties: { title: tabName }
-              }
-            }
-          ]
-        }
-      });
-      const newSheetId = res.data.replies?.[0]?.addSheet?.properties?.sheetId ?? null;
-      console.log(`[Google Sheets Helper] Created missing tab "${tabName}" with sheetId ${newSheetId} in spreadsheet ${spreadsheetId}`);
-      return newSheetId;
-    } catch (err: any) {
-      console.warn(`[Google Sheets Helper] Failed checking/creating tab "${tabName}":`, err.message || err);
-      return null;
-    }
-  }
-
-  // Optimize and style Google Sheets with a beautifully styled administrative layout
-  async function formatGoogleSheetTab(sheetsClient: any, spreadsheetId: string, sheetId: number | null, columnCount: number) {
-    if (sheetId === null || !sheetsClient) return;
-    try {
-      await sheetsClient.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          requests: [
-            // 1. Format headers to look premium: Deep slate background (#0f172a), Bold White text, centered
-            {
-              repeatCell: {
-                range: {
-                  sheetId: sheetId,
-                  startRowIndex: 0,
-                  endRowIndex: 1,
-                  startColumnIndex: 0,
-                  endColumnIndex: columnCount
-                },
-                cell: {
-                  userEnteredFormat: {
-                    backgroundColor: { red: 15/255, green: 23/255, blue: 42/255 },
-                    textFormat: {
-                      foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 },
-                      bold: true,
-                      fontSize: 10,
-                      fontFamily: "Roboto"
-                    },
-                    horizontalAlignment: "CENTER",
-                    verticalAlignment: "MIDDLE"
-                  }
-                },
-                fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)"
-              }
-            },
-            // 2. Freeze the first row so column headers stay pinned while scrolling
-            {
-              updateSheetProperties: {
-                properties: {
-                  sheetId: sheetId,
-                  gridProperties: {
-                    frozenRowCount: 1
-                  }
-                },
-                fields: "gridProperties.frozenRowCount"
-              }
-            },
-            // 3. Auto-resize all columns to fit content beautifully
-            {
-              autoResizeDimensions: {
-                dimensions: {
-                  sheetId: sheetId,
-                  dimension: "COLUMNS",
-                  startIndex: 0,
-                  endIndex: columnCount
-                }
-              }
-            }
-          ]
-        }
-      });
-      console.log(`[Google Sheets Formatter] Styled tab ${sheetId} with premium dark-slate headers and dynamic auto-resizing.`);
-    } catch (err: any) {
-      console.warn(`[Google Sheets Formatter] Failed to format tab ${sheetId}:`, err.message || err);
-    }
-  }
-
-  // API Endpoint to perform full data backup of all requisitions and users to Google Sheets
-  app.post("/api/backup-all-to-sheets", async (req, res) => {
-    const { requisitions, users } = req.body;
-    const reqList = Array.isArray(requisitions) ? requisitions : [];
-    const userList = Array.isArray(users) ? users : [];
-
-    if (reqList.length === 0 && userList.length === 0) {
-      return res.status(400).json({ error: "No requisitions or users list provided for batch synchronization" });
-    }
-
-    let sheets, drive;
-    try {
-      const clients = getGoogleClients();
-      sheets = clients.sheets;
-      drive = clients.drive;
-    } catch (err: any) {
-      console.warn("[Google Sheets Backup] Google Clients not authorized. Running simulated backup.");
-      const results = [];
-      for (const reqObj of reqList) {
-        const fiscalYear = reqObj.fiscalYear || new Date().getFullYear();
-        const sheetTitle = `STANDS Financial Records FY${fiscalYear}`;
-        results.push(handleOfflineFallback(reqObj, sheetTitle));
-      }
-      return res.json({
-        success: true,
-        mode: "simulated_fallback",
-        message: "Google workspace API not authenticated. Synced all historical records to local backup ledger on behalf of ICT team.",
-        syncedCount: reqList.length,
-        results
-      });
-    }
-
-    try {
-      const backupSummary = [];
-
-      // PART 1: UNIFIED MASTER USER DIRECTORY BACKUP
-      if (userList.length > 0) {
-        try {
-          const userSheetTitle = "STANDS Users Directory";
-          let userSpreadsheetId = "";
-
-          // 1. Search for existing spreadsheet matching the name
-          const userListRes = await drive.files.list({
-            q: `name = '${userSheetTitle}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`,
-            fields: "files(id, name)",
-            spaces: "drive",
-          });
-
-          if (userListRes.data?.files && userListRes.data.files.length > 0) {
-            userSpreadsheetId = userListRes.data.files[0].id!;
-          } else {
-            console.log(`[Google Sheets Backup] Creating master "${userSheetTitle}" spreadsheet...`);
-            const userCreateRes = await sheets.spreadsheets.create({
-              requestBody: {
-                properties: { title: userSheetTitle },
-                sheets: [{ properties: { title: "User Profiles" } }],
-              },
-            });
-            userSpreadsheetId = userCreateRes.data.spreadsheetId!;
-
-            // Share newly created users directory list with Google Workspace administrative email
-            try {
-              await drive.permissions.create({
-                fileId: userSpreadsheetId,
-                requestBody: {
-                  role: "writer",
-                  type: "user",
-                  emailAddress: "ict.team@pceastandrews.org",
-                },
-              });
-              console.log(`[Google Sheets Backup] Shared user directory spreadsheet with ict.team@pceastandrews.org as writer`);
-            } catch (shareErr: any) {
-              console.warn("[Google Sheets Backup] Failed to share user directory spreadsheet with ict.team@pceastandrews.org:", shareErr.message || shareErr);
-            }
-          }
-
-          // 2. Define headers and rows
-          const userHeaders = [
-            "User ID",
-            "Name",
-            "Email",
-            "Role",
-            "Department/Group",
-            "Approver Code",
-            "Is Approved",
-            "Is Suspended",
-            "Phone",
-            "Last Seen",
-            "Last Synced At"
-          ];
-
-          const userRows = [userHeaders];
-          for (const usr of userList) {
-            userRows.push([
-              usr.id || "",
-              usr.name || "",
-              usr.email || "",
-              usr.role || "",
-              usr.department || usr.group || "",
-              usr.approverCode || "",
-              usr.isApproved ? "Approved" : "Pending",
-              usr.isSuspended ? "Suspended" : "Active",
-              usr.phone || "",
-              usr.lastSeen || "",
-              new Date().toISOString()
-            ]);
-          }
-
-          // 3. Write User profiles in bulk
-          const userProfileSheetId = await ensureSheetTabExists(sheets, userSpreadsheetId, "User Profiles");
-          await sheets.spreadsheets.values.update({
-            spreadsheetId: userSpreadsheetId,
-            range: `User Profiles!A1:K${userRows.length}`,
-            valueInputOption: "USER_ENTERED",
-            requestBody: {
-              values: userRows
-            }
-          });
-          await formatGoogleSheetTab(sheets, userSpreadsheetId, userProfileSheetId, 11);
-
-          backupSummary.push({
-            fiscalYear: "Unified Registry",
-            sheetTitle: userSheetTitle,
-            spreadsheetId: userSpreadsheetId,
-            spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${userSpreadsheetId}/edit`,
-            updatedCount: userList.length,
-            appendedCount: 0,
-            isUserDirectory: true
-          });
-        } catch (userBackupErr: any) {
-          console.error("[Google Sheets Backup] Failed compiling Master User Profiles sheet:", userBackupErr.message || userBackupErr);
-        }
-      }
-
-      // PART 2: FISCAL YEAR SPECIFIC LEDGERS BACKUP (REQUISITIONS + YEARLY USERS SNAPSHOT)
-      // Group by fiscal year of the requisition
-      const grouped: { [year: number]: any[] } = {};
-      for (const reqObj of reqList) {
-        const yr = reqObj.fiscalYear || new Date().getFullYear();
-        if (!grouped[yr]) grouped[yr] = [];
-        grouped[yr].push(reqObj);
-      }
-
-      // If no requisitions, we can generate a ledger for the current calendar year just to store the Yearly Users tab too
-      if (Object.keys(grouped).length === 0 && userList.length > 0) {
-        grouped[new Date().getFullYear()] = [];
-      }
-
-      for (const [yearStr, yearReqs] of Object.entries(grouped)) {
-        const fiscalYear = Number(yearStr);
-        const sheetTitle = `STANDS Financial Records FY${fiscalYear}`;
-        let spreadsheetId = "";
-
-        // Find existing spreadsheet matching the name
-        const listRes = await drive.files.list({
-          q: `name = '${sheetTitle}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`,
-          fields: "files(id, name)",
-          spaces: "drive",
-        });
-
-        if (listRes.data?.files && listRes.data.files.length > 0) {
-          spreadsheetId = listRes.data.files[0].id!;
-        } else {
-          // Create new Sheet dynamically
-          console.log(`[Google Sheets Backup] Creating a new isolation spreadsheet for Year ${fiscalYear}: ${sheetTitle}`);
-          const createRes = await sheets.spreadsheets.create({
-            requestBody: {
-              properties: { title: sheetTitle },
-              sheets: [{ properties: { title: "Requisitions" } }],
-            },
-          });
-          spreadsheetId = createRes.data.spreadsheetId!;
-
-          // Share newly created year ledger with Google Workspace administrative email
-          try {
-            await drive.permissions.create({
-              fileId: spreadsheetId,
-              requestBody: {
-                role: "writer",
-                type: "user",
-                emailAddress: "ict.team@pceastandrews.org",
-              },
-            });
-            console.log(`[Google Sheets Backup] Shared year ledger ${sheetTitle} with ict.team@pceastandrews.org as writer`);
-          } catch (shareErr: any) {
-            console.warn("[Google Sheets Backup] Failed to share year ledger package with ict.team@pceastandrews.org:", shareErr.message || shareErr);
-          }
-        }
-
-        // 1. Back up Requisitions if they exist for this fiscal year
-        let updatedCount = 0;
-        let appendedCount = 0;
-
-        if (yearReqs.length > 0) {
-          const reqSheetId = await ensureSheetTabExists(sheets, spreadsheetId, "Requisitions");
-
-          // Read all current rows (for deduplication and bulk single-write execution)
-          let rows: any[][] = [];
-          try {
-            const readRes = await sheets.spreadsheets.values.get({
-              spreadsheetId,
-              range: "Requisitions!A:N",
-            });
-            rows = readRes.data.values || [];
-          } catch (e) {
-            console.warn(`[Google Sheets Backup] Sheet new/empty, seeding local headers layout:`, e);
-          }
-
-          // Define expected headers
-          const headers = [
-            "Requisition ID",
-            "Title",
-            "Requester",
-            "Group",
-            "Amount (KES)",
-            "Status",
-            "Project",
-            "Payable To",
-            "Created At",
-            "Approved L1 At",
-            "Approved L2 At",
-            "Disbursed At",
-            "Last Synced At",
-            "Notes"
-          ];
-
-          // Ensure headers are present at row index 0
-          if (rows.length === 0) {
-            rows.push(headers);
-          } else {
-            rows[0] = headers; 
-          }
-
-          // Map existing requisition ID back to its 0-based array index in 'rows'
-          const excelIdRowMap: { [id: string]: number } = {};
-          for (let i = 1; i < rows.length; i++) {
-            if (rows[i] && rows[i][0]) {
-              excelIdRowMap[rows[i][0]] = i;
-            }
-          }
-
-          for (const reqObj of yearReqs) {
-            const rowValues = [
-              reqObj.id || "",
-              reqObj.title || "",
-              reqObj.requesterName || reqObj.createdBy || reqObj.requesterEmail || "",
-              reqObj.groupName || "",
-              String(reqObj.amount || 0),
-              reqObj.status || "",
-              reqObj.projectName || reqObj.projectId || "",
-              reqObj.payableTo || "",
-              reqObj.createdAt || reqObj.submittedAt || "",
-              reqObj.approvedAtL1 || "",
-              reqObj.approvedAtL2 || "",
-              reqObj.disbursedAt || "",
-              new Date().toISOString(),
-              reqObj.description || reqObj.justification || ""
-            ];
-
-            const mappedIndex = excelIdRowMap[reqObj.id];
-            if (mappedIndex !== undefined) {
-              rows[mappedIndex] = rowValues;
-              updatedCount++;
-            } else {
-              rows.push(rowValues);
-              appendedCount++;
-            }
-          }
-
-          // Bulk single-write update of all grid values in exactly one API request
-          await sheets.spreadsheets.values.update({
-            spreadsheetId,
-            range: `Requisitions!A1:N${rows.length}`,
-            valueInputOption: "USER_ENTERED",
-            requestBody: {
-              values: rows
-            }
-          });
-          await formatGoogleSheetTab(sheets, spreadsheetId, reqSheetId, 14);
-        }
-
-        // 2. Back up Users into a dedicated "Users" tab in the same Fiscal Year spreadsheet
-        if (userList.length > 0) {
-          try {
-            const userSheetId = await ensureSheetTabExists(sheets, spreadsheetId, "Users");
-
-            const yearUserHeaders = [
-              "User ID",
-              "Name",
-              "Email",
-              "Role",
-              "Department/Group",
-              "Approver Code",
-              "Status",
-              "Phone",
-              "Last Sync"
-            ];
-
-            const yearUserRows = [yearUserHeaders];
-            for (const usr of userList) {
-              yearUserRows.push([
-                usr.id || "",
-                usr.name || "",
-                usr.email || "",
-                usr.role || "",
-                usr.department || usr.group || "",
-                usr.approverCode || "",
-                usr.isSuspended ? "Suspended" : (usr.isApproved ? "Approved" : "Pending"),
-                usr.phone || "",
-                new Date().toISOString()
-              ]);
-            }
-
-            await sheets.spreadsheets.values.update({
-              spreadsheetId,
-              range: `Users!A1:I${yearUserRows.length}`,
-              valueInputOption: "USER_ENTERED",
-              requestBody: {
-                values: yearUserRows
-              }
-            });
-            await formatGoogleSheetTab(sheets, spreadsheetId, userSheetId, 9);
-          } catch (yearUserErr: any) {
-            console.error(`[Google Sheets Backup] Failed writing tab "Users" under FY${fiscalYear}:`, yearUserErr.message || yearUserErr);
-          }
-        }
-
-        backupSummary.push({
-          fiscalYear,
-          sheetTitle,
-          spreadsheetId,
-          spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
-          updatedCount,
-          appendedCount
-        });
-      }
-
-      return res.json({
-        success: true,
-        mode: "online",
-        message: `Successfully completed backup of ${reqList.length} requisitions and ${userList.length} user directory profiles across matching sheets!`,
-        backupSummary
-      });
-    } catch (err: any) {
-      console.error("[Google Sheets Bulk Backup API Error]:", err);
-      return res.status(500).json({
-        error: err.message || "Failed during batch Google Sheets backups."
-      });
-    }
-  });
-
-  // API Endpoint to explicitly test Google Sheets Sync connection
-  app.post("/api/test-sheets-connection", async (req, res) => {
-    try {
-      const clients = getGoogleClients();
-      const drive = clients.drive;
-
-      // Try searching some spreadsheets to guarantee write/read permission checks work
-      const testList = await drive.files.list({
-        pageSize: 1,
-        fields: "files(id, name)",
-      });
-
-      return res.json({
-        success: true,
-        mode: "online",
-        clientEmail: "stands-erequisitions@quiet-surface-499808-t9.iam.gserviceaccount.com",
-        message: "Successfully authenticated with Google API and connected to Google Drive!",
-        availableFiles: testList.data?.files || [],
-      });
-    } catch (err: any) {
-      console.error("[Sheets Test API Error]:", err);
-      return res.status(500).json({
-        success: false,
-        mode: "simulated_fallback",
-        message: err.message || "Failed to authenticate. Google Service Account credentials not parsed or missing private keys."
-      });
-    }
-  });
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
@@ -4045,10 +2681,7 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    // Start background purge of legacy/accidental base64 data to VPS local files
-    purgeBase64AttachmentsFromDb().catch(err => {
-      console.error("[Startup Purge Error]:", err);
-    });
+    // Removed Base64 purge
   });
 }
 
