@@ -33,6 +33,42 @@ import { getProjectRequisitions } from "../utils/budgetUtils";
 import { getSupabaseClient, isSupabaseEnabled } from "../lib/supabase";
 import { databaseService } from "../lib/databaseService";
 import { uploadAttachmentsToLocalServer } from "../lib/utils";
+import { initializeApp as initFirebaseApp } from "firebase/app";
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged,
+  updatePassword as updateAuthPassword
+} from "firebase/auth";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCTAlP2_HARk1MYqUv1W_HxfIaRQCtC-HY",
+  authDomain: "fintech-requisitions.firebaseapp.com",
+  projectId: "fintech-requisitions",
+  storageBucket: "fintech-requisitions.firebasestorage.app",
+  messagingSenderId: "2730554389",
+  appId: "1:2730554389:web:eaf336c107434ef442ca1c"
+};
+
+const firebaseApp = initFirebaseApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+
+const getAuthHeaders = async () => {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json"
+  };
+  if (auth.currentUser) {
+    try {
+      const token = await auth.currentUser.getIdToken();
+      headers["Authorization"] = `Bearer ${token}`;
+    } catch (e) {
+      console.warn("Failed to get Firebase ID token:", e);
+    }
+  }
+  return headers;
+};
 
 // @ts-ignore
 const db = {}; // Dummy db to allow migration progress
@@ -96,9 +132,10 @@ const mapSnakeToCamel = (data: any): any => {
 const setDoc = async (docRef: any, data: any, options?: any) => {
   let payload = mapCamelToSnake({ id: docRef.id, ...data });
   try {
+    const headers = await getAuthHeaders();
     const res = await fetch(`/api/db/${docRef.table}/${docRef.id}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(payload)
     });
     if (!res.ok) {
@@ -112,9 +149,10 @@ const setDoc = async (docRef: any, data: any, options?: any) => {
 const updateDoc = async (docRef: any, data: any) => {
   let payload = mapCamelToSnake(data);
   try {
+    const headers = await getAuthHeaders();
     const res = await fetch(`/api/db/${docRef.table}/${docRef.id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(payload)
     });
     if (!res.ok) {
@@ -127,8 +165,10 @@ const updateDoc = async (docRef: any, data: any) => {
 
 const deleteDoc = async (docRef: any) => {
   try {
+    const headers = await getAuthHeaders();
     const res = await fetch(`/api/db/${docRef.table}/${docRef.id}`, {
-      method: "DELETE"
+      method: "DELETE",
+      headers
     });
     if (!res.ok) {
       console.error(`deleteDoc error: table=${docRef.table}, id=${docRef.id}, status=${res.status}`);
@@ -140,7 +180,8 @@ const deleteDoc = async (docRef: any) => {
 
 const getDoc = async (docRef: any) => {
   try {
-    const res = await fetch(`/api/db/${docRef.table}/${docRef.id}`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/db/${docRef.table}/${docRef.id}`, { headers });
     if (!res.ok) return { exists: () => false, data: () => ({} as any), id: docRef.id };
     const data = await res.json();
     return { exists: () => true, data: () => mapSnakeToCamel(data), id: docRef.id };
@@ -221,7 +262,8 @@ const query = (col: any, ...constraints: any[]) => {
 
 const getDocs = async (queryRef: any) => {
   try {
-    const res = await fetch(`/api/db/${queryRef.table}`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/db/${queryRef.table}`, { headers });
     if (!res.ok) return { docs: [], empty: true, forEach: (cb: any) => {} };
     let data = await res.json();
     
@@ -245,9 +287,10 @@ const addDoc = async (col: any, data: any) => {
   try {
     const id = data.id || `doc-${Math.random().toString(36).substring(2, 11)}`;
     const payload = { ...data, id };
+    const headers = await getAuthHeaders();
     const res = await fetch(`/api/db/${col.table}/${id}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(payload)
     });
     if (!res.ok) {
@@ -286,7 +329,6 @@ const handleFirestoreError = (a: any, b: any, c: any) => {};
 enum OperationType { READ, WRITE, DELETE, UPDATE, CREATE, LIST, GET }
 const initializeApp = (...args: any[]) => {};
 const deleteApp = async (a: any) => {};
-const firebaseConfig = {};
 
 // Temporary fix until migration is fully cleaned up
 const isFirestoreQuotaExceeded = () => false;
@@ -673,95 +715,63 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, []);
 
-  // Auth Sync
+  // Auth Sync (Firebase Auth)
   useEffect(() => {
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      setAuthLoading(false);
-      setLoading(false);
-      return;
-    }
-
-    const initAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          // Trigger the same logic as onAuthStateChange
-          handleAuthChange(session);
-        } else {
-          setAuthLoading(false);
-          setLoading(false);
-        }
-      } catch (e) {
-        setAuthLoading(false);
-        setLoading(false);
-      }
-    };
-
-    const handleAuthChange = async (session: any) => {
-      if (session?.user) {
-        const userEmail = session.user.email;
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const userEmail = firebaseUser.email?.toLowerCase();
         try {
-          const { data: dbUser, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('email', userEmail)
-            .single();
-
-          if (dbUser) {
-            // Self-healing: if the profile's ID in database is different from the Supabase Auth ID
-            if (dbUser.id !== session.user.id) {
-              console.log(`[Auth Sync] Mismatch detected for ${userEmail}. Automatically updating public.users...`);
-              
-              try {
-                const { error: insertErr } = await supabase
-                  .from('users')
-                  .insert({
-                    ...dbUser,
-                    id: session.user.id
-                  });
-
-                if (!insertErr) {
-                  await supabase.from('requisitions').update({ requester_id: session.user.id }).eq('requester_id', dbUser.id);
-                  await supabase.from('reports').update({ generated_by_id: session.user.id }).eq('generated_by_id', dbUser.id);
-                  await supabase.from('users').delete().eq('id', dbUser.id);
-                  dbUser.id = session.user.id;
-                }
-              } catch (healErr) {
-                console.error("[Auth Sync Self-Heal] Error:", healErr);
-              }
+          const res = await fetch(`/api/auth/get-profile-by-email?email=${encodeURIComponent(userEmail || "")}`);
+          const data = await res.json();
+          if (res.ok && data.exists && data.profile) {
+            const dbUser = data.profile;
+            
+            // Self-healing / alignment: if the profile's ID in database is different from the Firebase Auth UID
+            if (dbUser.id !== firebaseUser.uid) {
+              console.log(`[Auth Sync] Mismatch detected for ${userEmail}. Re-linking profile to new Firebase UID: ${firebaseUser.uid}`);
+              await fetch("/api/auth/link-profile", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  uid: firebaseUser.uid,
+                  email: userEmail,
+                  profileId: dbUser.id
+                })
+              });
+              dbUser.id = firebaseUser.uid;
             }
 
             setCurrentUser({
               ...dbUser,
-              approverCode: dbUser.approver_code,
-              isActive: dbUser.is_active,
-              isApproved: dbUser.is_approved,
-              isSuspended: dbUser.is_suspended,
-              photoURL: dbUser.photo_url,
-              tempPassword: dbUser.temp_password,
-              isOnline: dbUser.is_online,
-              lastSeen: dbUser.last_seen,
-              idleTimeoutDuration: dbUser.idle_timeout_duration
+              approverCode: dbUser.approverCode || dbUser.approver_code,
+              isActive: dbUser.isActive !== undefined ? dbUser.isActive : dbUser.is_active,
+              isApproved: dbUser.isApproved !== undefined ? dbUser.isApproved : dbUser.is_approved,
+              isSuspended: dbUser.isSuspended !== undefined ? dbUser.isSuspended : dbUser.is_suspended,
+              photoURL: dbUser.photoURL || dbUser.photo_url,
+              tempPassword: dbUser.tempPassword || dbUser.temp_password,
+              isOnline: dbUser.isOnline !== undefined ? dbUser.isOnline : dbUser.is_online,
+              lastSeen: dbUser.lastSeen || dbUser.last_seen,
+              idleTimeoutDuration: dbUser.idleTimeoutDuration || dbUser.idle_timeout_duration
             } as UserProfile);
           } else {
-            setCurrentUser({
-              id: session.user.id,
-              name: session.user.user_metadata?.name || userEmail,
-              email: userEmail,
-              role: session.user.user_metadata?.role || "CHURCH_GROUP",
+            const defaultUser = {
+              id: firebaseUser.uid,
+              name: firebaseUser.displayName || userEmail || "User",
+              email: userEmail || "",
+              role: "CHURCH_GROUP" as UserRole,
               isActive: true,
               isApproved: true,
               isSuspended: false
-            } as any);
+            };
+            setCurrentUser(defaultUser as any);
           }
         } catch (err) {
-          console.warn("Could not fetch user profile from DB", err);
+          console.warn("Could not fetch user profile from backend database, setting default:", err);
           setCurrentUser({
-            id: session.user.id,
-            name: session.user.user_metadata?.name || userEmail,
-            email: userEmail,
-            role: session.user.user_metadata?.role || "CHURCH_GROUP",
+            id: firebaseUser.uid,
+            name: firebaseUser.displayName || userEmail || "User",
+            email: userEmail || "",
+            role: "CHURCH_GROUP" as UserRole,
             isActive: true,
             isApproved: true,
             isSuspended: false
@@ -773,16 +783,10 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setAuthLoading(false);
         setLoading(false);
       }
-    };
-
-    initAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event: any, session: any) => {
-      handleAuthChange(session);
     });
 
     return () => {
-      subscription.unsubscribe();
+      unsubscribe();
     };
   }, []);
 
@@ -2562,37 +2566,11 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const login = async () => {
     try {
-      const supabase = getSupabaseClient();
-      if (!supabase) throw new Error("Supabase is not configured.");
-      
-      // Because the app runs in an iframe, Google will block direct navigation with a 403 error.
-      // We get the URL instead and open it in a new tab/popup.
-      const { data, error } = await supabase.auth.signInWithOAuth({ 
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin,
-          skipBrowserRedirect: true
-        }
-      });
-      if (error) throw error;
-
-      if (data?.url) {
-        const width = 500;
-        const height = 600;
-        const left = window.screenX + (window.outerWidth - width) / 2;
-        const top = window.screenY + (window.outerHeight - height) / 2;
-        
-        const popup = window.open(
-          data.url, 
-          'supabase_google_oauth', 
-          `width=${width},height=${height},left=${left},top=${top}`
-        );
-
-        if (!popup) {
-           triggerToast({ type: "SECURITY_UPDATE", message: "Popup blocked. Please allow popups or open the app in a new tab to login with Google.", severity: "HIGH", timestamp: new Date().toISOString() });
-        } else {
-           triggerToast({ type: "SYSTEM_INFO", message: "Google Login opened in a popup. Please complete the login there.", severity: "LOW", timestamp: new Date().toISOString() });
-        }
+      const { GoogleAuthProvider, signInWithPopup } = await import("firebase/auth");
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      if (result.user) {
+        addSystemLog("USER_LOGIN", `User logged in via Google Auth: ${result.user.email}`, { authProvider: "google", email: result.user.email });
       }
     } catch (error: any) {
       console.log("Login warning", error);
@@ -2602,50 +2580,58 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const loginWithEmail = async (email: string, pass: string) => {
     try {
-      const supabase = getSupabaseClient();
-      if (!supabase) throw new Error("Supabase is not configured.");
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
-      if (error) {
-        if (error.message.includes("Invalid login credentials")) {
-          // Check if this is a pre-provisioned user without an Auth account
-          const { data: dbUser } = await supabase.from('users').select('*').eq('email', email.toLowerCase()).single();
-          if (dbUser && dbUser.temp_password === pass && dbUser.id.startsWith('pre-provisioned-')) {
-            // Found a pre-provisioned account with matching temp password.
-            // Create the real auth user.
-            const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-              email,
-              password: pass,
-              options: {
-                data: {
-                  name: dbUser.name,
-                  role: dbUser.role
-                }
-              }
+      email = email.trim().toLowerCase();
+      
+      const checkRes = await fetch(`/api/auth/check-pre-registered`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password: pass })
+      });
+      const checkData = await checkRes.json();
+      
+      if (checkRes.ok && checkData.preRegistered && checkData.tempPasswordMatched) {
+        try {
+          const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+          if (userCredential.user) {
+            await fetch("/api/auth/link-profile", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                uid: userCredential.user.uid,
+                email: email,
+                profileId: checkData.profileId
+              })
             });
-            if (signUpErr) throw signUpErr;
-            if (signUpData.user) {
-              // Update the dbUser's id to match the new auth user id and remove temp_password
-              await supabase.from('users').update({ 
-                id: signUpData.user.id, 
-                temp_password: null 
-              }).eq('id', dbUser.id);
-              
-              // We're successfully signed in and transitioned
-              addSystemLog("USER_LOGIN", `Pre-provisioned User transitioned and logged in: ${signUpData.user.email}`, { authProvider: "password", email: signUpData.user.email });
+            await addSystemLog("USER_LOGIN", `Pre-provisioned user activated and logged in: ${email}`, { authProvider: "password", email });
+            return;
+          }
+        } catch (signUpErr: any) {
+          if (signUpErr.code === "auth/email-already-in-use") {
+            const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+            if (userCredential.user) {
+              await fetch("/api/auth/link-profile", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  uid: userCredential.user.uid,
+                  email: email,
+                  profileId: checkData.profileId
+                })
+              });
+              await addSystemLog("USER_LOGIN", `User logged in via Email/Password: ${email}`, { authProvider: "password", email });
               return;
             }
           }
+          throw signUpErr;
         }
-        
-        if (error.message.includes("Email not confirmed")) {
-          throw new Error("Please confirm your email address before logging in. Check your inbox for the confirmation link.");
-        }
-        throw error;
       }
-      if (data.user) {
-        addSystemLog("USER_LOGIN", `User logged in via Email/Password: ${data.user.email}`, { authProvider: "password", email: data.user.email });
+      
+      const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+      if (userCredential.user) {
+        await addSystemLog("USER_LOGIN", `User logged in via Email/Password: ${email}`, { authProvider: "password", email });
       }
     } catch (error: any) {
+      console.error("Login with email failed:", error);
       try {
         fetch("/api/notify-slack", {
           method: "POST",
@@ -2765,59 +2751,50 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const signupWithEmail = async (email: string, pass: string, name: string) => {
     try {
-      // Duplicate Detection
-      const existingUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-      if (existingUser && !existingUser.tempPassword) {
+      email = email.trim().toLowerCase();
+      const checkRes = await fetch(`/api/auth/get-profile-by-email?email=${encodeURIComponent(email)}`);
+      const checkData = await checkRes.json();
+      if (checkRes.ok && checkData.exists && !checkData.profile?.temp_password && !checkData.profile?.tempPassword) {
         throw new Error("A user with this email already exists. Please login instead.");
       }
 
-      const supabase = getSupabaseClient();
-      if (!supabase) throw new Error("Supabase is not configured.");
-      
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password: pass,
-        options: {
-          data: {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+      if (userCredential.user) {
+        const uid = userCredential.user.uid;
+        
+        if (checkData.exists && checkData.profile) {
+          await fetch("/api/auth/link-profile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              uid,
+              email,
+              profileId: checkData.profile.id
+            })
+          });
+        } else {
+          const newProfile = {
+            id: uid,
             name: name,
-            role: "CHURCH_GROUP" // default role
-          }
+            email: email,
+            role: "CHURCH_GROUP" as UserRole,
+            is_active: true,
+            is_approved: true,
+            is_suspended: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          await fetch(`/api/db/users/${uid}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(newProfile)
+          });
         }
-      });
-      if (error) throw error;
-      
-      if (data.user) {
-        // Automatically insert them into the users table so they have a profile
-        const { error: insertErr } = await supabase.from('users').upsert({
-          id: data.user.id,
-          name: name,
-          email: email.toLowerCase(),
-          role: "CHURCH_GROUP",
-          is_active: true,
-          is_approved: true,
-          is_suspended: false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
-        if (insertErr) {
-          console.warn("Failed to create profile in users table during signup", insertErr);
-        }
+        await addSystemLog("USER_PROVISIONED", `User successfully registered and approved via Email: ${email}`, { email });
       }
-      
-      if (data.session === null && data.user) {
-        // Email confirmation is required
-        triggerToast({
-          type: "SECURITY_UPDATE",
-          severity: "MEDIUM",
-          message: "Registration successful! Please check your email to confirm your account before logging in.",
-          timestamp: new Date().toISOString()
-        });
-      }
-
-      await addSystemLog("USER_PROVISIONED", `User successfully registered and approved via Email: ${email}`, { email });
     } catch (error: any) {
-      console.log("Signup warning", error);
-      if (error.message?.includes('already registered')) {
+      console.warn("Signup warning", error);
+      if (error.code === "auth/email-already-in-use" || error.message?.includes('already registered')) {
         throw new Error("This email is already registered. Please login instead.");
       }
       throw error;
@@ -2825,44 +2802,30 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   const logout = async (options?: { forceDirect?: boolean }) => {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-      const userEmail = user?.email;
-      
-      const isSessionInvalidOrExpired = options?.forceDirect || !user || !currentUser || currentUser.isSuspended || !currentUser.isActive || !currentUser.isApproved || currentUser.forceLogout;
-
-      // Set user offline status in the databases before signing out
-      if (currentUserId) {
-        try {
-          await supabase.from("users").update({ is_online: false, last_seen: new Date().toISOString() }).eq("id", currentUserId);
-        } catch (err) {
-          console.warn("Failed to mark user offline in Supabase on logout:", err);
-        }
-
-        if (!skipFirestore && !isFirestoreQuotaExceeded()) {
-          try {
-            await setDoc(doc(db, "users", currentUserId), { isOnline: false, lastSeen: new Date().toISOString() }, { merge: true });
-          } catch (err) {
-            console.warn("Failed to mark user offline in Firestore on logout:", err);
-          }
-        }
+    const userEmail = auth.currentUser?.email;
+    if (currentUserId) {
+      try {
+        await updateDoc(doc(db, "users", currentUserId), {
+          isOnline: false,
+          lastSeen: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn("Failed to mark user offline on logout:", err);
       }
-
-      if (userEmail && user && !isSessionInvalidOrExpired) {
-        try {
-          await addSystemLog("USER_LOGOUT", `👤 User logged out successfully: ${userEmail}`, { email: userEmail });
-        } catch (logErr) {
-          console.log("Failed to log logout event", logErr);
-        }
-      }
-      
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("override_authorized_user_email");
-      }
-      await supabase.auth.signOut();
     }
+
+    if (userEmail) {
+      try {
+        await addSystemLog("USER_LOGOUT", `👤 User logged out successfully: ${userEmail}`, { email: userEmail });
+      } catch (logErr) {
+        console.log("Failed to log logout event", logErr);
+      }
+    }
+    
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("override_authorized_user_email");
+    }
+    await signOut(auth);
   };
 
   const approveUser = useCallback(async (id: string) => {
@@ -2922,18 +2885,13 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const updateCurrentUserPassword = useCallback(async (newPassword: string) => {
     try {
-      const supabase = getSupabaseClient();
-      if (!supabase) throw new Error("Supabase is not configured.");
-      
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
+      if (!auth.currentUser) {
         throw new Error("No active authenticated session found.");
       }
       
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
-      if (error) throw error;
+      await updateAuthPassword(auth.currentUser, newPassword);
       
-      await addSystemLog("PASSWORD_CHANGED", `User ${session.user.email} updated their account password`);
+      await addSystemLog("PASSWORD_CHANGED", `User ${auth.currentUser.email} updated their account password`);
       triggerToast({
         type: 'SECURITY_UPDATE',
         severity: 'MEDIUM',
@@ -2941,7 +2899,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         timestamp: new Date().toISOString()
       });
     } catch (error: any) {
-      if (error.message?.includes('requires-recent-login')) {
+      if (error.code === "auth/requires-recent-login" || error.message?.includes('requires-recent-login')) {
         throw new Error("For security, updating password requires a recent login. Please log out, log back in, and try again.");
       }
       throw error;
