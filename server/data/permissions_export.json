@@ -1,7 +1,157 @@
 [
-{"document_id":"CHURCH_GROUP","role":"CHURCH_GROUP","id":"CHURCH_GROUP","access":"{\"accessControl\":false,\"settings\":false,\"finance\":false,\"notifications\":true,\"users\":false,\"approvals\":false,\"reports\":false,\"dashboard\":true,\"requisitions\":true}","actions":"{\"canApproveL1\":false,\"canApproveL2\":false,\"canManageSettings\":false,\"canManageUsers\":false,\"canDisburse\":false,\"canDeleteRequisition\":false,\"canCreateRequisition\":true}"},
-{"document_id":"APPROVER_L1","role":"APPROVER_L1","id":"APPROVER_L1","access":"{\"accessControl\":false,\"reports\":false,\"settings\":false,\"auditTrail\":false,\"notifications\":true,\"users\":false,\"dashboard\":true,\"requisitions\":true,\"approvals\":true,\"finance\":true}","actions":"{\"canApproveL2\":false,\"canManageSettings\":false,\"canManageUsers\":false,\"canDisburse\":false,\"canDeleteRequisition\":false,\"canApproveL1\":true,\"canCreateRequisition\":true}"},
-{"document_id":"ADMIN","role":"ADMIN","id":"ADMIN","access":"{\"accessControl\":false,\"settings\":false,\"notifications\":true,\"auditTrail\":false,\"dashboard\":true,\"requisitions\":true,\"approvals\":true,\"users\":true,\"finance\":true,\"reports\":false}","actions":"{\"canDeleteRequisition\":false,\"canManageSettings\":false,\"canCreateRequisition\":true,\"canManageUsers\":true,\"canApproveL1\":true,\"canApproveL2\":true,\"canDisburse\":true}"},
-{"document_id":"APPROVER_L2","role":"APPROVER_L2","id":"APPROVER_L2","access":"{\"accessControl\":false,\"reports\":false,\"settings\":false,\"auditTrail\":false,\"notifications\":true,\"users\":false,\"dashboard\":true,\"requisitions\":true,\"approvals\":true,\"finance\":false}","actions":"{\"canApproveL1\":false,\"canManageSettings\":false,\"canManageUsers\":false,\"canDisburse\":false,\"canDeleteRequisition\":false,\"canCreateRequisition\":true,\"canApproveL2\":true}"},
-{"document_id":"FINANCE","role":"FINANCE","id":"FINANCE","access":"{\"accessControl\":false,\"notifications\":true,\"users\":false,\"settings\":false,\"auditTrail\":false,\"dashboard\":true,\"requisitions\":true,\"approvals\":true,\"finance\":true,\"reports\":false}","actions":"{\"canManageUsers\":false,\"canManageSettings\":false,\"canCreateRequisition\":true,\"canApproveL1\":true,\"canApproveL2\":true,\"canDisburse\":true,\"canDeleteRequisition\":true}"}
+  {
+    "document_id": "CHURCH_GROUP",
+    "role": "CHURCH_GROUP",
+    "id": "CHURCH_GROUP",
+    "access": {
+      "accessControl": false,
+      "settings": false,
+      "finance": false,
+      "notifications": true,
+      "users": false,
+      "approvals": false,
+      "reports": false,
+      "dashboard": true,
+      "requisitions": true
+    },
+    "actions": {
+      "canApproveL1": false,
+      "canApproveL2": false,
+      "canManageSettings": false,
+      "canManageUsers": false,
+      "canDisburse": false,
+      "canDeleteRequisition": false,
+      "canCreateRequisition": true
+    }
+  },
+  {
+    "document_id": "APPROVER_L1",
+    "role": "APPROVER_L1",
+    "id": "APPROVER_L1",
+    "access": {
+      "accessControl": false,
+      "reports": false,
+      "settings": false,
+      "auditTrail": false,
+      "notifications": true,
+      "users": false,
+      "dashboard": true,
+      "requisitions": true,
+      "approvals": true,
+      "finance": true
+    },
+    "actions": {
+      "canApproveL2": false,
+      "canManageSettings": false,
+      "canManageUsers": false,
+      "canDisburse": false,
+      "canDeleteRequisition": false,
+      "canApproveL1": true,
+      "canCreateRequisition": true
+    }
+  },
+  {
+    "document_id": "ADMIN",
+    "role": "ADMIN",
+    "id": "ADMIN",
+    "access": {
+      "accessControl": false,
+      "settings": false,
+      "notifications": true,
+      "auditTrail": false,
+      "dashboard": true,
+      "requisitions": true,
+      "approvals": true,
+      "users": true,
+      "finance": true,
+      "reports": false
+    },
+    "actions": {
+      "canDeleteRequisition": false,
+      "canManageSettings": false,
+      "canCreateRequisition": true,
+      "canManageUsers": true,
+      "canApproveL1": true,
+      "canApproveL2": true,
+      "canDisburse": true
+    }
+  },
+  {
+    "document_id": "APPROVER_L2",
+    "role": "APPROVER_L2",
+    "id": "APPROVER_L2",
+    "access": {
+      "accessControl": false,
+      "reports": false,
+      "settings": false,
+      "auditTrail": false,
+      "notifications": true,
+      "users": false,
+      "dashboard": true,
+      "requisitions": true,
+      "approvals": true,
+      "finance": false
+    },
+    "actions": {
+      "canApproveL1": false,
+      "canManageSettings": false,
+      "canManageUsers": false,
+      "canDisburse": false,
+      "canDeleteRequisition": false,
+      "canCreateRequisition": true,
+      "canApproveL2": true
+    }
+  },
+  {
+    "document_id": "FINANCE",
+    "role": "FINANCE",
+    "id": "FINANCE",
+    "access": {
+      "accessControl": false,
+      "notifications": true,
+      "users": false,
+      "settings": false,
+      "auditTrail": false,
+      "dashboard": true,
+      "requisitions": true,
+      "approvals": true,
+      "finance": true,
+      "reports": false
+    },
+    "actions": {
+      "canManageUsers": false,
+      "canManageSettings": false,
+      "canCreateRequisition": true,
+      "canApproveL1": true,
+      "canApproveL2": true,
+      "canDisburse": true,
+      "canDeleteRequisition": true
+    }
+  },
+  {
+    "document_id": "SUPER_ADMIN",
+    "role": "SUPER_ADMIN",
+    "id": "SUPER_ADMIN",
+    "access": {
+      "accessControl": true,
+      "settings": true,
+      "notifications": true,
+      "auditTrail": true,
+      "dashboard": true,
+      "requisitions": true,
+      "approvals": true,
+      "users": true,
+      "finance": true,
+      "reports": true
+    },
+    "actions": {
+      "canDeleteRequisition": true,
+      "canManageSettings": true,
+      "canCreateRequisition": true,
+      "canManageUsers": true,
+      "canApproveL1": true,
+      "canApproveL2": true,
+      "canDisburse": true
+    }
+  }
 ]

@@ -15,6 +15,30 @@ dotenv.config({ override: true });
 import nodemailer from "nodemailer";
 import { google } from "googleapis";
 
+const fileMappings: { [key: string]: string } = {
+  "users": "users_export.json",
+  "requisitions": "requisitions_export.json",
+  "transactions": "transactions_export.json",
+  "ledger_books": "ledger_books_export.json",
+  "audit_logs": "activity_history.json",
+  "alerts": "alerts_export.json",
+  "fiscal_years": "fiscal_years_export.json",
+  "projects": "projects_export.json",
+  "reports": "reports_export.json",
+  "settings": "settings_export.json",
+  "thresholds": "thresholds_export.json",
+  "vendors": "vendors_export.json",
+  "forecast": "forecast_export.json",
+  "permissions": "permissions_export.json",
+  "church_groups": "church_groups.json",
+  "supplementary_budgets": "supplementary_budgets.json"
+};
+function getFilePath(collection) {
+  const fileName = fileMappings[collection] || (collection + ".json");
+  return path.join(process.cwd(), "server", "data", fileName);
+}
+
+
 const getFilename = () => {
   try {
     return typeof import.meta !== "undefined" && import.meta.url ? fileURLToPath(import.meta.url) : "";
@@ -343,7 +367,7 @@ async function startServer() {
       if (mongoDb && mongoConnected) {
         dbUser = await mongoDb.collection("users").findOne({ email: decodedToken.email?.toLowerCase() });
       } else {
-        const filePath = path.join(process.cwd(), "users.json");
+        const filePath = getFilePath("users");
         if (fs.existsSync(filePath)) {
           try {
             const users = JSON.parse(fs.readFileSync(filePath, "utf-8"));
@@ -539,7 +563,7 @@ async function startServer() {
       if (mongoConnected && mongoDb) {
         dbUser = await mongoDb.collection("users").findOne({ email: email.toLowerCase() });
       } else {
-        const filePath = path.join(process.cwd(), "users.json");
+        const filePath = getFilePath("users");
         if (fs.existsSync(filePath)) {
           const users = JSON.parse(fs.readFileSync(filePath, "utf-8"));
           dbUser = users.find((u: any) => u.email === email.toLowerCase());
@@ -579,7 +603,7 @@ async function startServer() {
           );
         }
       } else {
-        const filePath = path.join(process.cwd(), "users.json");
+        const filePath = getFilePath("users");
         if (fs.existsSync(filePath)) {
           const users = JSON.parse(fs.readFileSync(filePath, "utf-8"));
           const idx = users.findIndex((u: any) => u.email === email.toLowerCase());
@@ -590,7 +614,7 @@ async function startServer() {
             users[idx].is_active = true;
             fs.writeFileSync(filePath, JSON.stringify(users, null, 2), "utf-8");
 
-            const reqPath = path.join(process.cwd(), "requisitions.json");
+            const reqPath = getFilePath("requisitions");
             if (fs.existsSync(reqPath)) {
               const reqs = JSON.parse(fs.readFileSync(reqPath, "utf-8"));
               reqs.forEach((r: any) => {
@@ -617,7 +641,7 @@ async function startServer() {
       if (mongoConnected && mongoDb) {
         dbUser = await mongoDb.collection("users").findOne({ email: String(email).toLowerCase() });
       } else {
-        const filePath = path.join(process.cwd(), "users.json");
+        const filePath = getFilePath("users");
         if (fs.existsSync(filePath)) {
           const users = JSON.parse(fs.readFileSync(filePath, "utf-8"));
           dbUser = users.find((u: any) => u.email === String(email).toLowerCase());
@@ -657,7 +681,7 @@ async function startServer() {
       if (!mongoConnected || !mongoDb) {
         // Fallback to local files for all collections
         for (const col of collectionsList) {
-          const filePath = path.join(process.cwd(), `${col}.json`);
+          const filePath = getFilePath(col);
           if (fs.existsSync(filePath)) {
             result[col] = JSON.parse(fs.readFileSync(filePath, "utf-8"));
           } else {
@@ -686,7 +710,7 @@ async function startServer() {
     const { collection } = req.params;
     try {
       if (!mongoConnected || !mongoDb) {
-        const filePath = path.join(process.cwd(), `${collection}.json`);
+        const filePath = getFilePath(collection);
         if (fs.existsSync(filePath)) {
           const content = fs.readFileSync(filePath, "utf-8");
           return res.json(JSON.parse(content));
@@ -709,7 +733,7 @@ async function startServer() {
     const { collection, id } = req.params;
     try {
       if (!mongoConnected || !mongoDb) {
-        const filePath = path.join(process.cwd(), `${collection}.json`);
+        const filePath = getFilePath(collection);
         if (fs.existsSync(filePath)) {
           const content = fs.readFileSync(filePath, "utf-8");
           const list = JSON.parse(content);
@@ -735,7 +759,7 @@ async function startServer() {
     const body = req.body;
     try {
       if (!mongoConnected || !mongoDb) {
-        const filePath = path.join(process.cwd(), `${collection}.json`);
+        const filePath = getFilePath(collection);
         let list: any[] = [];
         if (fs.existsSync(filePath)) {
           const content = fs.readFileSync(filePath, "utf-8");
@@ -769,7 +793,7 @@ async function startServer() {
     const body = req.body;
     try {
       if (!mongoConnected || !mongoDb) {
-        const filePath = path.join(process.cwd(), `${collection}.json`);
+        const filePath = getFilePath(collection);
         let list: any[] = [];
         if (fs.existsSync(filePath)) {
           const content = fs.readFileSync(filePath, "utf-8");
@@ -799,7 +823,7 @@ async function startServer() {
     const { collection, id } = req.params;
     try {
       if (!mongoConnected || !mongoDb) {
-        const filePath = path.join(process.cwd(), `${collection}.json`);
+        const filePath = getFilePath(collection);
         if (fs.existsSync(filePath)) {
           const content = fs.readFileSync(filePath, "utf-8");
           let list = JSON.parse(content);
@@ -839,7 +863,7 @@ async function startServer() {
           const ct = await mongoDb.collection(col).countDocuments();
           report.mongodb.counts[col] = ct;
         } else {
-          const filePath = path.join(process.cwd(), `${col}.json`);
+          const filePath = getFilePath(col);
           if (fs.existsSync(filePath)) {
             const list = JSON.parse(fs.readFileSync(filePath, "utf-8"));
             report.mongodb.counts[col] = list.length;
