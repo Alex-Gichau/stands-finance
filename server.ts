@@ -7,8 +7,8 @@ import dotenv from "dotenv";
 import fs from "fs";
 import { Readable } from "stream";
 import mongoose from "mongoose";
-import * as models from "./src/models/index.js";
-import { seedDatabase } from "./scripts/seed-mongo.js";
+import * as models from "./src/models/index.ts";
+import { seedDatabase } from "./scripts/seed-mongo.ts";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 
@@ -35,9 +35,50 @@ const fileMappings: { [key: string]: string } = {
   "church_groups": "church_groups.json",
   "supplementary_budgets": "supplementary_budgets.json"
 };
-function getFilePath(collection) {
+function getFilePath(collection: string) {
   const fileName = fileMappings[collection] || (collection + ".json");
   return path.join(process.cwd(), "server", "data", fileName);
+}
+
+function coerceBooleans(obj: any): any {
+  if (!obj || typeof obj !== "object") return obj;
+  const coerced = { ...obj };
+  const booleanKeys = [
+    "isActive", "is_active", "isApproved", "is_approved", "isSuspended", "is_suspended", "isOnline", "is_online",
+    "flaggedForAudit", "flagged_for_audit", "inProcurement", "in_procurement", "requiresMoreInfo", "requires_more_info"
+  ];
+  for (const key of booleanKeys) {
+    if (coerced[key] === "true") {
+      coerced[key] = true;
+    } else if (coerced[key] === "false") {
+      coerced[key] = false;
+    }
+  }
+  return coerced;
+}
+
+function readJsonCollection(collection: string): any[] {
+  const filePath = getFilePath(collection);
+  if (!fs.existsSync(filePath)) return [];
+  try {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    if (!raw.trim()) return [];
+    const parsed = JSON.parse(raw);
+    const list = Array.isArray(parsed) ? parsed : [parsed];
+    return list.map(coerceBooleans);
+  } catch (err) {
+    console.error(`[JSON DB Fallback] Error reading ${collection}:`, err);
+    return [];
+  }
+}
+
+function writeJsonCollection(collection: string, data: any[]): void {
+  const filePath = getFilePath(collection);
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    console.error(`[JSON DB Fallback] Error writing ${collection}:`, err);
+  }
 }
 
 
@@ -370,7 +411,12 @@ async function startServer() {
       // Query database for user's profile and active role
       let dbUser: any = null;
       try {
-        dbUser = await (models.User as any).findOne({ email: decodedToken.email?.toLowerCase() }).lean();
+        if (mongoose.connection.readyState === 1) {
+          dbUser = await (models.User as any).findOne({ email: decodedToken.email?.toLowerCase() }).lean();
+        } else {
+          const usersList = readJsonCollection("users");
+          dbUser = usersList.find((u: any) => u.email?.toLowerCase() === decodedToken.email?.toLowerCase());
+        }
       } catch (e) {
         console.error("Error reading user profile with Mongoose in auth middleware:", e);
       }
@@ -420,7 +466,14 @@ async function startServer() {
     if (!email) return res.status(400).json({ error: "Missing email parameter" });
 
     try {
-      const dbUser = await (models.User as any).findOne({ email: email.toLowerCase() }).lean();
+      let dbUser: any = null;
+      if (mongoose.connection.readyState === 1) {
+        dbUser = await (models.User as any).findOne({ email: email.toLowerCase() }).lean();
+      } else {
+        const usersList = readJsonCollection("users");
+        dbUser = usersList.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+      }
+
       if (dbUser) {
         return res.json({ exists: true, profile: dbUser });
       } else {
@@ -437,20 +490,54 @@ async function startServer() {
     if (!uid || !email) return res.status(400).json({ error: "Missing uid or email parameter" });
 
     try {
-      await (models.User as any).updateOne(
-        { email: email.toLowerCase() },
-        { $set: { id: uid, isApproved: true, isActive: true } }
-      );
+      if (mongoose.connection.readyState === 1) {
+        await (models.User as any).updateOne(
+          { email: email.toLowerCase() },
+          { $set: { id: uid, isApproved: true, isActive: true } }
+        );
 
-      if (profileId && profileId !== uid) {
-        await (models.Requisition as any).updateMany(
-          { requesterId: profileId },
-          { $set: { requesterId: uid } }
-        );
-        await (models.Report as any).updateMany(
-          { generatedById: profileId },
-          { $set: { generatedById: uid } }
-        );
+        if (profileId && profileId !== uid) {
+          await (models.Requisition as any).updateMany(
+            { requesterId: profileId },
+            { $set: { requesterId: uid } }
+          );
+          await (models.Report as any).updateMany(
+            { generatedById: profileId },
+            { $set: { generatedById: uid } }
+          );
+        }
+      } else {
+        // Fallback to JSON update
+        const usersList = readJsonCollection("users");
+        const idx = usersList.findIndex((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+        if (idx !== -1) {
+          usersList[idx] = { ...usersList[idx], id: uid, isApproved: true, isActive: true, document_id: uid };
+          writeJsonCollection("users", usersList);
+        }
+
+        if (profileId && profileId !== uid) {
+          const reqList = readJsonCollection("requisitions");
+          let reqChanged = false;
+          reqList.forEach((r: any) => {
+            if (r.requesterId === profileId || r.requester_id === profileId) {
+              r.requesterId = uid;
+              r.requester_id = uid;
+              reqChanged = true;
+            }
+          });
+          if (reqChanged) writeJsonCollection("requisitions", reqList);
+
+          const repList = readJsonCollection("reports");
+          let repChanged = false;
+          repList.forEach((r: any) => {
+            if (r.generatedById === profileId || r.generated_by_id === profileId) {
+              r.generatedById = uid;
+              r.generated_by_id = uid;
+              repChanged = true;
+            }
+          });
+          if (repChanged) writeJsonCollection("reports", repList);
+        }
       }
       res.json({ success: true });
     } catch (err: any) {
@@ -464,7 +551,14 @@ async function startServer() {
     if (!email) return res.status(400).json({ error: "Missing email parameter" });
 
     try {
-      const dbUser = await (models.User as any).findOne({ email: String(email).toLowerCase() }).lean();
+      let dbUser: any = null;
+      if (mongoose.connection.readyState === 1) {
+        dbUser = await (models.User as any).findOne({ email: String(email).toLowerCase() }).lean();
+      } else {
+        const usersList = readJsonCollection("users");
+        dbUser = usersList.find((u: any) => u.email?.toLowerCase() === String(email).toLowerCase());
+      }
+
       if (dbUser) {
         return res.json({ exists: true, profile: dbUser });
       } else {
@@ -517,15 +611,23 @@ async function startServer() {
     try {
       const result: any = {};
       for (const col of collectionsList) {
-        const Model = modelMappings[col];
-        if (Model) {
-          const data = await Model.find({}).lean();
+        if (mongoose.connection.readyState === 1) {
+          const Model = modelMappings[col];
+          if (Model) {
+            const data = await Model.find({}).lean();
+            result[col] = data.map((item: any) => {
+              const { _id, __v, ...rest } = item;
+              return { id: rest.id || String(_id), ...rest };
+            });
+          } else {
+            result[col] = [];
+          }
+        } else {
+          const data = readJsonCollection(col);
           result[col] = data.map((item: any) => {
             const { _id, __v, ...rest } = item;
             return { id: rest.id || String(_id), ...rest };
           });
-        } else {
-          result[col] = [];
         }
       }
       res.json(result);
@@ -542,16 +644,25 @@ async function startServer() {
   app.get("/api/db/:collection", async (req, res) => {
     const { collection } = req.params;
     try {
-      const Model = modelMappings[collection];
-      if (!Model) {
-        return res.status(400).json({ error: `Unknown collection: ${collection}` });
+      if (mongoose.connection.readyState === 1) {
+        const Model = modelMappings[collection];
+        if (!Model) {
+          return res.status(400).json({ error: `Unknown collection: ${collection}` });
+        }
+        const data = await Model.find({}).lean();
+        const cleanData = data.map((item: any) => {
+          const { _id, __v, ...rest } = item;
+          return { id: rest.id || String(_id), ...rest };
+        });
+        res.json(cleanData);
+      } else {
+        const data = readJsonCollection(collection);
+        const cleanData = data.map((item: any) => {
+          const { _id, __v, ...rest } = item;
+          return { id: rest.id || String(_id), ...rest };
+        });
+        res.json(cleanData);
       }
-      const data = await Model.find({}).lean();
-      const cleanData = data.map((item: any) => {
-        const { _id, __v, ...rest } = item;
-        return { id: rest.id || String(_id), ...rest };
-      });
-      res.json(cleanData);
     } catch (err: any) {
       res.status(500).json({ error: err.message || err });
     }
@@ -561,16 +672,26 @@ async function startServer() {
   app.get("/api/db/:collection/:id", async (req, res) => {
     const { collection, id } = req.params;
     try {
-      const Model = modelMappings[collection];
-      if (!Model) {
-        return res.status(400).json({ error: `Unknown collection: ${collection}` });
+      if (mongoose.connection.readyState === 1) {
+        const Model = modelMappings[collection];
+        if (!Model) {
+          return res.status(400).json({ error: `Unknown collection: ${collection}` });
+        }
+        const item = await Model.findOne({ id }).lean();
+        if (!item) {
+          return res.status(404).json({ error: "Document not found" });
+        }
+        const { _id, __v, ...rest } = item;
+        res.json({ id: rest.id || String(_id), ...rest });
+      } else {
+        const data = readJsonCollection(collection);
+        const item = data.find((d: any) => d.id === id);
+        if (!item) {
+          return res.status(404).json({ error: "Document not found" });
+        }
+        const { _id, __v, ...rest } = item;
+        res.json({ id: rest.id || String(_id), ...rest });
       }
-      const item = await Model.findOne({ id }).lean();
-      if (!item) {
-        return res.status(404).json({ error: "Document not found" });
-      }
-      const { _id, __v, ...rest } = item;
-      res.json({ id: rest.id || String(_id), ...rest });
     } catch (err: any) {
       res.status(500).json({ error: err.message || err });
     }
@@ -581,16 +702,28 @@ async function startServer() {
     const { collection, id } = req.params;
     const body = req.body;
     try {
-      const Model = modelMappings[collection];
-      if (!Model) {
-        return res.status(400).json({ error: `Unknown collection: ${collection}` });
+      if (mongoose.connection.readyState === 1) {
+        const Model = modelMappings[collection];
+        if (!Model) {
+          return res.status(400).json({ error: `Unknown collection: ${collection}` });
+        }
+        const payload = { ...body, id };
+        await Model.findOneAndUpdate(
+          { id },
+          { $set: payload },
+          { upsert: true, new: true }
+        );
+      } else {
+        const list = readJsonCollection(collection);
+        const idx = list.findIndex((item: any) => item.id === id);
+        const payload = { ...body, id, document_id: id };
+        if (idx !== -1) {
+          list[idx] = payload;
+        } else {
+          list.push(payload);
+        }
+        writeJsonCollection(collection, list);
       }
-      const payload = { ...body, id };
-      await Model.findOneAndUpdate(
-        { id },
-        { $set: payload },
-        { upsert: true, new: true }
-      );
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message || err });
@@ -602,17 +735,27 @@ async function startServer() {
     const { collection, id } = req.params;
     const body = req.body;
     try {
-      const Model = modelMappings[collection];
-      if (!Model) {
-        return res.status(400).json({ error: `Unknown collection: ${collection}` });
-      }
-      const item = await Model.findOneAndUpdate(
-        { id },
-        { $set: body },
-        { new: true }
-      );
-      if (!item) {
-        return res.status(404).json({ error: "Document not found" });
+      if (mongoose.connection.readyState === 1) {
+        const Model = modelMappings[collection];
+        if (!Model) {
+          return res.status(400).json({ error: `Unknown collection: ${collection}` });
+        }
+        const item = await Model.findOneAndUpdate(
+          { id },
+          { $set: body },
+          { new: true }
+        );
+        if (!item) {
+          return res.status(404).json({ error: "Document not found" });
+        }
+      } else {
+        const list = readJsonCollection(collection);
+        const idx = list.findIndex((item: any) => item.id === id);
+        if (idx === -1) {
+          return res.status(404).json({ error: "Document not found" });
+        }
+        list[idx] = { ...list[idx], ...body };
+        writeJsonCollection(collection, list);
       }
       res.json({ success: true });
     } catch (err: any) {
@@ -624,11 +767,17 @@ async function startServer() {
   app.delete("/api/db/:collection/:id", async (req, res) => {
     const { collection, id } = req.params;
     try {
-      const Model = modelMappings[collection];
-      if (!Model) {
-        return res.status(400).json({ error: `Unknown collection: ${collection}` });
+      if (mongoose.connection.readyState === 1) {
+        const Model = modelMappings[collection];
+        if (!Model) {
+          return res.status(400).json({ error: `Unknown collection: ${collection}` });
+        }
+        await Model.deleteOne({ id });
+      } else {
+        const list = readJsonCollection(collection);
+        const filtered = list.filter((item: any) => item.id !== id);
+        writeJsonCollection(collection, filtered);
       }
-      await Model.deleteOne({ id });
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message || err });

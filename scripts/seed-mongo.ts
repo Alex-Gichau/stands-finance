@@ -18,7 +18,7 @@ import {
   LedgerBook,
   SupplementaryBudget,
   Vendor,
-} from '../src/models';
+} from '../src/models/index.ts';
 
 dotenv.config();
 
