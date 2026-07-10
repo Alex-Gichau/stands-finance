@@ -7,7 +7,8 @@ import dotenv from "dotenv";
 import fs from "fs";
 import { Readable } from "stream";
 import { MongoClient } from "mongodb";
-import admin from "firebase-admin";
+import { initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 
 dotenv.config({ override: true });
 
@@ -317,7 +318,7 @@ async function startServer() {
 
   // --- FIREBASE ADMIN SDK & AUTH MIDDLEWARE ---
   try {
-    admin.initializeApp({
+    initializeApp({
       projectId: "fintech-requisitions"
     });
     console.log("[Firebase Admin] Initialized successfully with project ID: fintech-requisitions");
@@ -334,7 +335,7 @@ async function startServer() {
 
     const token = authHeader.split("Bearer ")[1];
     try {
-      const decodedToken = await (admin as any).auth().verifyIdToken(token);
+      const decodedToken = await getAuth().verifyIdToken(token);
       req.user = decodedToken; // contains email, uid, etc.
 
       // Query database for user's profile and active role

@@ -156,6 +156,10 @@ const updateDoc = async (docRef: any, data: any) => {
       body: JSON.stringify(payload)
     });
     if (!res.ok) {
+      if (res.status === 404) {
+        console.warn(`updateDoc: Document not found, skipping update: table=${docRef.table}, id=${docRef.id}`);
+        return;
+      }
       console.error(`updateDoc error: table=${docRef.table}, id=${docRef.id}, status=${res.status}`);
     }
   } catch (err) {
