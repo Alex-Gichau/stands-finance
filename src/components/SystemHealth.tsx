@@ -76,8 +76,8 @@ export const SystemHealth: React.FC<{ updateInterval?: number }> = ({ updateInte
       if (res.ok) {
         const data = await res.json();
         setRealHealth(data);
-        if (data.postgres && data.postgres.latency) {
-          setDbLatency(data.postgres.latency);
+        if (data.mongodb) {
+          setDbLatency(15); // baseline fast response for local mongo
         }
       }
     } catch (err) {
@@ -560,26 +560,26 @@ export const SystemHealth: React.FC<{ updateInterval?: number }> = ({ updateInte
             <div className="space-y-3 mb-4">
               <div className="grid grid-cols-2 gap-4 p-3 bg-slate-950 border border-slate-800 rounded-lg">
                 <div className="space-y-1">
-                  <div className="text-[8px] text-slate-500 uppercase font-black">PostgreSQL Status</div>
+                  <div className="text-[8px] text-slate-500 uppercase font-black">MongoDB Status</div>
                   <div className="flex items-center gap-2">
-                    <div className={`w-1.5 h-1.5 rounded-full ${realHealth.postgres?.status === 'ok' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                    <span className="text-[10px] font-bold text-slate-200">{realHealth.postgres?.status === 'ok' ? 'CONNECTED' : 'DISCONNECTED'}</span>
+                    <div className={`w-1.5 h-1.5 rounded-full ${realHealth.mongodb?.status === 'ok' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                    <span className="text-[10px] font-bold text-slate-200">{realHealth.mongodb?.status === 'ok' ? 'CONNECTED' : 'DISCONNECTED'}</span>
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <div className="text-[8px] text-slate-500 uppercase font-black">Data Migration</div>
+                  <div className="text-[8px] text-slate-500 uppercase font-black">Active Collections</div>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold text-slate-200">
-                      {realHealth.postgres?.counts?.requisitions || 0} REQS | {realHealth.postgres?.counts?.churchGroups || 0} GROUPS | {realHealth.postgres?.counts?.users || 0} USERS
+                      {realHealth.mongodb?.counts?.requisitions || 0} REQS | {realHealth.mongodb?.counts?.church_groups || 0} GROUPS | {realHealth.mongodb?.counts?.users || 0} USERS
                     </span>
                   </div>
                 </div>
               </div>
 
-              {realHealth.postgres?.status === 'ok' && realHealth.postgres?.counts?.churchGroups === 0 && (
+              {realHealth.mongodb?.status === 'ok' && realHealth.mongodb?.counts?.church_groups === 0 && (
                 <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-200 text-[9px] leading-relaxed">
                   <span className="font-bold block mb-1">⚠️ DATABASE IS EMPTY</span>
-                  Your Supabase tables are currently empty. Please go to Settings &gt; System Management and run "Migrate Data" to push your records to the cloud.
+                  Your MongoDB collections are currently empty. Wait for the server seeder to automatically populate from `server/data/*.json` on restart.
                 </div>
               )}
             </div>

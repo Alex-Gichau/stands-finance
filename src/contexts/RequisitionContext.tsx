@@ -30,7 +30,6 @@ import {
   FiscalYear
 } from "../types";
 import { getProjectRequisitions } from "../utils/budgetUtils";
-import { getSupabaseClient, isSupabaseEnabled } from "../lib/supabase";
 import { databaseService } from "../lib/databaseService";
 import { uploadAttachmentsToLocalServer } from "../lib/utils";
 import { initializeApp as initFirebaseApp } from "firebase/app";
@@ -479,7 +478,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [firestoreQuotaExceeded, setFirestoreQuotaExceeded] = useState(() => {
     return isFirestoreQuotaExceeded();
   });
-  const skipFirestore = firestoreQuotaExceeded || isSupabaseEnabled();
+  const skipFirestore = true; // Route exclusively to local MongoDB/Mongoose server endpoints
   const [activeSyncTargets, setActiveSyncTargets] = useState<Set<string>>(new Set(['settings', 'alerts']));
   const [syncingTargets, setSyncingTargets] = useState<Set<string>>(new Set());
 
@@ -792,128 +791,6 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return () => {
       unsubscribe();
     };
-  }, []);
-
-  // Popup Auth Handler: If this app is loaded inside a popup window during OAuth
-  useEffect(() => {
-    if (window.opener && window.opener !== window) {
-      console.log("[Popup] Detected popup context");
-      const supabase = getSupabaseClient();
-      if (supabase) {
-        // Look for hash params or active session
-        const handleAuthPopup = async () => {
-          const search = window.location.search;
-          const hash = window.location.hash;
-          
-          let error = null;
-          let errorCode = null;
-          let errorDescription = null;
-
-          if (search.includes('error=')) {
-            const params = new URLSearchParams(search);
-            error = params.get('error');
-            errorCode = params.get('error_code');
-            errorDescription = params.get('error_description');
-          } else if (hash.includes('error=')) {
-            const params = new URLSearchParams(hash.substring(1));
-            error = params.get('error');
-            errorCode = params.get('error_code');
-            errorDescription = params.get('error_description');
-          }
-
-          if (error) {
-            console.warn("[Popup] Auth error detected:", error, errorDescription);
-            try {
-              window.opener.postMessage({ 
-                type: 'SUPABASE_AUTH_ERROR', 
-                error, 
-                errorCode, 
-                errorDescription 
-              }, '*');
-            } catch (e) {
-              console.error("Failed to post message to opener", e);
-            }
-            setTimeout(() => {
-              window.close();
-            }, 2000);
-            return;
-          }
-
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-            console.log("[Popup] Active session found. Notifying parent...");
-            try {
-              window.opener.postMessage({ type: 'SUPABASE_AUTH_SUCCESS', session }, '*');
-            } catch (e) {
-              console.error("Failed to post message to opener", e);
-            }
-            setTimeout(() => {
-              window.close();
-            }, 100);
-          }
-        };
-
-        handleAuthPopup();
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-          if (session) {
-            console.log("[Popup] onAuthStateChange detected session. Notifying parent...");
-            try {
-              window.opener.postMessage({ type: 'SUPABASE_AUTH_SUCCESS', session }, '*');
-            } catch (e) {
-              console.error("Failed to post message to opener", e);
-            }
-            setTimeout(() => {
-              window.close();
-            }, 100);
-          }
-        });
-
-        return () => {
-          subscription.unsubscribe();
-        };
-      }
-    }
-  }, []);
-
-  // Listen for message from popup (or other tabs) in parent window
-  useEffect(() => {
-    const handleMessage = async (event: MessageEvent) => {
-      const origin = event.origin;
-      if (!origin.endsWith('.run.app') && !origin.includes('localhost')) {
-        return;
-      }
-      if (event.data?.type === 'SUPABASE_AUTH_SUCCESS') {
-        console.log("Supabase OAuth login success message received from popup!");
-        const supabase = getSupabaseClient();
-        if (supabase) {
-          if (event.data.session) {
-            console.log("Setting transferred session in parent window...");
-            const { error } = await supabase.auth.setSession({
-              access_token: event.data.session.access_token,
-              refresh_token: event.data.session.refresh_token
-            });
-            if (error) {
-              console.error("Failed to set session manually in parent, falling back:", error);
-              await supabase.auth.getSession();
-            }
-          } else {
-            // Force refresh session to trigger onAuthStateChange
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-              console.log("Session refreshed in parent after popup notification!");
-            }
-          }
-        }
-      } else if (event.data?.type === 'SUPABASE_AUTH_ERROR') {
-        console.error("Supabase OAuth error message received from popup:", event.data);
-        const { error, errorCode, errorDescription } = event.data;
-        const msg = `Google Auth Error (${errorCode || 'UNKNOWN'}): ${errorDescription || error || 'Authentication failed'}`;
-        window.dispatchEvent(new CustomEvent('supabase_oauth_error', { detail: { error, errorCode, errorDescription, msg } }));
-      }
-    };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
   }, []);
 
   const addSystemLog = useCallback(async (action: string, details: string, metadata?: any) => {
@@ -1925,32 +1802,17 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     const updatePresence = async (onlineStatus: boolean) => {
       const nowStr = new Date().toISOString();
-      const supabase = getSupabaseClient();
 
-      if (supabase) {
-        try {
-          await supabase
-            .from("users")
-            .update({
-              is_online: onlineStatus,
-              last_seen: nowStr
-            })
-            .eq("id", currentUserId);
-        } catch (err) {
-          console.warn("Failed to update presence in Supabase:", err);
-        }
-      }
-
-      if (!skipFirestore && !isFirestoreQuotaExceeded()) {
-        try {
-          await setDoc(doc(db, "users", currentUserId), { 
-            isOnline: onlineStatus, 
-            lastSeen: nowStr 
-          }, { merge: true });
-        } catch (err) {
-          console.warn("Failed to update presence in Firestore:", err);
-        }
-      }
+      fetch(`/api/db/users/${currentUserId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          is_online: onlineStatus,
+          isOnline: onlineStatus,
+          last_seen: nowStr,
+          lastSeen: nowStr
+        })
+      }).catch(err => console.warn("Failed to update presence in MongoDB:", err));
     };
 
     // Trigger immediately on mount/load
@@ -1962,10 +1824,11 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }, 30000);
 
     const handleUnload = () => {
-      const supabase = getSupabaseClient();
-      if (supabase && currentUserId) {
-        supabase.from("users").update({ is_online: false }).eq("id", currentUserId).then(() => {});
-      }
+      fetch(`/api/db/users/${currentUserId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_online: false, isOnline: false })
+      }).catch(err => console.warn("Presence unload update error:", err));
     };
 
     window.addEventListener("beforeunload", handleUnload);
@@ -2233,13 +2096,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     checkRecurring();
   }, [requisitions, firestoreQuotaExceeded, currentUserId, db, addSystemLog, systemSettings]);
 
-  // --- UNIFIED SUPABASE DATA LOADER FOR ALL 15 DATASETS ---
+  // --- UNIFIED MONGODB DATA LOADER FOR ALL 15 DATASETS ---
   useEffect(() => {
-    if (!isSupabaseEnabled()) {
-      setLoading(false);
-      return;
-    }
-    
     if (!currentUserId || !currentUserIsApproved || currentUserIsSuspended) {
       setLoading(false);
       return;
@@ -2972,10 +2830,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (!currentUser || (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.SUPER_ADMIN)) {
       throw new Error("Unauthorized: Only Admins can reset user passwords.");
     }
-    const supabase = getSupabaseClient();
-    if (!supabase) throw new Error("Supabase is not configured.");
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
-    if (error) throw error;
+    const { sendPasswordResetEmail } = await import("firebase/auth");
+    await sendPasswordResetEmail(auth, email);
     await addSystemLog("PASSWORD_RESET_TRIGGERED", `Admin triggered password reset email for user: ${email}`, { email });
   }, [currentUser, addSystemLog]);
   

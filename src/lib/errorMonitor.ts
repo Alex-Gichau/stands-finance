@@ -70,9 +70,6 @@ export function initErrorMonitor() {
 
     const lowerMsg = errorMsg.toLowerCase();
     if (
-      lowerMsg.includes("supabase interceptor") ||
-      lowerMsg.includes("pgrst") ||
-      lowerMsg.includes("could not find the table") ||
       lowerMsg.includes("database connection failed")
     ) {
       return;
@@ -108,9 +105,6 @@ export function initErrorMonitor() {
       lowerMsg.includes("ws://") ||
       lowerMsg.includes("wss://") ||
       lowerMsg.includes("closed without opened") ||
-      lowerMsg.includes("supabase interceptor") ||
-      lowerMsg.includes("pgrst") ||
-      lowerMsg.includes("could not find the table") ||
       lowerMsg.includes("database connection failed")
     ) {
       event.preventDefault();
@@ -130,9 +124,6 @@ export function initErrorMonitor() {
       lowerMsg.includes("ws://") ||
       lowerMsg.includes("wss://") ||
       lowerMsg.includes("closed without opened") ||
-      lowerMsg.includes("supabase interceptor") ||
-      lowerMsg.includes("pgrst") ||
-      lowerMsg.includes("could not find the table") ||
       lowerMsg.includes("database connection failed")
     ) {
       event.preventDefault();

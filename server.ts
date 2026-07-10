@@ -6,7 +6,9 @@ import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import fs from "fs";
 import { Readable } from "stream";
-import { MongoClient } from "mongodb";
+import mongoose from "mongoose";
+import * as models from "./src/models/index.js";
+import { seedDatabase } from "./scripts/seed-mongo.js";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 
@@ -351,6 +353,9 @@ async function startServer() {
   }
 
   // Custom Auth Middleware to verify Firebase Auth JWT and query user role from MongoDB/JSON
+  /**
+   * Middleware to authenticate Firebase token and enrich request with user role.
+   */
   const authMiddleware = async (req: any, res: any, next: any) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -364,18 +369,10 @@ async function startServer() {
 
       // Query database for user's profile and active role
       let dbUser: any = null;
-      if (mongoDb && mongoConnected) {
-        dbUser = await mongoDb.collection("users").findOne({ email: decodedToken.email?.toLowerCase() });
-      } else {
-        const filePath = getFilePath("users");
-        if (fs.existsSync(filePath)) {
-          try {
-            const users = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-            dbUser = users.find((u: any) => u.email === decodedToken.email?.toLowerCase());
-          } catch (e) {
-            console.error("Error reading fallback users.json in auth middleware:", e);
-          }
-        }
+      try {
+        dbUser = await (models.User as any).findOne({ email: decodedToken.email?.toLowerCase() }).lean();
+      } catch (e) {
+        console.error("Error reading user profile with Mongoose in auth middleware:", e);
       }
 
       if (dbUser) {
@@ -392,161 +389,22 @@ async function startServer() {
     }
   };
 
-  // --- SEEDING FUNCTIONS FOR MONGO & FALLBACK ---
-  async function seedDatabase(db: any) {
-    const seedMappings: { [key: string]: string } = {
-      "users": "users_export.json",
-      "requisitions": "requisitions_export.json",
-      "transactions": "transactions_export.json",
-      "ledger_books": "ledger_books_export.json",
-      "audit_logs": "activity_history.json",
-      "alerts": "alerts_export.json",
-      "fiscal_years": "fiscal_years_export.json",
-      "projects": "projects_export.json",
-      "reports": "reports_export.json",
-      "settings": "settings_export.json",
-      "thresholds": "thresholds_export.json",
-      "vendors": "vendors_export.json",
-      "forecast": "forecast_export.json",
-      "permissions": "permissions_export.json"
-    };
+  // --- MONGODB CONNECTION & SETUP WITH MONGOOSE ---
+  const mongoUri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/stands_finance_db";
 
-    console.log("[MongoDB Seeder] Auditing collections and seeding from exports...");
-
-    for (const [collectionName, fileName] of Object.entries(seedMappings)) {
-      try {
-        const col = db.collection(collectionName);
-        const count = await col.countDocuments();
-        if (count === 0) {
-          const filePath = path.join(process.cwd(), "server", "data", fileName);
-          if (fs.existsSync(filePath)) {
-            const content = fs.readFileSync(filePath, "utf-8");
-            const rawData = JSON.parse(content);
-            
-            let dataToInsert = [];
-            if (Array.isArray(rawData)) {
-              dataToInsert = rawData;
-            } else if (rawData && typeof rawData === "object") {
-              dataToInsert = [rawData];
-            }
-
-            if (dataToInsert.length > 0) {
-              const cleanedData = dataToInsert.map((item: any) => {
-                const cleaned = { ...item };
-                if (!cleaned.id && cleaned.document_id) {
-                  cleaned.id = cleaned.document_id;
-                }
-                delete cleaned._id;
-                return cleaned;
-              });
-
-              await col.insertMany(cleanedData);
-              console.log(`[MongoDB Seeder] Seeded ${cleanedData.length} records into collection '${collectionName}' from ${fileName}`);
-            }
-          }
-        }
-      } catch (err: any) {
-        console.error(`[MongoDB Seeder] Seeding failed for collection '${collectionName}':`, err.message);
-      }
-    }
-
-    // Auto-seed church groups if empty
-    try {
-      const col = db.collection("church_groups");
-      const count = await col.countDocuments();
-      if (count === 0) {
-        const usersCol = db.collection("users");
-        const users = await usersCol.find({}).toArray();
-        const uniqueGroupNames = new Set<string>();
-        users.forEach((u: any) => {
-          if (u.group) uniqueGroupNames.add(u.group);
-          if (Array.isArray(u.groups)) u.groups.forEach((g: string) => uniqueGroupNames.add(g));
-        });
-
-        if (uniqueGroupNames.size > 0) {
-          const groupsToInsert = Array.from(uniqueGroupNames).map(name => ({
-            id: `cg-${Math.random().toString(36).substring(2, 11)}`,
-            name,
-            description: `Automatically compiled church group for ${name}`,
-            createdAt: new Date().toISOString()
-          }));
-          await col.insertMany(groupsToInsert);
-          console.log(`[MongoDB Seeder] Seeded ${groupsToInsert.length} church groups from unique user attributes.`);
-        }
-      }
-    } catch (err: any) {
-      console.error("[MongoDB Seeder] Church group seeding failed:", err.message);
-    }
-  }
-
-  function seedJsonFallback() {
-    const seedMappings: { [key: string]: string } = {
-      "users": "users_export.json",
-      "requisitions": "requisitions_export.json",
-      "transactions": "transactions_export.json",
-      "ledger_books": "ledger_books_export.json",
-      "audit_logs": "activity_history.json",
-      "alerts": "alerts_export.json",
-      "fiscal_years": "fiscal_years_export.json",
-      "projects": "projects_export.json",
-      "reports": "reports_export.json",
-      "settings": "settings_export.json",
-      "thresholds": "thresholds_export.json",
-      "vendors": "vendors_export.json",
-      "forecast": "forecast_export.json",
-      "permissions": "permissions_export.json"
-    };
-
-    for (const [collectionName, fileName] of Object.entries(seedMappings)) {
-      const destPath = path.join(process.cwd(), `${collectionName}.json`);
-      if (!fs.existsSync(destPath) || fs.readFileSync(destPath, "utf-8").trim() === "" || fs.readFileSync(destPath, "utf-8").trim() === "[]") {
-        const srcPath = path.join(process.cwd(), "server", "data", fileName);
-        if (fs.existsSync(srcPath)) {
-          try {
-            const rawContent = fs.readFileSync(srcPath, "utf-8");
-            const rawData = JSON.parse(rawContent);
-            let cleanedData = rawData;
-            if (Array.isArray(rawData)) {
-              cleanedData = rawData.map((item: any) => {
-                const cleaned = { ...item };
-                if (!cleaned.id && cleaned.document_id) {
-                  cleaned.id = cleaned.document_id;
-                }
-                delete cleaned._id;
-                return cleaned;
-              });
-            }
-            fs.writeFileSync(destPath, JSON.stringify(cleanedData, null, 2), "utf-8");
-            console.log(`[JSON Fallback Seeder] Seeded '${collectionName}.json' from ${fileName}`);
-          } catch (e: any) {
-            console.error(`[JSON Fallback Seeder] Error seeding ${collectionName}.json:`, e.message);
-          }
-        }
-      }
-    }
-  }
-
-  // --- MONGODB CONNECTION & SETUP ---
-  const mongoUri = process.env.MONGODB_URI || "mongodb://localhost:27017/st_andrews_requisition";
-  let mongoDb: any = null;
-  let mongoConnected = false;
-
+  /**
+   * Establishes connection to MongoDB using Mongoose.
+   */
   async function connectToMongo() {
     try {
-      console.log(`[MongoDB] Attempting connection to local server: ${mongoUri}`);
-      const client = new MongoClient(mongoUri, { connectTimeoutMS: 4000, serverSelectionTimeoutMS: 4000 });
-      await client.connect();
-      mongoDb = client.db();
-      mongoConnected = true;
-      console.log(`[MongoDB] Successfully connected to local database: ${mongoDb.databaseName}`);
-      
-      // Seed MongoDB collections
-      await seedDatabase(mongoDb);
+      console.log(`[MongoDB/Mongoose] Attempting connection to local server: ${mongoUri}`);
+      await mongoose.connect(mongoUri, { connectTimeoutMS: 5000 });
+      console.log(`[MongoDB/Mongoose] Successfully connected to database: ${mongoose.connection.db ? mongoose.connection.db.databaseName : "stands_finance_db"}`);
+
+      // Run Mongoose seeder
+      await seedDatabase();
     } catch (err: any) {
-      console.warn(`[MongoDB] Connection bypassed/failed (standard local JSON fallback active). Reason:`, err.message || err);
-      
-      // Seed JSON fallback files
-      seedJsonFallback();
+      console.error(`[MongoDB/Mongoose] Connection failed! Reason:`, err.message || err);
     }
   }
 
@@ -554,22 +412,15 @@ async function startServer() {
   connectToMongo();
 
   // --- AUTH ENDPOINTS (PUBLIC: BYPASSES MIDDLEWARE) ---
+  /**
+   * Endpoint to check if a user is pre-registered in the database.
+   */
   app.post("/api/auth/check-pre-registered", express.json(), async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: "Missing email parameter" });
 
     try {
-      let dbUser = null;
-      if (mongoConnected && mongoDb) {
-        dbUser = await mongoDb.collection("users").findOne({ email: email.toLowerCase() });
-      } else {
-        const filePath = getFilePath("users");
-        if (fs.existsSync(filePath)) {
-          const users = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-          dbUser = users.find((u: any) => u.email === email.toLowerCase());
-        }
-      }
-
+      const dbUser = await (models.User as any).findOne({ email: email.toLowerCase() }).lean();
       if (dbUser) {
         return res.json({ exists: true, profile: dbUser });
       } else {
@@ -586,44 +437,20 @@ async function startServer() {
     if (!uid || !email) return res.status(400).json({ error: "Missing uid or email parameter" });
 
     try {
-      if (mongoConnected && mongoDb) {
-        await mongoDb.collection("users").updateOne(
-          { email: email.toLowerCase() },
-          { $set: { id: uid, is_approved: true, is_active: true } }
+      await (models.User as any).updateOne(
+        { email: email.toLowerCase() },
+        { $set: { id: uid, isApproved: true, isActive: true } }
+      );
+
+      if (profileId && profileId !== uid) {
+        await (models.Requisition as any).updateMany(
+          { requesterId: profileId },
+          { $set: { requesterId: uid } }
         );
-
-        if (profileId && profileId !== uid) {
-          await mongoDb.collection("requisitions").updateMany(
-            { requester_id: profileId },
-            { $set: { requester_id: uid } }
-          );
-          await mongoDb.collection("reports").updateMany(
-            { generated_by_id: profileId },
-            { $set: { generated_by_id: uid } }
-          );
-        }
-      } else {
-        const filePath = getFilePath("users");
-        if (fs.existsSync(filePath)) {
-          const users = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-          const idx = users.findIndex((u: any) => u.email === email.toLowerCase());
-          if (idx >= 0) {
-            const oldId = users[idx].id;
-            users[idx].id = uid;
-            users[idx].is_approved = true;
-            users[idx].is_active = true;
-            fs.writeFileSync(filePath, JSON.stringify(users, null, 2), "utf-8");
-
-            const reqPath = getFilePath("requisitions");
-            if (fs.existsSync(reqPath)) {
-              const reqs = JSON.parse(fs.readFileSync(reqPath, "utf-8"));
-              reqs.forEach((r: any) => {
-                if (r.requester_id === oldId) r.requester_id = uid;
-              });
-              fs.writeFileSync(reqPath, JSON.stringify(reqs, null, 2), "utf-8");
-            }
-          }
-        }
+        await (models.Report as any).updateMany(
+          { generatedById: profileId },
+          { $set: { generatedById: uid } }
+        );
       }
       res.json({ success: true });
     } catch (err: any) {
@@ -637,17 +464,7 @@ async function startServer() {
     if (!email) return res.status(400).json({ error: "Missing email parameter" });
 
     try {
-      let dbUser = null;
-      if (mongoConnected && mongoDb) {
-        dbUser = await mongoDb.collection("users").findOne({ email: String(email).toLowerCase() });
-      } else {
-        const filePath = getFilePath("users");
-        if (fs.existsSync(filePath)) {
-          const users = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-          dbUser = users.find((u: any) => u.email === String(email).toLowerCase());
-        }
-      }
-
+      const dbUser = await (models.User as any).findOne({ email: String(email).toLowerCase() }).lean();
       if (dbUser) {
         return res.json({ exists: true, profile: dbUser });
       } else {
@@ -674,29 +491,42 @@ async function startServer() {
     "thresholds", "church_groups", "ledger_books", "supplementary_budgets", "vendors"
   ];
 
+  const modelMappings: { [key: string]: any } = {
+    "users": models.User,
+    "projects": models.Project,
+    "requisitions": models.Requisition,
+    "audit_logs": models.AuditLog,
+    "alerts": models.Alert,
+    "fiscal_years": models.FiscalYear,
+    "transactions": models.Transaction,
+    "forecast": models.Forecast,
+    "reports": models.Report,
+    "permissions": models.Permission,
+    "thresholds": models.Threshold,
+    "church_groups": models.ChurchGroup,
+    "ledger_books": models.LedgerBook,
+    "supplementary_budgets": models.SupplementaryBudget,
+    "vendors": models.Vendor
+  };
+
   // Bulk get (load all 15 datasets at once)
+  /**
+   * Fetches all documents from all collections.
+   */
   app.get("/api/db-all", async (req, res) => {
     try {
       const result: any = {};
-      if (!mongoConnected || !mongoDb) {
-        // Fallback to local files for all collections
-        for (const col of collectionsList) {
-          const filePath = getFilePath(col);
-          if (fs.existsSync(filePath)) {
-            result[col] = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-          } else {
-            result[col] = [];
-          }
-        }
-        return res.json(result);
-      }
-      
       for (const col of collectionsList) {
-        const data = await mongoDb.collection(col).find({}).toArray();
-        result[col] = data.map((item: any) => {
-          const { _id, ...rest } = item;
-          return { id: rest.id || String(_id), ...rest };
-        });
+        const Model = modelMappings[col];
+        if (Model) {
+          const data = await Model.find({}).lean();
+          result[col] = data.map((item: any) => {
+            const { _id, __v, ...rest } = item;
+            return { id: rest.id || String(_id), ...rest };
+          });
+        } else {
+          result[col] = [];
+        }
       }
       res.json(result);
     } catch (err: any) {
@@ -706,20 +536,19 @@ async function startServer() {
   });
 
   // Get all documents in a collection
+  /**
+   * Fetches all documents in a specific collection.
+   */
   app.get("/api/db/:collection", async (req, res) => {
     const { collection } = req.params;
     try {
-      if (!mongoConnected || !mongoDb) {
-        const filePath = getFilePath(collection);
-        if (fs.existsSync(filePath)) {
-          const content = fs.readFileSync(filePath, "utf-8");
-          return res.json(JSON.parse(content));
-        }
-        return res.json([]);
+      const Model = modelMappings[collection];
+      if (!Model) {
+        return res.status(400).json({ error: `Unknown collection: ${collection}` });
       }
-      const data = await mongoDb.collection(collection).find({}).toArray();
+      const data = await Model.find({}).lean();
       const cleanData = data.map((item: any) => {
-        const { _id, ...rest } = item;
+        const { _id, __v, ...rest } = item;
         return { id: rest.id || String(_id), ...rest };
       });
       res.json(cleanData);
@@ -732,21 +561,15 @@ async function startServer() {
   app.get("/api/db/:collection/:id", async (req, res) => {
     const { collection, id } = req.params;
     try {
-      if (!mongoConnected || !mongoDb) {
-        const filePath = getFilePath(collection);
-        if (fs.existsSync(filePath)) {
-          const content = fs.readFileSync(filePath, "utf-8");
-          const list = JSON.parse(content);
-          const item = list.find((x: any) => x.id === id);
-          if (item) return res.json(item);
-        }
-        return res.status(404).json({ error: "Document not found (fallback)" });
+      const Model = modelMappings[collection];
+      if (!Model) {
+        return res.status(400).json({ error: `Unknown collection: ${collection}` });
       }
-      const item = await mongoDb.collection(collection).findOne({ id });
+      const item = await Model.findOne({ id }).lean();
       if (!item) {
         return res.status(404).json({ error: "Document not found" });
       }
-      const { _id, ...rest } = item;
+      const { _id, __v, ...rest } = item;
       res.json({ id: rest.id || String(_id), ...rest });
     } catch (err: any) {
       res.status(500).json({ error: err.message || err });
@@ -758,28 +581,15 @@ async function startServer() {
     const { collection, id } = req.params;
     const body = req.body;
     try {
-      if (!mongoConnected || !mongoDb) {
-        const filePath = getFilePath(collection);
-        let list: any[] = [];
-        if (fs.existsSync(filePath)) {
-          const content = fs.readFileSync(filePath, "utf-8");
-          list = JSON.parse(content);
-        }
-        const index = list.findIndex((x: any) => x.id === id);
-        const payload = { ...body, id };
-        if (index >= 0) {
-          list[index] = payload;
-        } else {
-          list.push(payload);
-        }
-        fs.writeFileSync(filePath, JSON.stringify(list, null, 2), "utf-8");
-        return res.json({ success: true });
+      const Model = modelMappings[collection];
+      if (!Model) {
+        return res.status(400).json({ error: `Unknown collection: ${collection}` });
       }
       const payload = { ...body, id };
-      await mongoDb.collection(collection).updateOne(
+      await Model.findOneAndUpdate(
         { id },
         { $set: payload },
-        { upsert: true }
+        { upsert: true, new: true }
       );
       res.json({ success: true });
     } catch (err: any) {
@@ -792,26 +602,18 @@ async function startServer() {
     const { collection, id } = req.params;
     const body = req.body;
     try {
-      if (!mongoConnected || !mongoDb) {
-        const filePath = getFilePath(collection);
-        let list: any[] = [];
-        if (fs.existsSync(filePath)) {
-          const content = fs.readFileSync(filePath, "utf-8");
-          list = JSON.parse(content);
-        }
-        const index = list.findIndex((x: any) => x.id === id);
-        if (index >= 0) {
-          list[index] = { ...list[index], ...body };
-          fs.writeFileSync(filePath, JSON.stringify(list, null, 2), "utf-8");
-          return res.json({ success: true });
-        }
-        return res.status(404).json({ error: "Document not found (fallback)" });
+      const Model = modelMappings[collection];
+      if (!Model) {
+        return res.status(400).json({ error: `Unknown collection: ${collection}` });
       }
-      await mongoDb.collection(collection).updateOne(
+      const item = await Model.findOneAndUpdate(
         { id },
         { $set: body },
-        { upsert: true }
+        { new: true }
       );
+      if (!item) {
+        return res.status(404).json({ error: "Document not found" });
+      }
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message || err });
@@ -822,17 +624,11 @@ async function startServer() {
   app.delete("/api/db/:collection/:id", async (req, res) => {
     const { collection, id } = req.params;
     try {
-      if (!mongoConnected || !mongoDb) {
-        const filePath = getFilePath(collection);
-        if (fs.existsSync(filePath)) {
-          const content = fs.readFileSync(filePath, "utf-8");
-          let list = JSON.parse(content);
-          list = list.filter((x: any) => x.id !== id);
-          fs.writeFileSync(filePath, JSON.stringify(list, null, 2), "utf-8");
-        }
-        return res.json({ success: true });
+      const Model = modelMappings[collection];
+      if (!Model) {
+        return res.status(400).json({ error: `Unknown collection: ${collection}` });
       }
-      await mongoDb.collection(collection).deleteOne({ id });
+      await Model.deleteOne({ id });
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message || err });
@@ -843,33 +639,28 @@ async function startServer() {
   app.get("/api/system-health", async (req, res) => {
     const report: any = {
       mongodb: {
-        status: mongoConnected ? "ok" : "fallback",
+        status: mongoose.connection.readyState === 1 ? "ok" : "disconnected",
         uri: mongoUri,
-        database: mongoDb ? mongoDb.databaseName : "None (JSON Fallback)",
+        database: mongoose.connection.db ? mongoose.connection.db.databaseName : "None",
         counts: {}
       },
       recommendations: []
     };
 
-    if (!mongoConnected) {
-      report.recommendations.push("ℹ️ LOCAL MONGO DISCONNECTED: MongoDB server is offline or unreachable at standard port 27017. The system is operating in fail-safe Local JSON file storage mode. Start your local MongoDB server or MongoDB Compass to connect.");
+    if (mongoose.connection.readyState !== 1) {
+      report.recommendations.push("ℹ️ LOCAL MONGO DISCONNECTED: MongoDB server is offline or unreachable at standard port 27017. Start your local MongoDB server or MongoDB Compass to connect.");
     } else {
       report.recommendations.push("🟢 LOCAL MONGO CONNECTED: Successfully verified live communication with local MongoDB server.");
     }
 
     try {
       for (const col of ["users", "requisitions", "church_groups"]) {
-        if (mongoConnected && mongoDb) {
-          const ct = await mongoDb.collection(col).countDocuments();
+        const Model = modelMappings[col];
+        if (Model) {
+          const ct = await Model.countDocuments();
           report.mongodb.counts[col] = ct;
         } else {
-          const filePath = getFilePath(col);
-          if (fs.existsSync(filePath)) {
-            const list = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-            report.mongodb.counts[col] = list.length;
-          } else {
-            report.mongodb.counts[col] = 0;
-          }
+          report.mongodb.counts[col] = 0;
         }
       }
     } catch (e: any) {
