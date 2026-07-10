@@ -40,6 +40,7 @@ export const databaseService = {
   async saveUserProfile(user: UserProfile): Promise<void> {
     console.log(`[DatabaseService] Saving user profile to MongoDB: ${user.email}`);
     await apiCall(`/api/db/users/${user.id}`, "POST", {
+      ...user,
       id: user.id,
       name: user.name,
       email: user.email,
@@ -57,6 +58,8 @@ export const databaseService = {
       is_online: user.isOnline || false,
       last_seen: user.lastSeen ? new Date(user.lastSeen).toISOString() : null,
       idle_timeout_duration: user.idleTimeoutDuration || 15,
+      active_devices: user.activeDevices || [],
+      activeDevices: user.activeDevices || [],
       updated_at: new Date().toISOString()
     });
   },
