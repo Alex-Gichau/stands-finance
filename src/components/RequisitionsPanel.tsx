@@ -1021,10 +1021,10 @@ export const RequisitionsPanel: React.FC = () => {
     );
     const usedAmount = reqs
       .filter(r => [RequisitionStatus.SUBMITTED, RequisitionStatus.APPROVED_L1, RequisitionStatus.ESCALATED, RequisitionStatus.APPROVED_L2, RequisitionStatus.DISBURSED].includes(r.status))
-      .reduce((sum, r) => sum + r.amount, 0);
+      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
     const spentAmount = reqs
       .filter(r => r.status === RequisitionStatus.DISBURSED)
-      .reduce((sum, r) => sum + r.amount, 0);
+      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
 
     return {
       ...proj,
@@ -1884,7 +1884,7 @@ export const RequisitionsPanel: React.FC = () => {
                     Total Active Requisitions
                   </td>
                   <td className="px-6 py-4 text-right font-mono text-xs text-rose-600 font-extrabold whitespace-nowrap">
-                    {formatCurrency(activeList.reduce((sum, r) => sum + r.amount, 0))}
+                    {formatCurrency(activeList.reduce((sum, r) => sum + (Number(r.amount) || 0), 0))}
                   </td>
                   <td colSpan={3} className="px-6 py-4 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                     ({activeList.length} items total)
@@ -2075,7 +2075,7 @@ export const RequisitionsPanel: React.FC = () => {
                     Total Disbursed Funds
                   </td>
                   <td className="px-6 py-4 text-right font-mono text-xs text-blue-600 font-extrabold whitespace-nowrap">
-                    {formatCurrency(disbursedList.reduce((sum, r) => sum + r.amount, 0))}
+                    {formatCurrency(disbursedList.reduce((sum, r) => sum + (Number(r.amount) || 0), 0))}
                   </td>
                   <td colSpan={3} className="px-6 py-4 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                     ({disbursedList.length} items history)

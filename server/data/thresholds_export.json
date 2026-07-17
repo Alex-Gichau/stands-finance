@@ -1,6 +1,0 @@
-[
-{"document_id":"t4","id":"t4","type":"CRITICAL_FUNDING","threshold":"95","isEnabled":"true","notifyEmail":"true"},
-{"document_id":"t1","id":"t1","type":"BUDGET_OVERSHOOT","threshold":"85","isEnabled":"true","notifyEmail":"true"},
-{"document_id":"t3","id":"t3","type":"EXPIRY_ALERT","threshold":"10","isEnabled":"true","notifyEmail":"true"},
-{"document_id":"t2","id":"t2","type":"LARGE_REQUEST","threshold":"150000","isEnabled":"true","notifyEmail":"true"}
-]

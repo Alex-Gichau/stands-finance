@@ -76,20 +76,7 @@ export const SettingsPanel: React.FC = () => {
 
   React.useEffect(() => {
     if (currentUser?.activeDevices) {
-      let devices = currentUser.activeDevices;
-      if (typeof devices === "string") {
-        try {
-          devices = JSON.parse(devices);
-        } catch (e) {
-          console.error("Failed to parse activeDevices string:", e);
-          devices = [];
-        }
-      }
-      if (Array.isArray(devices)) {
-        setLocalActiveDevices(devices);
-      } else {
-        setLocalActiveDevices([]);
-      }
+      setLocalActiveDevices(currentUser.activeDevices);
     } else {
       setLocalActiveDevices([]);
     }

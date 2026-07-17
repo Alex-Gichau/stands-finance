@@ -365,10 +365,10 @@ const Dashboard: React.FC<{
   };
 
   const stats = useMemo(() => {
-    const totalValue = requisitions.reduce((acc, r) => acc + r.amount, 0);
+    const totalValue = requisitions.reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
     const pending = requisitions.filter(r => r.status === RequisitionStatus.SUBMITTED || r.status === RequisitionStatus.APPROVED_L1).length;
     const approved = requisitions.filter(r => r.status === RequisitionStatus.APPROVED_L2 || r.status === RequisitionStatus.DISBURSED).length;
-    const disbursed = requisitions.filter(r => r.status === RequisitionStatus.DISBURSED).reduce((acc, r) => acc + r.amount, 0);
+    const disbursed = requisitions.filter(r => r.status === RequisitionStatus.DISBURSED).reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
 
     return [
       { label: "Total Req Value", value: formatCurrency(totalValue), icon: Wallet, color: "text-primary", bg: "bg-primary/5" },
@@ -392,12 +392,12 @@ const Dashboard: React.FC<{
     const activeProjects = projects.filter(p => assignedMinistries.includes(p.groupId) && p.fiscalYear === activeYear);
     
     if (activeMinistryView === "ALL") {
-      const allocated = activeProjects.reduce((sum, p) => sum + p.allocatedBudget, 0);
+      const allocated = activeProjects.reduce((sum, p) => sum + (Number(p.allocatedBudget) || 0), 0);
       const reqs = requisitions.filter(r => 
         activeProjects.some(p => p.id === r.projectId) && 
         COMMITTED_REQUISITION_STATUSES.includes(r.status)
       );
-      const used = reqs.reduce((sum, r) => sum + r.amount, 0);
+      const used = reqs.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
       return {
         currentProjectForBanner: null,
         totalAllocatedForBanner: allocated,
@@ -427,13 +427,13 @@ const Dashboard: React.FC<{
 
   const fiscalSummary = useMemo(() => {
     const activeProjects = projects.filter(p => p.fiscalYear === activeYear);
-    const totalAllocated = activeProjects.reduce((sum, p) => sum + p.allocatedBudget, 0);
+    const totalAllocated = activeProjects.reduce((sum, p) => sum + (Number(p.allocatedBudget) || 0), 0);
     
     const committedRequisitions = requisitions.filter(r => 
       r.fiscalYear === activeYear && 
       COMMITTED_REQUISITION_STATUSES.includes(r.status)
     );
-    const totalSpentAndCommitted = committedRequisitions.reduce((sum, r) => sum + r.amount, 0);
+    const totalSpentAndCommitted = committedRequisitions.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
     const absorptionRate = totalAllocated > 0 ? (totalSpentAndCommitted / totalAllocated) * 100 : 0;
     const requisitionsCount = committedRequisitions.length;
 

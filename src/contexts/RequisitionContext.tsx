@@ -121,7 +121,25 @@ const mapSnakeToCamel = (data: any): any => {
       } else {
         camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
       }
-      camelData[camelKey] = mapSnakeToCamel(val);
+      let finalVal = mapSnakeToCamel(val);
+      if (
+        (camelKey === "amount" || 
+         camelKey === "allocatedBudget" || 
+         camelKey === "spentAmount" || 
+         camelKey === "committedAmount" || 
+         camelKey === "requisitionLimit" || 
+         camelKey === "budgetLimit" || 
+         camelKey === "allocated" || 
+         camelKey === "spent" || 
+         camelKey === "threshold") && 
+        typeof finalVal === "string"
+      ) {
+        const parsed = Number(finalVal);
+        if (!isNaN(parsed)) {
+          finalVal = parsed;
+        }
+      }
+      camelData[camelKey] = finalVal;
     }
     return camelData;
   }
@@ -744,20 +762,6 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
               dbUser.id = firebaseUser.uid;
             }
 
-            let parsedDevices: any[] = [];
-            if (dbUser.activeDevices || dbUser.active_devices) {
-              const rawDevices = dbUser.activeDevices || dbUser.active_devices;
-              if (typeof rawDevices === "string") {
-                try {
-                  parsedDevices = JSON.parse(rawDevices);
-                } catch {
-                  parsedDevices = [];
-                }
-              } else if (Array.isArray(rawDevices)) {
-                parsedDevices = rawDevices;
-              }
-            }
-
             setCurrentUser({
               ...dbUser,
               approverCode: dbUser.approverCode || dbUser.approver_code,
@@ -768,8 +772,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
               tempPassword: dbUser.tempPassword || dbUser.temp_password,
               isOnline: dbUser.isOnline !== undefined ? dbUser.isOnline : dbUser.is_online,
               lastSeen: dbUser.lastSeen || dbUser.last_seen,
-              idleTimeoutDuration: dbUser.idleTimeoutDuration || dbUser.idle_timeout_duration,
-              activeDevices: parsedDevices
+              idleTimeoutDuration: dbUser.idleTimeoutDuration || dbUser.idle_timeout_duration
             } as UserProfile);
           } else {
             const defaultUser = {
@@ -1731,27 +1734,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     let isFirstSnap = true;
 
     const unsubUsers = onSnapshot(collection(db, "users"), (snap) => {
-      let data = snap.docs.map(doc => {
-        const u = doc.data();
-        let parsedDevices: any[] = [];
-        if (u.activeDevices || u.active_devices) {
-          const rawDevices = u.activeDevices || u.active_devices;
-          if (typeof rawDevices === "string") {
-            try {
-              parsedDevices = JSON.parse(rawDevices);
-            } catch {
-              parsedDevices = [];
-            }
-          } else if (Array.isArray(rawDevices)) {
-            parsedDevices = rawDevices;
-          }
-        }
-        return {
-          id: doc.id,
-          ...u,
-          activeDevices: parsedDevices
-        } as UserProfile;
-      });
+      let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
       if (shouldFilter && parsedGroups.length > 0) data = data.filter(u => parsedGroups.includes(u.group || "") || (u.groups && u.groups.some(g => parsedGroups.includes(g))));
       if (hidePrototype) data = data.filter(u => !u.id.startsWith("u-"));
 
@@ -2322,41 +2305,25 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
         // Process Users
         if (dbData.users) {
-          const data = dbData.users.map((u: any) => {
-            let parsedDevices: any[] = [];
-            if (u.activeDevices || u.active_devices) {
-              const rawDevices = u.activeDevices || u.active_devices;
-              if (typeof rawDevices === "string") {
-                try {
-                  parsedDevices = JSON.parse(rawDevices);
-                } catch {
-                  parsedDevices = [];
-                }
-              } else if (Array.isArray(rawDevices)) {
-                parsedDevices = rawDevices;
-              }
-            }
-            return {
-              id: u.id,
-              name: u.name,
-              email: u.email,
-              role: u.role,
-              group: u.group,
-              groups: u.groups || [],
-              approverCode: u.approver_code,
-              isActive: u.is_active,
-              isApproved: u.is_approved,
-              isSuspended: u.is_suspended,
-              phone: u.phone,
-              department: u.department,
-              photoURL: u.photo_url,
-              tempPassword: u.temp_password,
-              isOnline: u.is_online,
-              lastSeen: u.last_seen,
-              idleTimeoutDuration: u.idle_timeout_duration,
-              activeDevices: parsedDevices
-            } as UserProfile;
-          });
+          const data = dbData.users.map((u: any) => ({
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            role: u.role,
+            group: u.group,
+            groups: u.groups || [],
+            approverCode: u.approver_code,
+            isActive: u.is_active,
+            isApproved: u.is_approved,
+            isSuspended: u.is_suspended,
+            phone: u.phone,
+            department: u.department,
+            photoURL: u.photo_url,
+            tempPassword: u.temp_password,
+            isOnline: u.is_online,
+            lastSeen: u.last_seen,
+            idleTimeoutDuration: u.idle_timeout_duration
+          } as UserProfile));
           setUsers(data);
         }
 

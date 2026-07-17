@@ -436,7 +436,99 @@ async function startServer() {
   };
 
   // --- MONGODB CONNECTION & SETUP WITH MONGOOSE ---
-  const mongoUri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/stands_finance_db";
+  // Define strict Mongoose Schema for Requisitions directly in server.ts
+  const RequisitionSchema = new mongoose.Schema({
+    id: { 
+      type: String, 
+      required: [true, 'Requisition ID is required'], 
+      unique: true, 
+      index: true 
+    },
+    projectId: { 
+      type: String, 
+      index: true 
+    },
+    title: { 
+      type: String, 
+      required: [true, 'Title is required'],
+      trim: true,
+      minlength: [3, 'Title must be at least 3 characters long'],
+      maxlength: [100, 'Title cannot exceed 100 characters']
+    },
+    description: { 
+      type: String, 
+      required: [true, 'Description is required'],
+      trim: true
+    },
+    amount: { 
+      type: Number, 
+      required: [true, 'Amount is required'],
+      min: [0.01, 'Amount must be greater than zero']
+    },
+    amountWords: { 
+      type: String 
+    },
+    groupId: { 
+      type: String, 
+      required: [true, 'Group ID is required'], 
+      index: true 
+    },
+    groupName: { 
+      type: String, 
+      required: [true, 'Group Name is required'] 
+    },
+    requesterId: { 
+      type: String, 
+      required: [true, 'Requester ID is required'], 
+      index: true 
+    },
+    requesterName: { 
+      type: String, 
+      required: [true, 'Requester Name is required'] 
+    },
+    requesterEmail: { 
+      type: String 
+    },
+    status: { 
+      type: String, 
+      required: [true, 'Status is required'],
+      enum: {
+        values: ["DRAFT", "SUBMITTED", "APPROVED_L1", "APPROVED_L2", "ESCALATED", "DISBURSED", "REJECTED", "CANCELLED"],
+        message: '{VALUE} is not a valid requisition status'
+      },
+      default: "DRAFT"
+    },
+    submittedAt: { type: Date },
+    expiresAt: { type: Date },
+    escalationLevel: { type: Number, default: 0 },
+    escalationNotificationsSent: { type: Boolean, default: false },
+    approvedAtL1: { type: Date },
+    approvedAtL2: { type: Date },
+    disbursedAt: { type: Date },
+    rejectionReason: { type: String },
+    approvalHistory: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    digitalSignature: { type: String },
+    payableTo: { type: String },
+    recurrence: { type: String },
+    lastRecurrenceGeneratedAt: { type: Date },
+    additionalInfo: { type: String },
+    attachments: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    receipts: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    flaggedForAudit: { type: Boolean, default: false },
+    inProcurement: { type: Boolean, default: false },
+    requiresMoreInfo: { type: Boolean, default: false },
+    fiscalYear: { type: Number },
+  }, {
+    timestamps: true,
+  });
+
+  // Clean/Re-register Requisition model to ensure strict schema enforcement
+  if (mongoose.models && mongoose.models.Requisition) {
+    delete mongoose.models.Requisition;
+  }
+  const StrictRequisitionModel = mongoose.model('Requisition', RequisitionSchema);
+
+  const mongoUri = process.env.MONGODB_URI || "mongodb://178.104.122.211:27017/stands_finance_db";
 
   /**
    * Establishes connection to MongoDB using Mongoose.
@@ -588,7 +680,7 @@ async function startServer() {
   const modelMappings: { [key: string]: any } = {
     "users": models.User,
     "projects": models.Project,
-    "requisitions": models.Requisition,
+    "requisitions": mongoose.model('Requisition'),
     "audit_logs": models.AuditLog,
     "alerts": models.Alert,
     "fiscal_years": models.FiscalYear,
@@ -633,6 +725,69 @@ async function startServer() {
       res.json(result);
     } catch (err: any) {
       console.error("[MongoDB Bulk Get] Error:", err);
+      res.status(500).json({ error: err.message || err });
+    }
+  });
+
+  // --- EXPLICIT REQUISITIONS ENDPOINTS ---
+  /**
+   * @route   GET /api/requisitions
+   * @desc    Retrieve all requisitions from the MongoDB instance
+   */
+  app.get("/api/requisitions", async (req, res) => {
+    try {
+      if (mongoose.connection.readyState === 1) {
+        const data = await mongoose.model('Requisition').find({}).sort({ createdAt: -1 }).lean();
+        const cleanData = data.map((item: any) => {
+          const { _id, __v, ...rest } = item;
+          return { id: rest.id || String(_id), ...rest };
+        });
+        res.json(cleanData);
+      } else {
+        const data = readJsonCollection("requisitions");
+        const cleanData = data.map((item: any) => {
+          const { _id, __v, ...rest } = item;
+          return { id: rest.id || String(_id), ...rest };
+        });
+        res.json(cleanData);
+      }
+    } catch (err: any) {
+      console.error("[GET /api/requisitions Error]:", err);
+      res.status(500).json({ error: err.message || err });
+    }
+  });
+
+  /**
+   * @route   POST /api/requisitions
+   * @desc    Create or update a requisition in the MongoDB instance
+   */
+  app.post("/api/requisitions", express.json({ limit: "50mb" }), async (req, res) => {
+    try {
+      const body = req.body;
+      const id = body.id || `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      
+      if (mongoose.connection.readyState === 1) {
+        const payload = { ...body, id };
+        const newDoc = await mongoose.model('Requisition').findOneAndUpdate(
+          { id },
+          { $set: payload },
+          { upsert: true, new: true }
+        );
+        res.status(201).json(newDoc);
+      } else {
+        const list = readJsonCollection("requisitions");
+        const idx = list.findIndex((item: any) => item.id === id);
+        const payload = { ...body, id, document_id: id };
+        if (idx !== -1) {
+          list[idx] = payload;
+        } else {
+          list.push(payload);
+        }
+        writeJsonCollection("requisitions", list);
+        res.status(201).json(payload);
+      }
+    } catch (err: any) {
+      console.error("[POST /api/requisitions Error]:", err);
       res.status(500).json({ error: err.message || err });
     }
   });
