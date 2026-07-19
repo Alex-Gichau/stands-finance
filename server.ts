@@ -48,13 +48,10 @@ function coerceBooleans(obj: any): any {
     "flaggedForAudit", "flagged_for_audit", "inProcurement", "in_procurement", "requiresMoreInfo", "requires_more_info"
   ];
   for (const key of booleanKeys) {
-    if (coerced[key] !== undefined && coerced[key] !== null) {
-      const valStr = String(coerced[key]).trim().toLowerCase();
-      if (valStr === "true") {
-        coerced[key] = true;
-      } else if (valStr === "false") {
-        coerced[key] = false;
-      }
+    if (coerced[key] === "true") {
+      coerced[key] = true;
+    } else if (coerced[key] === "false") {
+      coerced[key] = false;
     }
   }
   return coerced;
