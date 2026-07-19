@@ -337,7 +337,7 @@ function generateSlackFullReport(): string {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = parseInt(process.env.PORT || "3000", 10);
 
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -771,7 +771,7 @@ async function startServer() {
         const newDoc = await mongoose.model('Requisition').findOneAndUpdate(
           { id },
           { $set: payload },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: 'after' }
         );
         res.status(201).json(newDoc);
       } else {
@@ -866,7 +866,7 @@ async function startServer() {
         await Model.findOneAndUpdate(
           { id },
           { $set: payload },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: 'after' }
         );
       } else {
         const list = readJsonCollection(collection);
@@ -898,7 +898,7 @@ async function startServer() {
         const item = await Model.findOneAndUpdate(
           { id },
           { $set: body },
-          { new: true }
+          { returnDocument: 'after' }
         );
         if (!item) {
           return res.status(404).json({ error: "Document not found" });
