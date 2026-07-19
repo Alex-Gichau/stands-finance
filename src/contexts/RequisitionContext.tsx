@@ -2131,7 +2131,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const parsedGroups = filterGroups.length > 0 ? filterGroups : (currentUserGroup ? [currentUserGroup] : []);
 
       try {
-        const response = await fetch("/api/db-all");
+        const headers = await getAuthHeaders();
+        const response = await fetch("/api/db-all", { headers });
         if (!response.ok) {
           throw new Error(`Failed to fetch database: ${response.statusText}`);
         }
