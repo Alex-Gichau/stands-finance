@@ -54,8 +54,6 @@ const firebaseConfig = {
 const firebaseApp = initFirebaseApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 
-let latestAuthToken: string | null = null;
-
 const getAuthHeaders = async () => {
   const headers: Record<string, string> = {
     "Content-Type": "application/json"
@@ -64,7 +62,6 @@ const getAuthHeaders = async () => {
     try {
       const token = await auth.currentUser.getIdToken();
       headers["Authorization"] = `Bearer ${token}`;
-      latestAuthToken = token;
     } catch (e) {
       console.warn("Failed to get Firebase ID token:", e);
     }
@@ -1824,21 +1821,16 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const updatePresence = async (onlineStatus: boolean) => {
       const nowStr = new Date().toISOString();
 
-      try {
-        const authHeaders = await getAuthHeaders();
-        fetch(`/api/db/users/${currentUserId}`, {
-          method: "PATCH",
-          headers: { ...authHeaders, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            is_online: onlineStatus,
-            isOnline: onlineStatus,
-            last_seen: nowStr,
-            lastSeen: nowStr
-          })
-        }).catch(err => console.warn("Failed to update presence in MongoDB:", err));
-      } catch (err) {
-        console.warn("Could not get auth headers for presence update:", err);
-      }
+      fetch(`/api/db/users/${currentUserId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          is_online: onlineStatus,
+          isOnline: onlineStatus,
+          last_seen: nowStr,
+          lastSeen: nowStr
+        })
+      }).catch(err => console.warn("Failed to update presence in MongoDB:", err));
     };
 
     // Trigger immediately on mount/load
@@ -1850,13 +1842,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }, 30000);
 
     const handleUnload = () => {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (latestAuthToken) {
-        headers["Authorization"] = `Bearer ${latestAuthToken}`;
-      }
       fetch(`/api/db/users/${currentUserId}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_online: false, isOnline: false })
       }).catch(err => console.warn("Presence unload update error:", err));
     };
@@ -2143,8 +2131,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const parsedGroups = filterGroups.length > 0 ? filterGroups : (currentUserGroup ? [currentUserGroup] : []);
 
       try {
-        const headers = await getAuthHeaders();
-        const response = await fetch("/api/db-all", { headers });
+        const response = await fetch("/api/db-all");
         if (!response.ok) {
           throw new Error(`Failed to fetch database: ${response.statusText}`);
         }
@@ -2324,11 +2311,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             email: u.email,
             role: u.role,
             group: u.group,
-            groups: Array.isArray(u.groups)
-              ? u.groups
-              : (typeof u.groups === "string" && u.groups.trim()
-                ? u.groups.split(",").map((s: string) => s.trim()).filter(Boolean)
-                : []),
+            groups: u.groups || [],
             approverCode: u.approver_code,
             isActive: u.is_active !== undefined ? u.is_active : u.isActive,
             isApproved: u.is_approved !== undefined ? u.is_approved : u.isApproved,
