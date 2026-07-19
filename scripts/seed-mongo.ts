@@ -77,6 +77,19 @@ export async function seedDatabase() {
         // Remove MongoDB internal _id if it's there
         if (doc._id) delete doc._id;
 
+        // Coerce string booleans
+        const booleanKeys = [
+          "isActive", "is_active", "isApproved", "is_approved", "isSuspended", "is_suspended", "isOnline", "is_online",
+          "flaggedForAudit", "flagged_for_audit", "inProcurement", "in_procurement", "requiresMoreInfo", "requires_more_info"
+        ];
+        for (const key of booleanKeys) {
+          if (doc[key] === "true") {
+            doc[key] = true;
+          } else if (doc[key] === "false") {
+            doc[key] = false;
+          }
+        }
+
         // If the file represents permission records, make sure JSON parsed fields are actual objects
         if (name === 'Permission') {
           if (typeof doc.access === 'string') doc.access = JSON.parse(doc.access);

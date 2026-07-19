@@ -48,8 +48,11 @@ export const databaseService = {
       groups: user.groups || [],
       approver_code: user.approverCode || null,
       is_active: user.isActive,
+      isActive: user.isActive,
       is_approved: user.isApproved,
+      isApproved: user.isApproved,
       is_suspended: user.isSuspended,
+      isSuspended: user.isSuspended,
       phone: user.phone || null,
       department: user.department || null,
       photo_url: user.photoURL || null,
@@ -80,11 +83,13 @@ export const databaseService = {
 
   async saveChurchGroup(group: ChurchGroup): Promise<void> {
     console.log(`[DatabaseService] Saving church group to MongoDB: ${group.name}`);
+    const dateStr = group.createdAt ? new Date(group.createdAt).toISOString() : new Date().toISOString();
     await apiCall(`/api/db/church_groups/${group.id}`, "POST", {
       id: group.id,
       name: group.name,
       description: group.description || null,
-      created_at: group.createdAt ? new Date(group.createdAt).toISOString() : new Date().toISOString()
+      created_at: dateStr,
+      createdAt: dateStr
     });
   },
 
@@ -184,8 +189,10 @@ export const databaseService = {
       action: log.action,
       details: log.details,
       performed_by: log.performedBy,
+      performedBy: log.performedBy,
       timestamp: new Date(log.timestamp).toISOString(),
       group_id: log.groupId || null,
+      groupId: log.groupId || null,
       metadata: log.metadata || null
     });
   },

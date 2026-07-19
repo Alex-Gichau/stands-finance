@@ -48,10 +48,13 @@ function coerceBooleans(obj: any): any {
     "flaggedForAudit", "flagged_for_audit", "inProcurement", "in_procurement", "requiresMoreInfo", "requires_more_info"
   ];
   for (const key of booleanKeys) {
-    if (coerced[key] === "true") {
-      coerced[key] = true;
-    } else if (coerced[key] === "false") {
-      coerced[key] = false;
+    if (coerced[key] !== undefined && coerced[key] !== null) {
+      const valStr = String(coerced[key]).trim().toLowerCase();
+      if (valStr === "true") {
+        coerced[key] = true;
+      } else if (valStr === "false") {
+        coerced[key] = false;
+      }
     }
   }
   return coerced;
@@ -855,7 +858,7 @@ async function startServer() {
   // Upsert (setDoc) single document by ID
   app.post("/api/db/:collection/:id", express.json({ limit: "50mb" }), async (req, res) => {
     const { collection, id } = req.params;
-    const body = req.body;
+    const body = coerceBooleans(req.body);
     try {
       if (mongoose.connection.readyState === 1) {
         const Model = modelMappings[collection];
@@ -888,7 +891,7 @@ async function startServer() {
   // Update (updateDoc) single document by ID (partial update)
   app.patch("/api/db/:collection/:id", express.json({ limit: "50mb" }), async (req, res) => {
     const { collection, id } = req.params;
-    const body = req.body;
+    const body = coerceBooleans(req.body);
     try {
       if (mongoose.connection.readyState === 1) {
         const Model = modelMappings[collection];

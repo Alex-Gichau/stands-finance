@@ -2295,9 +2295,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             id: l.id?.toString() || `log-${Math.random()}`,
             action: l.action,
             details: l.details,
-            performedBy: l.performed_by,
+            performedBy: l.performed_by || l.performedBy,
             timestamp: l.timestamp,
-            groupId: l.group_id,
+            groupId: l.group_id || l.groupId,
             metadata: l.metadata
           } as SystemLog));
           setSystemLogs(data);
@@ -2313,9 +2313,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             group: u.group,
             groups: u.groups || [],
             approverCode: u.approver_code,
-            isActive: u.is_active,
-            isApproved: u.is_approved,
-            isSuspended: u.is_suspended,
+            isActive: u.is_active !== undefined ? u.is_active : u.isActive,
+            isApproved: u.is_approved !== undefined ? u.is_approved : u.isApproved,
+            isSuspended: u.is_suspended !== undefined ? u.is_suspended : u.isSuspended,
             phone: u.phone,
             department: u.department,
             photoURL: u.photo_url,
@@ -2356,7 +2356,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             id: cg.id,
             name: cg.name,
             description: cg.description,
-            createdAt: cg.created_at
+            createdAt: cg.created_at || cg.createdAt
           } as ChurchGroup));
           setChurchGroups(data);
           setLastGroupsSync(new Date());
