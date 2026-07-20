@@ -804,11 +804,12 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
               dbUser.id = firebaseUser.uid;
             }
 
+            const isSuperAdmin = dbUser.role === UserRole.SUPER_ADMIN || dbUser.role === "SUPER_ADMIN";
             setCurrentUser({
               ...dbUser,
               approverCode: dbUser.approverCode || dbUser.approver_code,
-              isActive: dbUser.isActive !== undefined ? dbUser.isActive : (dbUser.is_active !== undefined ? dbUser.is_active : true),
-              isApproved: dbUser.isApproved !== undefined ? dbUser.isApproved : (dbUser.is_approved !== undefined ? dbUser.is_approved : true),
+              isActive: isSuperAdmin ? true : (dbUser.isActive !== undefined ? dbUser.isActive : (dbUser.is_active !== undefined ? dbUser.is_active : true)),
+              isApproved: isSuperAdmin ? true : (dbUser.isApproved !== undefined ? dbUser.isApproved : (dbUser.is_approved !== undefined ? dbUser.is_approved : true)),
               isSuspended: dbUser.isSuspended !== undefined ? dbUser.isSuspended : (dbUser.is_suspended !== undefined ? dbUser.is_suspended : false),
               photoURL: dbUser.photoURL || dbUser.photo_url,
               tempPassword: dbUser.tempPassword || dbUser.temp_password,
@@ -1490,7 +1491,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const currentUserId = currentUser?.id || "";
   const currentUserRole = currentUser?.role || "";
   const currentUserGroup = currentUser?.group || "";
-  const currentUserIsApproved = currentUser?.isApproved || false;
+  const currentUserIsApproved = currentUser?.isApproved || currentUser?.role === UserRole.SUPER_ADMIN || false;
   const currentUserIsSuspended = currentUser?.isSuspended || false;
   const currentUserGroupsJSON = JSON.stringify(currentUser?.groups || []);
 

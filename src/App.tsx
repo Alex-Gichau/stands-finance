@@ -587,7 +587,7 @@ function AppContent() {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
 
   const handleLogout = async (force: boolean | React.MouseEvent = false) => {
-    const isSessionInvalidOrExpired = !auth.currentUser || !currentUser || currentUser.isSuspended || !currentUser.isActive || !currentUser.isApproved || currentUser.forceLogout;
+    const isSessionInvalidOrExpired = !auth.currentUser || !currentUser || currentUser.isSuspended || !currentUser.isActive || (!currentUser.isApproved && currentUser.role !== UserRole.SUPER_ADMIN) || currentUser.forceLogout;
 
     if (force === true || isSessionInvalidOrExpired) {
       if (!isSessionInvalidOrExpired) {
@@ -604,7 +604,7 @@ function AppContent() {
 
   const executeActualLogout = async () => {
     setShowLogoutModal(false);
-    const isSessionInvalidOrExpired = !auth.currentUser || !currentUser || currentUser.isSuspended || !currentUser.isActive || !currentUser.isApproved || currentUser.forceLogout;
+    const isSessionInvalidOrExpired = !auth.currentUser || !currentUser || currentUser.isSuspended || !currentUser.isActive || (!currentUser.isApproved && currentUser.role !== UserRole.SUPER_ADMIN) || currentUser.forceLogout;
 
     if (!isSessionInvalidOrExpired) {
       setIsLoggingOut(true);
@@ -755,7 +755,7 @@ function AppContent() {
   }, [currentUser]);
 
   useEffect(() => {
-    if (currentUser && currentUser.isApproved && !currentUser.isSuspended) {
+    if (currentUser && (currentUser.isApproved || currentUser.role === UserRole.SUPER_ADMIN) && !currentUser.isSuspended) {
        // Only show if preference is not NEVER and we haven't shown it this session
        const isNever = currentUser.profilePromptPreference === "NEVER";
        const sessionShown = sessionStorage.getItem(`profile_prompt_shown_${currentUser.id}`);
@@ -1311,7 +1311,7 @@ function AppContent() {
   }
 
   // Waiting Room or Suspension Logic
-  if (!currentUser.isApproved || currentUser.isSuspended) {
+  if ((!currentUser.isApproved && currentUser.role !== UserRole.SUPER_ADMIN) || currentUser.isSuspended) {
     return (
       <>
         <WaitingRoom user={currentUser} onLogout={handleLogout} />
