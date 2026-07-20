@@ -9,13 +9,14 @@ import { useRequisitions, useActiveFiscalYear } from "../contexts/RequisitionCon
 import { COMMITTED_REQUISITION_STATUSES, calculateProjectUtilization, getProjectRequisitions } from "../utils/budgetUtils";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
 import { formatCurrency, cn, getDaysSinceSubmission } from "../lib/utils";
-import { AlertTriangle, TrendingUp, Layout, Activity, ClipboardList, CheckCircle, Wallet, Users, X, Eye, Repeat, Clock, ArrowUpRight, Search, Trash2, Printer, FileText, ShieldCheck, CalendarRange, Flag, HelpCircle, Moon, Sun } from "lucide-react";
+import { AlertTriangle, TrendingUp, Layout, Activity, ClipboardList, CheckCircle, Wallet, Users, X, Eye, Repeat, Clock, ArrowUpRight, Search, Trash2, Printer, FileText, ShieldCheck, CalendarRange, Flag, HelpCircle, Moon, Sun, Plus } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { RequisitionDetailModal } from "./RequisitionsPanel";
 import { ReceiptTemplateGenerator } from "./ReceiptTemplateGenerator";
 import { printSystemLogs } from "../utils/exportUtils";
 import { BudgetCircularGauges } from "./BudgetCircularGauges";
 import { GlobalFiscalOverview } from "./GlobalFiscalOverview";
+import { NewRequisitionForm } from "./NewRequisitionForm";
 
 // Custom high-detail chart tooltip
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -142,6 +143,7 @@ const Dashboard: React.FC<{
 
   // Supplementary Budget states
   const [isSupplementaryModalOpen, setIsSupplementaryModalOpen] = useState(false);
+  const [isNewRequisitionModalOpen, setIsNewRequisitionModalOpen] = useState(false);
   const [supProjectId, setSupProjectId] = useState("");
   const [supAmount, setSupAmount] = useState("");
   const [supJustification, setSupJustification] = useState("");
@@ -601,23 +603,12 @@ const Dashboard: React.FC<{
             </button>
           )}
           <button
-            type="button"
-            onClick={() => setDarkMode?.(!darkMode)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-full shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 hover:shadow active:scale-95 transition-all text-[9.5px] md:text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 cursor-pointer"
-            title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-          >
-            {darkMode ? (
-              <>
-                <Sun size={12} className="text-amber-500" />
-                <span>Light Mode</span>
-              </>
-            ) : (
-              <>
-                <Moon size={12} className="text-indigo-600 dark:text-indigo-400" />
-                <span>Dark Mode</span>
-              </>
-            )}
-          </button>
+              onClick={() => setIsNewRequisitionModalOpen(true)}
+              className="px-4 py-2.5 bg-primary hover:bg-primary/90 text-white border border-primary rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest shadow-sm hover:shadow active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <Plus size={13} />
+              <span>New Requisition</span>
+            </button>
         </div>
       </div>
 
@@ -1677,6 +1668,7 @@ const Dashboard: React.FC<{
             </motion.div>
           </div>
         )}
+        {isNewRequisitionModalOpen && <NewRequisitionForm onClose={() => setIsNewRequisitionModalOpen(false)} />}
       </AnimatePresence>
     </div>
   );
