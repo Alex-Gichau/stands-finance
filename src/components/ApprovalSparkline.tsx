@@ -9,7 +9,8 @@ interface ApprovalSparklineProps {
 
 export const ApprovalSparkline: React.FC<ApprovalSparklineProps> = ({ req }) => {
   const data = useMemo(() => {
-    const history = [...req.approvalHistory].sort(
+    const historyArr = Array.isArray(req.approvalHistory) ? req.approvalHistory : [];
+    const history = [...historyArr].sort(
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
     

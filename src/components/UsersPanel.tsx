@@ -31,7 +31,10 @@ import {
   Download,
   Trash2,
   LogOut,
-  Zap
+  Zap,
+  Copy,
+  Send,
+  Check
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -52,11 +55,21 @@ export const UsersPanel: React.FC = () => {
     addChurchGroup,
     deleteChurchGroup,
     addSystemLog,
-    loading
+    loading,
+    sendBulkEmail
   } = useRequisitions();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState<string>("ALL");
-  const [activeTab, setActiveTab] = useState<"users" | "groups">("users");
+  const [filterGroup, setFilterGroup] = useState<string>("ALL");
+  const [activeTab, setActiveTab] = useState<"users" | "groups" | "email">("users");
+
+  // Email campaign states
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailContent, setEmailContent] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailResults, setEmailResults] = useState<{ successful: string[]; failed: any[]; simulated?: boolean } | null>(null);
 
   // Calculate users per security level
   const securityLevelCounts = React.useMemo(() => {
@@ -364,8 +377,15 @@ export const UsersPanel: React.FC = () => {
     const matchesSearch = u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                          u.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = filterRole === "ALL" || u.role === filterRole;
+    
+    let matchesGroup = true;
+    if (filterGroup !== "ALL") {
+      const uGroups = u.groups && u.groups.length > 0 ? u.groups : (u.group ? [u.group] : ["INDEPENDENT"]);
+      matchesGroup = uGroups.includes(filterGroup);
+    }
+
     const hideSuperAdmin = u.role === UserRole.SUPER_ADMIN && currentUser?.role !== UserRole.SUPER_ADMIN;
-    return matchesSearch && matchesRole && !hideSuperAdmin;
+    return matchesSearch && matchesRole && matchesGroup && !hideSuperAdmin;
   });
 
   const getRoleBadge = (role: UserRole) => {
@@ -448,6 +468,18 @@ export const UsersPanel: React.FC = () => {
           )}
         >
           Church Groups ({churchGroups.length})
+        </button>
+        <button 
+          onClick={() => setActiveTab("email")}
+          className={cn(
+            "px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+            activeTab === "email" ? "bg-white dark:bg-slate-900 text-primary dark:text-blue-400 shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+          )}
+        >
+          <div className="flex items-center gap-1.5">
+            <Mail size={12} />
+            <span>Emailing List</span>
+          </div>
         </button>
       </div>
 
@@ -562,6 +594,21 @@ export const UsersPanel: React.FC = () => {
               ))}
             </select>
           </div>
+
+          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5">
+            <Building2 size={14} className="text-slate-400" />
+            <select 
+              value={filterGroup}
+              onChange={(e) => setFilterGroup(e.target.value)}
+              className="bg-transparent text-[11px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 outline-none cursor-pointer [&>option]:bg-white [&>option]:dark:bg-slate-900"
+            >
+              <option value="ALL">ALL CHURCH GROUPS</option>
+              <option value="INDEPENDENT">INDEPENDENT</option>
+              {churchGroups.map((group) => (
+                <option key={group.id || group.name} value={group.name}>{group.name.toUpperCase()}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -652,33 +699,52 @@ export const UsersPanel: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 md:px-8 py-3 md:py-5 hidden md:table-cell">
-                      <div className="flex flex-col gap-1.5 justify-center">
-                        <div className="flex flex-col gap-1 text-slate-600">
-                          <div className="flex items-center gap-1.5">
-                            <Building2 size={12} className="text-slate-300" />
-                            <span className="text-[10px] font-bold uppercase tracking-tight italic">
-                              {(user.groups && user.groups.length > 0) ? user.groups[0] : (user.group || "INDEPENDENT")}
-                            </span>
-                          </div>
-                          {user.groups && user.groups.length > 1 && (
-                            <div className="flex flex-wrap gap-1 mt-1 pl-4">
-                              {user.groups.slice(1).map((g, idx) => (
-                                <span key={`group-tag-${g}-${idx}`} className="text-[8px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                                  {g}
+                      {(() => {
+                        const groupsCount = user.groups && user.groups.length > 0 ? user.groups.length : (user.group && user.group !== "INDEPENDENT" ? 1 : 0);
+                        return (
+                          <div className="flex flex-col gap-1.5 justify-center">
+                            <div className="flex flex-col gap-1 text-slate-600">
+                              <div className="flex items-center gap-1.5 justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <Building2 size={12} className="text-slate-300" />
+                                  <span className="text-[10px] font-bold uppercase tracking-tight italic">
+                                    {(user.groups && user.groups.length > 0) ? user.groups[0] : (user.group || "INDEPENDENT")}
+                                  </span>
+                                </div>
+                                <span 
+                                  className={cn(
+                                    "text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0 border",
+                                    groupsCount > 0 
+                                      ? "bg-blue-50 text-blue-600 border-blue-200/50 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-800/30" 
+                                      : "bg-slate-50 text-slate-400 border-slate-200/30 dark:bg-slate-900/30 dark:text-slate-550 dark:border-slate-800/20"
+                                  )}
+                                  title={`${groupsCount} Active Ministry Group(s) assigned`}
+                                >
+                                  <span className={cn("w-1 h-1 rounded-full", groupsCount > 0 ? "bg-blue-500 animate-pulse" : "bg-slate-300")} />
+                                  {groupsCount} {groupsCount === 1 ? "Group" : "Groups"}
                                 </span>
-                              ))}
+                              </div>
+                              {user.groups && user.groups.length > 1 && (
+                                <div className="flex flex-wrap gap-1 mt-1 pl-4">
+                                  {user.groups.slice(1).map((g, idx) => (
+                                    <span key={`group-tag-${g}-${idx}`} className="text-[8px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                                      {g}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                        {(user.role === UserRole.APPROVER_L1 || user.role === UserRole.APPROVER_L2) && (
-                          <div className="flex items-center gap-1.5 text-primary">
-                            <Fingerprint size={12} className="text-primary/40" />
-                            <span className="text-[10px] font-mono font-bold tracking-widest bg-primary/5 px-2 py-0.5 rounded-lg border border-primary/10">
-                              {user.approverCode || "TRANSACTION_PENDING"}
-                            </span>
                           </div>
-                        )}
-                      </div>
+                        );
+                      })()}
+                      {(user.role === UserRole.APPROVER_L1 || user.role === UserRole.APPROVER_L2) && (
+                        <div className="flex items-center gap-1.5 text-primary mt-1.5 pl-0.5">
+                          <Fingerprint size={12} className="text-primary/40" />
+                          <span className="text-[10px] font-mono font-bold tracking-widest bg-primary/5 px-2 py-0.5 rounded-lg border border-primary/10">
+                            {user.approverCode || "TRANSACTION_PENDING"}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 md:px-8 py-3 md:py-5">
                       <div className="flex items-center gap-2">
@@ -777,7 +843,7 @@ export const UsersPanel: React.FC = () => {
         </div>
       </div>
       </>
-      ) : (
+      ) : activeTab === "groups" ? (
         <>
           {/* Church Groups Search and Affiliations filter layer */}
           <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-4 mb-6">
@@ -910,6 +976,302 @@ export const UsersPanel: React.FC = () => {
             </div>
           )}
         </>
+      ) : (
+        <div className="space-y-6">
+          {/* Email Broadcast System Header */}
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <h2 className="text-xl font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight flex items-center gap-2">
+                  <Mail className="text-blue-500" size={24} />
+                  STANDS Finance Email Broadcaster
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  Compose and dispatch system-wide newsletters, announcements, and bulletins. All outgoing traffic is routed through <strong className="font-semibold text-slate-700 dark:text-slate-350">ict.team@pceastandrews.org</strong> under the sender alias <strong className="font-semibold text-slate-700 dark:text-slate-350">"STANDS Finance"</strong>.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left Box: Email Creator Form */}
+            <div className="lg:col-span-7 space-y-6">
+              <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+                <div>
+                  <h3 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider mb-1">Compose Message</h3>
+                  <p className="text-[10px] text-slate-400 font-mono tracking-widest">TRANSACTION_BROADCAST_COMPOSER</p>
+                </div>
+
+                {/* Templates Quick Bar */}
+                <div className="space-y-2">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">Quick Email Templates</span>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmailSubject("System Update: Q3 Financial Directives and Budget Allocation");
+                        setEmailContent("Dear Ministry Group Leaders,\n\nWe would like to remind all groups that the Quarter 3 budget allocation has been completed. Kindly review your ledger balances before submitting new requisitions.\n\nAll pending Level 1 reviews will be finalized by Friday.\n\nSincerely,\nSTANDS Finance Committee");
+                      }}
+                      className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-850 rounded-lg text-[10px] font-bold uppercase tracking-tight text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 transition-colors cursor-pointer"
+                    >
+                      Q3 Budget Notice
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmailSubject("Important Reminder: Requisition Support Document Requirements");
+                        setEmailContent("Dear Members,\n\nTo expedite the processing of requisitions, please ensure that all requests are accompanied by high-quality scanned receipts or invoices in PNG/PDF format.\n\nRequisitions lacking clear proof of expenditure will be returned for revision immediately.\n\nBest Regards,\nSTANDS Finance Team");
+                      }}
+                      className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-850 rounded-lg text-[10px] font-bold uppercase tracking-tight text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 transition-colors cursor-pointer"
+                    >
+                      Receipt Guidelines
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmailSubject("System Notice: Upcoming Portal Downtime & ICT Maintenance");
+                        setEmailContent("Hello,\n\nSTANDS eRequisitions portal will undergo scheduled database maintenance this Saturday from 10:00 PM to Sunday 2:00 AM EAT.\n\nDuring this time, authentication services and requisition submissions will be unavailable.\n\nThank you for your cooperation.\nSTANDS ICT Team");
+                      }}
+                      className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-850 rounded-lg text-[10px] font-bold uppercase tracking-tight text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 transition-colors cursor-pointer"
+                    >
+                      System Maintenance
+                    </button>
+                  </div>
+                </div>
+
+                <form 
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!emailSubject.trim() || !emailContent.trim()) {
+                      setEmailError("Please provide both a subject line and email body content.");
+                      return;
+                    }
+
+                    setEmailSending(true);
+                    setEmailError(null);
+                    setEmailSuccess(null);
+                    setEmailResults(null);
+
+                    try {
+                      // Grab all unique user email addresses
+                      const validEmails = users
+                        .map(u => u.email?.trim())
+                        .filter(email => email && email.includes("@"));
+                      
+                      const response = await sendBulkEmail(emailSubject, emailContent, validEmails);
+                      
+                      if (response.success) {
+                        setEmailSuccess(`Bulk campaign dispatched successfully! Total processed: ${response.total}`);
+                        setEmailResults({
+                          successful: response.successful || [],
+                          failed: response.failed || [],
+                          simulated: response.simulated
+                        });
+                        // Clear composer fields on success
+                        setEmailSubject("");
+                        setEmailContent("");
+                      }
+                    } catch (err: any) {
+                      setEmailError(err.message || "An unexpected error occurred during email dispatch.");
+                    } finally {
+                      setEmailSending(false);
+                    }
+                  }} 
+                  className="space-y-4"
+                >
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Sender Alias</label>
+                    <input 
+                      type="text" 
+                      value="STANDS Finance <ict.team@pceastandrews.org>" 
+                      disabled
+                      className="w-full px-4 py-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 rounded-xl text-xs font-mono select-none outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Subject Line</label>
+                    <input 
+                      type="text" 
+                      placeholder="Enter email subject header..."
+                      value={emailSubject}
+                      onChange={(e) => setEmailSubject(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-205 rounded-xl text-sm focus:border-primary/40 focus:ring-4 focus:ring-primary/5 outline-none transition-all"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Email Body (Plain Text or Linebreaks)</label>
+                    <textarea 
+                      rows={8}
+                      placeholder="Write your email body here... Line breaks are automatically converted to HTML breaks. Plain text is formatted cleanly inside the official STANDS Finance newsletter layout."
+                      value={emailContent}
+                      onChange={(e) => setEmailContent(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-205 rounded-xl text-sm focus:border-primary/40 focus:ring-4 focus:ring-primary/5 outline-none transition-all font-sans leading-relaxed"
+                    />
+                  </div>
+
+                  {emailError && (
+                    <div className="p-4 bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/30 rounded-xl flex items-start gap-2.5">
+                      <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                      <div className="text-xs font-medium">{emailError}</div>
+                    </div>
+                  )}
+
+                  {emailSuccess && (
+                    <div className="p-4 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30 rounded-xl flex items-start gap-2.5">
+                      <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
+                      <div className="text-xs font-medium">
+                        <div>{emailSuccess}</div>
+                        {emailResults?.simulated && (
+                          <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-mono uppercase tracking-widest">
+                            SMTP_PASS Not Configured: Dispatch simulated in activity logs.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={emailSending}
+                    className="w-full btn-primary py-3 px-6 rounded-xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-wider shadow-lg shadow-primary/20 disabled:opacity-50"
+                  >
+                    {emailSending ? (
+                      <>
+                        <Loader2 className="animate-spin" size={16} />
+                        Dispatched Broadcast Campaign...
+                      </>
+                    ) : (
+                      <>
+                        <Send size={16} />
+                        Dispatch Email Campaign
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+
+              {/* Display Sent Results Detail if available */}
+              {emailResults && (
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4 animate-in fade-in transition-all">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Campaign Dispatch Metrics</h4>
+                    <span className="text-[9px] font-mono text-slate-400">SYS_DISPATCH_LOG</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-3 bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100 dark:border-emerald-900/20 rounded-xl">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">Deliveries Sent</span>
+                      <span className="text-xl font-black text-emerald-700 dark:text-emerald-350">{emailResults.successful.length}</span>
+                    </div>
+                    <div className="p-3 bg-rose-50/50 dark:bg-rose-950/10 border border-rose-100 dark:border-rose-900/20 rounded-xl">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 block">Failed Deliveries</span>
+                      <span className="text-xl font-black text-rose-700 dark:text-rose-350">{emailResults.failed.length}</span>
+                    </div>
+                  </div>
+                  {emailResults.failed.length > 0 && (
+                    <div className="space-y-1.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">Failure Log</span>
+                      <div className="max-h-24 overflow-y-auto space-y-1 border border-slate-100 dark:border-slate-800 p-2 rounded-lg text-[10px] font-mono">
+                        {emailResults.failed.map((f: any, idx) => (
+                          <div key={idx} className="text-rose-500 truncate">
+                            {f.email}: {f.error}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Right Box: Recipient List & Copy Helper */}
+            <div className="lg:col-span-5 space-y-6">
+              <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider mb-1">Mailing Recipients</h3>
+                    <p className="text-[10px] text-slate-400 font-mono tracking-widest">Active Database Subscribers</p>
+                  </div>
+                  <span className="px-2.5 py-1 bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200/20 rounded-full text-[11px] font-black">
+                    {users.filter(u => u.email).length} Users
+                  </span>
+                </div>
+
+                {/* Search in Mailing List */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                  <input
+                    type="text"
+                    placeholder="Quick filter recipient emails..."
+                    onChange={(e) => {
+                      const listElements = document.querySelectorAll(".recipient-row");
+                      const q = e.target.value.toLowerCase().trim();
+                      listElements.forEach(elem => {
+                        const text = elem.textContent?.toLowerCase() || "";
+                        if (text.includes(q)) {
+                          elem.classList.remove("hidden");
+                        } else {
+                          elem.classList.add("hidden");
+                        }
+                      });
+                    }}
+                    className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-xl text-xs focus:border-primary/40 focus:ring-4 focus:ring-primary/5 outline-none transition-all"
+                  />
+                </div>
+
+                {/* Quick Clipboard Copy Helper */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allEmails = users
+                      .map(u => u.email?.trim())
+                      .filter(e => e && e.includes("@"))
+                      .join(", ");
+                    navigator.clipboard.writeText(allEmails);
+                    
+                    const btn = document.getElementById("copy-mailing-list-btn");
+                    if (btn) {
+                      const originalHtml = btn.innerHTML;
+                      btn.innerHTML = `<span class="flex items-center justify-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>COPIED ALL EMAILS</span>`;
+                      setTimeout(() => {
+                        btn.innerHTML = originalHtml;
+                      }, 2000);
+                    }
+                  }}
+                  id="copy-mailing-list-btn"
+                  className="w-full py-2 bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-350 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Copy size={12} />
+                  Copy Emails to Clipboard
+                </button>
+
+                {/* Scrollable Recipients list */}
+                <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60 border border-slate-150 dark:border-slate-800 rounded-xl">
+                  {users
+                    .filter(u => u.email)
+                    .map((recipient) => {
+                      const initials = recipient.name ? recipient.name.charAt(0).toUpperCase() : "U";
+                      return (
+                        <div key={recipient.id} className="recipient-row p-3 hover:bg-slate-50/50 dark:hover:bg-slate-950/20 flex items-center gap-3 transition-colors">
+                          <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-500 shrink-0 select-none">
+                            {initials}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate leading-snug">{recipient.name}</p>
+                            <p className="text-[9px] text-slate-400 font-mono tracking-tight truncate mt-0.5">{recipient.email}</p>
+                          </div>
+                          <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-[8px] font-semibold text-slate-400 dark:text-slate-500 rounded uppercase tracking-wider">
+                            {recipient.role}
+                          </span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="p-6 bg-slate-900 rounded-3xl border border-slate-800 shadow-2xl relative overflow-hidden">

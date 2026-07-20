@@ -1976,7 +1976,7 @@ export const FinanceLedgerPanel: React.FC = () => {
                                     )}
                                   </div>
 
-                                  {req.approvalHistory && req.approvalHistory.length > 0 && (
+                                  {Array.isArray(req.approvalHistory) && req.approvalHistory.length > 0 && (
                                     <div className="space-y-1 pt-2">
                                       <p className="font-bold text-slate-700">Audit Chamber Protocol Logs:</p>
                                       <div className="space-y-1">

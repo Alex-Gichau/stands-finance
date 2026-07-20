@@ -2460,8 +2460,9 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
     });
 
     // 2. Map existing approvalHistory entries
-    if (req.approvalHistory && req.approvalHistory.length > 0) {
-      req.approvalHistory.forEach((note, idx) => {
+    const historyArr = Array.isArray(req.approvalHistory) ? req.approvalHistory : [];
+    if (historyArr.length > 0) {
+      historyArr.forEach((note, idx) => {
         let type: TimelineEvent["type"] = "GENERIC";
         let title = "Process Step Documented";
         let subtitle = `Validated by ${note.approverName}`;

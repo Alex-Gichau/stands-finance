@@ -260,6 +260,47 @@ export function safeNormalizeReceipts(receipts: any): string[] {
   return [];
 }
 
+export function safeNormalizeApprovalHistory(history: any): any[] {
+  if (!history) return [];
+  if (Array.isArray(history)) {
+    return history.map((x: any) => {
+      if (typeof x === 'string') {
+        try {
+          return JSON.parse(x);
+        } catch (e) {
+          console.error("Failed to parse individual stringified history item:", e);
+          return null;
+        }
+      }
+      return x;
+    }).filter(Boolean);
+  }
+  if (typeof history === 'string') {
+    const trimmed = history.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.map((x: any) => {
+            if (typeof x === 'string') {
+              try {
+                return JSON.parse(x);
+              } catch (e) {
+                console.error("Failed to parse stringified history element:", e);
+                return null;
+              }
+            }
+            return x;
+          }).filter(Boolean);
+        }
+      } catch (e) {
+        console.error("Failed to parse stringified approvalHistory array:", e);
+      }
+    }
+  }
+  return [];
+}
+
 const limit = (val: number) => ({ type: 'limit', value: val });
 const orderBy = (field: string, direction: string = 'asc') => ({ type: 'orderBy', field, direction });
 const where = (field: string, op: string, value: any) => ({ type: 'where', field, op, value });
@@ -469,6 +510,7 @@ interface RequisitionContextType {
   setSyncTargets: (targets: string[]) => void;
   systemLogLimit: number;
   setSystemLogLimit: (limit: number) => void;
+  sendBulkEmail: (subject: string, content: string, recipients?: string[]) => Promise<{ success: boolean; total: number; successful: string[]; failed: any[]; simulated?: boolean; message?: string }>;
 }
 
 const RequisitionContext = createContext<RequisitionContextType | undefined>(undefined);
@@ -765,14 +807,14 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             setCurrentUser({
               ...dbUser,
               approverCode: dbUser.approverCode || dbUser.approver_code,
-              isActive: dbUser.isActive !== undefined ? dbUser.isActive : dbUser.is_active,
-              isApproved: dbUser.isApproved !== undefined ? dbUser.isApproved : dbUser.is_approved,
-              isSuspended: dbUser.isSuspended !== undefined ? dbUser.isSuspended : dbUser.is_suspended,
+              isActive: dbUser.isActive !== undefined ? dbUser.isActive : (dbUser.is_active !== undefined ? dbUser.is_active : true),
+              isApproved: dbUser.isApproved !== undefined ? dbUser.isApproved : (dbUser.is_approved !== undefined ? dbUser.is_approved : true),
+              isSuspended: dbUser.isSuspended !== undefined ? dbUser.isSuspended : (dbUser.is_suspended !== undefined ? dbUser.is_suspended : false),
               photoURL: dbUser.photoURL || dbUser.photo_url,
               tempPassword: dbUser.tempPassword || dbUser.temp_password,
-              isOnline: dbUser.isOnline !== undefined ? dbUser.isOnline : dbUser.is_online,
+              isOnline: dbUser.isOnline !== undefined ? dbUser.isOnline : (dbUser.is_online !== undefined ? dbUser.is_online : false),
               lastSeen: dbUser.lastSeen || dbUser.last_seen,
-              idleTimeoutDuration: dbUser.idleTimeoutDuration || dbUser.idle_timeout_duration
+              idleTimeoutDuration: dbUser.idleTimeoutDuration || dbUser.idle_timeout_duration || 15
             } as UserProfile);
           } else {
             const defaultUser = {
@@ -810,6 +852,26 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       unsubscribe();
     };
   }, []);
+
+  // Sync currentUser with real-time polled users list from MongoDB
+  useEffect(() => {
+    if (!currentUser || !currentUser.id || users.length === 0) return;
+    const dbProfile = users.find(u => u.id === currentUser.id || u.email.toLowerCase() === currentUser.email.toLowerCase());
+    if (dbProfile) {
+      const hasChanged = 
+        dbProfile.role !== currentUser.role ||
+        dbProfile.isApproved !== currentUser.isApproved ||
+        dbProfile.isSuspended !== currentUser.isSuspended ||
+        dbProfile.isActive !== currentUser.isActive ||
+        dbProfile.group !== currentUser.group ||
+        JSON.stringify(dbProfile.groups || []) !== JSON.stringify(currentUser.groups || []);
+
+      if (hasChanged) {
+        console.log("[Auth Sync] Aligning currentUser state with latest database profile:", dbProfile);
+        setCurrentUser(prev => prev ? { ...prev, ...dbProfile } : null);
+      }
+    }
+  }, [users, currentUser?.id, currentUser?.email]);
 
   const addSystemLog = useCallback(async (action: string, details: string, metadata?: any) => {
     try {
@@ -1477,7 +1539,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
           id: doc.id,
           ...r,
           attachments: safeNormalizeAttachments(r?.attachments),
-          receipts: safeNormalizeReceipts(r?.receipts)
+          receipts: safeNormalizeReceipts(r?.receipts),
+          approvalHistory: safeNormalizeApprovalHistory(r?.approvalHistory || r?.approval_history)
         } as Requisition;
       });
       // Client-side additional filtering for non-standard access or multiple groups
@@ -1820,10 +1883,11 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     const updatePresence = async (onlineStatus: boolean) => {
       const nowStr = new Date().toISOString();
+      const headers = await getAuthHeaders();
 
       fetch(`/api/db/users/${currentUserId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           is_online: onlineStatus,
           isOnline: onlineStatus,
@@ -1841,10 +1905,11 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       updatePresence(true);
     }, 30000);
 
-    const handleUnload = () => {
+    const handleUnload = async () => {
+      const headers = await getAuthHeaders();
       fetch(`/api/db/users/${currentUserId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ is_online: false, isOnline: false })
       }).catch(err => console.warn("Presence unload update error:", err));
     };
@@ -2116,7 +2181,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   // --- UNIFIED MONGODB DATA LOADER FOR ALL 15 DATASETS ---
   useEffect(() => {
-    if (!currentUserId || !currentUserIsApproved || currentUserIsSuspended) {
+    if (!currentUserId || currentUserIsSuspended) {
       setLoading(false);
       return;
     }
@@ -2131,7 +2196,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const parsedGroups = filterGroups.length > 0 ? filterGroups : (currentUserGroup ? [currentUserGroup] : []);
 
       try {
-        const response = await fetch("/api/db-all");
+        const headers = await getAuthHeaders();
+        const response = await fetch("/api/db-all", { headers });
         if (!response.ok) {
           throw new Error(`Failed to fetch database: ${response.statusText}`);
         }
@@ -2146,7 +2212,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             projectId: r.project_id,
             title: r.title,
             description: r.description,
-            amount: r.amount,
+            amount: Number(r.amount) || 0,
             amountWords: r.amount_words,
             groupId: r.group_id,
             groupName: r.group_name,
@@ -2163,7 +2229,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             approvedAtL2: r.approved_at_l2,
             disbursedAt: r.disbursed_at,
             rejectionReason: r.rejection_reason,
-            approvalHistory: r.approval_history || [],
+            approvalHistory: safeNormalizeApprovalHistory(r.approval_history || r.approvalHistory),
             digitalSignature: r.digital_signature,
             payableTo: r.payable_to,
             recurrence: r.recurrence,
@@ -2192,12 +2258,12 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             id: p.id,
             name: p.name,
             groupId: p.group_id,
-            allocatedBudget: p.allocated_budget,
-            spentAmount: p.spent_amount,
+            allocatedBudget: Number(p.allocated_budget) || 0,
+            spentAmount: Number(p.spent_amount) || 0,
             status: p.status,
             color: p.color,
             fiscalYear: p.fiscal_year,
-            requisitionLimit: p.requisition_limit,
+            requisitionLimit: Number(p.requisition_limit) || 0,
             accountNumber: p.account_number
           } as Project));
 
@@ -2250,7 +2316,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             id: tx.id,
             externalRef: tx.external_ref,
             sourceSystem: tx.source_system,
-            amount: tx.amount,
+            amount: Number(tx.amount) || 0,
             type: tx.type,
             status: tx.status,
             description: tx.description,
@@ -2373,8 +2439,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             createdAt: lb.created_at,
             createdBy: lb.created_by,
             creatorName: lb.creator_name,
-            budgetLimit: lb.budget_limit,
-            spentAmount: lb.spent_amount,
+            budgetLimit: Number(lb.budget_limit) || 0,
+            spentAmount: Number(lb.spent_amount) || 0,
             notes: lb.notes,
             status: lb.status
           } as LedgerBook));
@@ -2391,7 +2457,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             role: sb.role,
             projectId: sb.project_id,
             projectName: sb.project_name,
-            amount: sb.amount,
+            amount: Number(sb.amount) || 0,
             justification: sb.justification,
             submittedAt: sb.submitted_at,
             status: sb.status
@@ -2664,9 +2730,10 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           };
+          const headers = await getAuthHeaders();
           await fetch(`/api/db/users/${uid}`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers,
             body: JSON.stringify(newProfile)
           });
         }
@@ -3532,6 +3599,28 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     });
   }, [ledgerBooks]);
 
+  const sendBulkEmail = useCallback(async (subject: string, content: string, recipients?: string[]) => {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch("/api/send-bulk-email", {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ subject, content, recipients })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || `Bulk email dispatch failed with status: ${response.status}`);
+      }
+      return data;
+    } catch (err: any) {
+      console.error("Failed to trigger bulk email newsletter:", err);
+      throw err;
+    }
+  }, []);
+
   const uniqueUsers = React.useMemo(() => {
     const seen = new Set<string>();
     return users.filter(u => {
@@ -3676,7 +3765,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       firestoreQuotaExceeded,
       setFirestoreQuotaExceeded,
       setSyncTargets,
-      syncingTargets
+      syncingTargets,
+      sendBulkEmail
     }}>
       {children}
     </RequisitionContext.Provider>

@@ -302,7 +302,7 @@ export function generatePrintableHtml(
   const tableRowsHtml = requisitions.map((req, index) => {
     const isMissingReceipt =
       req.status === "DISBURSED" && (!req.receipts || req.receipts.length === 0);
-    const approvalsList = req.approvalHistory && req.approvalHistory.length > 0
+    const approvalsList = Array.isArray(req.approvalHistory) && req.approvalHistory.length > 0
       ? req.approvalHistory
           .map((a) => `${a.approverName} [${a.role.replace("APPROVER_", "L")}]`)
           .join(", ")
@@ -830,7 +830,8 @@ export function generateVoucherHtml(req: Requisition, currentUser: any): string 
     minute: "2-digit",
   });
 
-  const auditRowsHtml = (req.approvalHistory || []).map((note, i) => {
+  const historyArr = Array.isArray(req.approvalHistory) ? req.approvalHistory : [];
+  const auditRowsHtml = historyArr.map((note, i) => {
     return `
       <tr>
         <td style="font-family: monospace; font-size: 8px; color: #64748b; padding: 8px;">${formatDate(note.timestamp)}</td>

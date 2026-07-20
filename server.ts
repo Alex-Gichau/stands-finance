@@ -12,7 +12,7 @@ import { seedDatabase } from "./scripts/seed-mongo.ts";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 
-dotenv.config({ override: true });
+dotenv.config();
 
 import nodemailer from "nodemailer";
 import { google } from "googleapis";
@@ -528,7 +528,14 @@ async function startServer() {
   }
   const StrictRequisitionModel = mongoose.model('Requisition', RequisitionSchema);
 
-  const mongoUri = process.env.MONGODB_URI || "mongodb://178.104.122.211:27017/stands_finance_db";
+  let mongoUri = process.env.MONGODB_URI || "mongodb://178.104.122.211:27017/stands_finance_db";
+  if (mongoUri.includes("@") && !mongoUri.includes("authSource")) {
+    if (mongoUri.includes("?")) {
+      mongoUri += "&authSource=admin";
+    } else {
+      mongoUri += "?authSource=admin";
+    }
+  }
 
   /**
    * Establishes connection to MongoDB using Mongoose.
@@ -667,6 +674,7 @@ async function startServer() {
   app.use("/api/db", authMiddleware);
   app.use("/api/send-email", authMiddleware);
   app.use("/api/send-summary-email", authMiddleware);
+  app.use("/api/send-bulk-email", authMiddleware);
   app.use("/api/slack", authMiddleware);
   app.use("/api/attachments/upload", authMiddleware);
 
@@ -1102,6 +1110,119 @@ async function startServer() {
       });
 
       res.json({ success: true, deliveredTo: to, status, simulated: true, warning: err.message });
+    }
+  });
+
+  // API Route for Sending Bulk Newsletter/Information Email (Admins only)
+  app.post("/api/send-bulk-email", async (req: any, res: any) => {
+    const { subject, content, recipients } = req.body;
+    
+    // Authorization check
+    if (req.userRole !== "ADMIN" && req.userRole !== "SUPER_ADMIN") {
+      return res.status(403).json({ error: "Access Denied: Only Administrators can send bulk emails." });
+    }
+
+    if (!subject || !content) {
+      return res.status(400).json({ error: "Subject and content are required." });
+    }
+
+    // Resolve recipients list
+    let resolvedRecipients: string[] = [];
+    if (Array.isArray(recipients) && recipients.length > 0) {
+      resolvedRecipients = recipients.filter(email => email && typeof email === 'string' && email.includes('@'));
+    }
+
+    if (resolvedRecipients.length === 0) {
+      // Fetch all users from db
+      try {
+        let usersList: any[] = [];
+        if (mongoose.connection.readyState === 1) {
+          usersList = await (models.User as any).find({}).lean();
+        } else {
+          usersList = readJsonCollection("users");
+        }
+        resolvedRecipients = usersList
+          .map((u: any) => u.email)
+          .filter((email: string) => email && email.includes('@'));
+      } catch (e: any) {
+        console.error("Error fetching users for bulk email:", e);
+        return res.status(500).json({ error: "Failed to retrieve user mailing list: " + e.message });
+      }
+    }
+
+    // Remove duplicates
+    resolvedRecipients = Array.from(new Set(resolvedRecipients.map(e => e.toLowerCase().trim())));
+
+    if (resolvedRecipients.length === 0) {
+      return res.status(400).json({ error: "No valid recipient email addresses found." });
+    }
+
+    const fromEmail = "ict.team@pceastandrews.org";
+    const fromName = "STANDS Finance";
+
+    if (!process.env.SMTP_PASS) {
+      console.warn("SMTP_PASS is not configured. Bulk Email will be logged as simulated.");
+      const details = `Simulated Bulk Email '${subject}' to ${resolvedRecipients.length} recipients (SMTP not configured).`;
+      persistActivity({
+        action: "BULK_EMAIL_SIMULATED",
+        details,
+        performedBy: req.dbUser?.name || req.user?.email || "ADMIN_MAILER",
+        timestamp: new Date().toISOString()
+      });
+      return res.json({ success: true, recipients: resolvedRecipients, simulated: true, message: "SMTP not configured. Email logged." });
+    }
+
+    try {
+      const successful: string[] = [];
+      const failed: { email: string; error: string }[] = [];
+
+      for (const recipient of resolvedRecipients) {
+        try {
+          await transporter.sendMail({
+            from: `"${fromName}" <${fromEmail}>`,
+            to: recipient,
+            subject,
+            html: `
+              <div style="font-family: sans-serif; padding: 25px; color: #1e293b; background-color: #f8fafc; max-width: 600px; margin: 0 auto; border-radius: 12px; border: 1px solid #e2e8f0;">
+                <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px;">
+                  <h1 style="color: #1e3a8a; margin: 0; font-size: 20px; text-transform: uppercase; letter-spacing: 0.1em;">${fromName} Update</h1>
+                  <p style="color: #64748b; font-size: 11px; margin: 4px 0 0 0; font-weight: bold; letter-spacing: 0.05em;">PCEA EAST ANDREWS CHURCH</p>
+                </div>
+                <div style="background-color: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); line-height: 1.6; color: #334155;">
+                  ${content.replace(/\n/g, '<br />')}
+                </div>
+                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 25px 0;" />
+                <div style="text-align: center; font-size: 11px; color: #94a3b8;">
+                  <p style="margin: 4px 0;">This communication was sent on behalf of ${fromName}.</p>
+                  <p style="margin: 4px 0;">If you have any inquiries, contact the ICT Team at ${fromEmail}.</p>
+                  <p style="margin: 12px 0 0 0; font-weight: bold;">STANDS Finance &copy; 2026</p>
+                </div>
+              </div>
+            `
+          });
+          successful.push(recipient);
+        } catch (mailErr: any) {
+          console.error(`Failed to send bulk email to ${recipient}:`, mailErr);
+          failed.push({ email: recipient, error: mailErr.message || "Unknown error" });
+        }
+      }
+
+      persistActivity({
+        action: "BULK_EMAIL_DISPATCH",
+        details: `Bulk Email '${subject}' sent by Admin. Success: ${successful.length}/${resolvedRecipients.length}, Failed: ${failed.length}`,
+        performedBy: req.dbUser?.name || req.user?.email || "ADMIN_MAILER",
+        timestamp: new Date().toISOString()
+      });
+
+      res.json({
+        success: true,
+        total: resolvedRecipients.length,
+        successful,
+        failed,
+      });
+    } catch (err: any) {
+      console.error("Bulk Email processing error:", err);
+      res.status(500).json({ error: "Failed to process bulk emails: " + err.message });
     }
   });
 

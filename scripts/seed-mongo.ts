@@ -22,7 +22,14 @@ import {
 
 dotenv.config();
 
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/stands_finance_db";
+let MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/stands_finance_db";
+if (MONGODB_URI.includes("@") && !MONGODB_URI.includes("authSource")) {
+  if (MONGODB_URI.includes("?")) {
+    MONGODB_URI += "&authSource=admin";
+  } else {
+    MONGODB_URI += "?authSource=admin";
+  }
+}
 
 const mappings = [
   { model: User, file: 'users_export.json', name: 'User' },
@@ -56,10 +63,17 @@ export async function seedDatabase() {
         continue;
       }
 
-      const filePath = path.join(process.cwd(), 'server', 'data', file);
+      let filePath = path.join(process.cwd(), 'server', 'data', file);
       if (!fs.existsSync(filePath)) {
-        console.warn(`[MongoDB Seeder] Source file ${file} not found at ${filePath}. Skipping.`);
-        continue;
+        const fallbackPath = path.join(process.cwd(), file);
+        if (fs.existsSync(fallbackPath)) {
+          filePath = fallbackPath;
+        } else if (file === 'users_export.json' && fs.existsSync(path.join(process.cwd(), 'users.json'))) {
+          filePath = path.join(process.cwd(), 'users.json');
+        } else {
+          console.warn(`[MongoDB Seeder] Source file ${file} not found at ${filePath} or root fallback. Skipping.`);
+          continue;
+        }
       }
 
       const raw = fs.readFileSync(filePath, 'utf-8');
@@ -83,10 +97,14 @@ export async function seedDatabase() {
           "flaggedForAudit", "flagged_for_audit", "inProcurement", "in_procurement", "requiresMoreInfo", "requires_more_info"
         ];
         for (const key of booleanKeys) {
-          if (doc[key] === "true") {
+          if (doc[key] === "true" || doc[key] === true) {
             doc[key] = true;
-          } else if (doc[key] === "false") {
+          } else if (doc[key] === "false" || doc[key] === false) {
             doc[key] = false;
+          } else if (doc[key] === "" || doc[key] === null || doc[key] === undefined) {
+            delete doc[key];
+          } else {
+            doc[key] = Boolean(doc[key]);
           }
         }
 
@@ -104,7 +122,27 @@ export async function seedDatabase() {
         ];
         for (const field of dateFields) {
           if (doc[field]) {
-            doc[field] = new Date(doc[field]);
+            const rawVal = doc[field];
+            let parsedDate = new Date(rawVal);
+            if (isNaN(parsedDate.getTime()) && typeof rawVal === 'string') {
+              const match = rawVal.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:,\s*(\d{1,2}):(\d{1,2}):(\d{1,2}))?$/);
+              if (match) {
+                const [_, day, month, year, hour, minute, second] = match;
+                parsedDate = new Date(
+                  Number(year),
+                  Number(month) - 1,
+                  Number(day),
+                  hour ? Number(hour) : 0,
+                  minute ? Number(minute) : 0,
+                  second ? Number(second) : 0
+                );
+              }
+            }
+            if (!isNaN(parsedDate.getTime())) {
+              doc[field] = parsedDate;
+            } else {
+              delete doc[field];
+            }
           }
         }
 
