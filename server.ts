@@ -1778,6 +1778,57 @@ async function startServer() {
     }
   });
 
+  // API Endpoint for System Activity Report (Requested Feature)
+  app.post("/api/slack-summary/system-activity", async (req, res) => {
+    const { requisitions = [] } = req.body;
+    const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+    const targetChannel = "#system-logs";
+
+    const activities = restoreActivities();
+    const feedback = restoreFeedback();
+
+    // 1. Requisition Status Summary
+    const drafts = requisitions.filter((r: any) => r.status === "DRAFT");
+    const pending = requisitions.filter((r: any) => ["SUBMITTED", "APPROVED_L1"].includes(r.status));
+    const completed = requisitions.filter((r: any) => ["DISBURSED", "APPROVED_L2"].includes(r.status));
+
+    let report = "📊 *SYSTEM ACTIVITY REPORT* 📊\n\n";
+    report += "*Requisition Status:*\n";
+    report += `✅ Completed: ${completed.length}\n`;
+    report += `⏳ Pending: ${pending.length}\n`;
+    report += `📝 Saved Drafts: ${drafts.length}\n\n`;
+
+    // 2. Feedback Quotes
+    report += "*Recent Feedback:*\n";
+    feedback.slice(-5).forEach((f: any) => {
+      report += `> _"${f.explanation}"_ - ${f.username}\n`;
+    });
+    if (feedback.length === 0) report += "_No feedback yet._\n";
+    report += "\n";
+
+    // 3. Email Quotes and Delivery Report
+    report += "*Recent Email Activity:*\n";
+    const emailActivities = activities.filter((a: any) => a.action.includes("EMAIL"));
+    emailActivities.slice(-5).forEach((e: any) => {
+      report += `• ${e.action}: ${e.details}\n`;
+    });
+    if (emailActivities.length === 0) report += "_No email activity._\n";
+
+    try {
+      if (webhookUrl) {
+        await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: report, channel: targetChannel })
+        });
+      }
+      res.json({ success: true, message: "System activity report dispatched to Slack." });
+    } catch (err: any) {
+      console.error("Slack Report Error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // API Endpoint to manually trigger or simulate Slack User Analytics Leaderboard (Prompt 6)
   app.post("/api/slack-summary/weekly", async (req, res) => {
     const { requisitions = [] } = req.body;

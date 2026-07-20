@@ -41,6 +41,7 @@ import { motion, AnimatePresence } from "motion/react";
 export const UsersPanel: React.FC = () => {
   const { 
     users, 
+    requisitions,
     approveUser, 
     suspendUser, 
     updateUserRole, 
@@ -70,6 +71,9 @@ export const UsersPanel: React.FC = () => {
   const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailResults, setEmailResults] = useState<{ successful: string[]; failed: any[]; simulated?: boolean } | null>(null);
+  const [emailSelectedRecipients, setEmailSelectedRecipients] = useState<Set<string>>(new Set());
+  const [emailSelectedGroups, setEmailSelectedGroups] = useState<string[]>([]);
+  const [selectedRequisitionId, setSelectedRequisitionId] = useState<string>("");
 
   // Calculate users per security level
   const securityLevelCounts = React.useMemo(() => {
@@ -1053,12 +1057,20 @@ export const UsersPanel: React.FC = () => {
                     setEmailResults(null);
 
                     try {
-                      // Grab all unique user email addresses
-                      const validEmails = users
+                      // Grab all unique user email addresses based on selection
+                      const selectedUsers = users.filter(u => emailSelectedRecipients.has(u.id));
+                      const validEmails = selectedUsers
                         .map(u => u.email?.trim())
                         .filter(email => email && email.includes("@"));
                       
-                      const response = await sendBulkEmail(emailSubject, emailContent, validEmails);
+                      if (validEmails.length === 0) {
+                        setEmailError("Please select at least one recipient.");
+                        setEmailSending(false);
+                        return;
+                      }
+
+                      const finalSubject = `${emailSelectedGroups.map(g => `[${g}]`).join("")} ${emailSubject}`;
+                      const response = await sendBulkEmail(finalSubject, emailContent, validEmails);
                       
                       if (response.success) {
                         setEmailSuccess(`Bulk campaign dispatched successfully! Total processed: ${response.total}`);
@@ -1090,6 +1102,54 @@ export const UsersPanel: React.FC = () => {
                   </div>
 
                   <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Target Ministry Groups</label>
+                    <div className="flex flex-wrap gap-2">
+                      {churchGroups.map(cg => (
+                        <button
+                          key={cg.id}
+                          type="button"
+                          onClick={() => {
+                            if (emailSelectedGroups.includes(cg.name)) {
+                              setEmailSelectedGroups(emailSelectedGroups.filter(g => g !== cg.name));
+                            } else {
+                              setEmailSelectedGroups([...emailSelectedGroups, cg.name]);
+                            }
+                          }}
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-tight transition-colors border",
+                            emailSelectedGroups.includes(cg.name)
+                              ? "bg-primary text-white border-primary"
+                              : "bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800"
+                          )}
+                        >
+                          {cg.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Attach Requisition Details</label>
+                    <select
+                      value={selectedRequisitionId}
+                      onChange={(e) => {
+                          const reqId = e.target.value;
+                          setSelectedRequisitionId(reqId);
+                          const req = requisitions.find(r => r.id === reqId);
+                          if (req) {
+                             setEmailContent(prev => prev + `\n\n--- Requisition Details ---\nID: ${req.id}\nProject ID: ${req.projectId}\nAmount: ${req.amount}\nStatus: ${req.status}\nDescription: ${req.description}\n`);
+                          }
+                      }}
+                      className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-xl text-sm focus:border-primary/40 focus:ring-4 focus:ring-primary/5 outline-none transition-all"
+                    >
+                      <option value="">Select a requisition...</option>
+                      {requisitions.slice(0, 10).map(r => (
+                        <option key={r.id} value={r.id}>{r.id} - {r.projectId || "No Project ID"}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Subject Line</label>
                     <input 
                       type="text" 
@@ -1098,6 +1158,9 @@ export const UsersPanel: React.FC = () => {
                       onChange={(e) => setEmailSubject(e.target.value)}
                       className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-205 rounded-xl text-sm focus:border-primary/40 focus:ring-4 focus:ring-primary/5 outline-none transition-all"
                     />
+                    <div className="text-[9px] text-slate-400 font-mono mt-1">
+                      Preview: {emailSelectedGroups.map(g => `[${g}]`).join("")} {emailSubject}
+                    </div>
                   </div>
 
                   <div className="space-y-1">
@@ -1246,14 +1309,48 @@ export const UsersPanel: React.FC = () => {
                   Copy Emails to Clipboard
                 </button>
 
+                <div className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-800">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="checkbox"
+                      checked={users.filter(u => u.email).every(u => emailSelectedRecipients.has(u.id))}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setEmailSelectedRecipients(new Set(users.filter(u => u.email).map(u => u.id)));
+                        } else {
+                          setEmailSelectedRecipients(new Set());
+                        }
+                      }}
+                      className="rounded border-slate-300 text-primary focus:ring-primary"
+                    />
+                    <span className="text-[10px] font-bold text-slate-600 uppercase">Select All</span>
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-mono">{emailSelectedRecipients.size} Selected</span>
+                </div>
+
                 {/* Scrollable Recipients list */}
                 <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60 border border-slate-150 dark:border-slate-800 rounded-xl">
                   {users
                     .filter(u => u.email)
                     .map((recipient) => {
                       const initials = recipient.name ? recipient.name.charAt(0).toUpperCase() : "U";
+                      const isSelected = emailSelectedRecipients.has(recipient.id);
                       return (
                         <div key={recipient.id} className="recipient-row p-3 hover:bg-slate-50/50 dark:hover:bg-slate-950/20 flex items-center gap-3 transition-colors">
+                          <input 
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              const next = new Set(emailSelectedRecipients);
+                              if (e.target.checked) {
+                                next.add(recipient.id);
+                              } else {
+                                next.delete(recipient.id);
+                              }
+                              setEmailSelectedRecipients(next);
+                            }}
+                            className="rounded border-slate-300 text-primary focus:ring-primary"
+                          />
                           <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-500 shrink-0 select-none">
                             {initials}
                           </div>
