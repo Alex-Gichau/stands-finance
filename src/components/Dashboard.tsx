@@ -586,7 +586,7 @@ const Dashboard: React.FC<{
           <p className="text-slate-500 text-[9px] md:text-sm">Welcome, {currentUser?.name} • <span className="font-mono text-[8px] md:text-[10px] uppercase tracking-widest">{currentUser?.role} Mode</span></p>
         </div>
         <div className="flex flex-wrap items-center gap-2 md:gap-3">
-          {(!systemSettings.hideSupplementaryBudgetBtn && currentUser && [UserRole.CHURCH_GROUP, UserRole.APPROVER_L1, UserRole.APPROVER_L2, UserRole.ADMIN, UserRole.SUPER_ADMIN].includes(currentUser.role)) && (
+          {(false && !systemSettings.hideSupplementaryBudgetBtn && currentUser && [UserRole.CHURCH_GROUP, UserRole.APPROVER_L1, UserRole.APPROVER_L2, UserRole.ADMIN, UserRole.SUPER_ADMIN].includes(currentUser.role)) && (
             <button
               onClick={() => {
                 setSupProjectId("");
@@ -1183,81 +1183,7 @@ const Dashboard: React.FC<{
         </div>
       </div>
 
-      {/* Budget Variance Summary Widget */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col font-sans">
-        <div className="px-4 md:px-6 py-4 border-b border-slate-200 bg-rose-50/10 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertTriangle size={18} className="text-rose-500 animate-pulse" />
-            <div>
-              <h2 className="text-xs font-black text-slate-800 uppercase tracking-widest">
-                Budget Variance Analysis
-              </h2>
-              <p className="text-[10px] text-slate-500 font-medium">Requisitions exceeding active group budget allocations</p>
-            </div>
-          </div>
-          <span className="bg-rose-50 text-rose-700 text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-rose-100">
-            {budgetVariances.length} Warnings
-          </span>
-        </div>
-
-        <div className="p-4 md:p-6">
-          {budgetVariances.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {budgetVariances.map(({ requisition, project, remainingBudget, exceedsTotal, varianceAmount }) => (
-                <div 
-                  key={requisition.id}
-                  onClick={() => setSelectedRequisition(requisition)}
-                  className="p-4 bg-slate-50 hover:bg-rose-50/10 border border-slate-200 hover:border-rose-200 rounded-xl transition-all cursor-pointer flex flex-col justify-between space-y-3 group"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[9px] font-mono text-slate-400 font-bold uppercase tracking-wider">{requisition.id}</span>
-                      <span className={cn(
-                        "px-1.5 py-0.5 rounded-md text-[8px] font-extrabold uppercase tracking-widest",
-                        exceedsTotal ? "bg-rose-50 text-rose-700 border border-rose-100 font-black" : "bg-amber-50 text-amber-700 border border-amber-100"
-                      )}>
-                        {exceedsTotal ? "Exceeding Total" : "Exceeding Remaining"}
-                      </span>
-                    </div>
-                    <h4 className="text-xs font-black text-slate-800 uppercase group-hover:text-primary transition-colors line-clamp-1">{requisition.title}</h4>
-                    <p className="text-[10px] text-slate-500 font-bold">Group: <span className="text-slate-700 font-extrabold">{requisition.groupName}</span></p>
-                  </div>
-
-                  <div className="space-y-2 border-t border-dashed border-slate-200 pt-3">
-                    <div className="flex justify-between text-[11px]">
-                      <span className="text-slate-500">Req Amount:</span>
-                      <span className="font-mono font-black text-slate-900">Ksh {requisition.amount.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between text-[11px]">
-                      <span className="text-slate-500">Allocated Budget:</span>
-                      <span className="font-mono font-bold text-slate-700">Ksh {project.allocatedBudget.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between text-[11px]">
-                      <span className="text-slate-500">Remaining Available:</span>
-                      <span className="font-mono font-bold text-slate-700">Ksh {remainingBudget.toLocaleString()}</span>
-                    </div>
-                    {varianceAmount > 0 && (
-                      <div className="flex justify-between text-[11px] bg-rose-50/30 p-1.5 rounded-lg border border-rose-100/50 text-rose-700">
-                        <span className="font-bold uppercase tracking-wider text-[8px] flex items-center gap-1">
-                          <AlertTriangle size={10} />
-                          Variance Overdraft:
-                        </span>
-                        <span className="font-mono font-black">Ksh {varianceAmount.toLocaleString()}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-10 bg-slate-50 border border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-400">
-              <CheckCircle size={32} className="text-emerald-500 mb-2 animate-bounce" />
-              <h5 className="text-xs font-black text-slate-800 uppercase tracking-widest">All Requisitions inside allocations</h5>
-              <p className="text-[10px] text-slate-500 mt-1">No requisitions currently exceed designated group budget limits.</p>
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Budget Variance Summary Widget Removed */}
 
       {/* Transaction Summary Grid */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
