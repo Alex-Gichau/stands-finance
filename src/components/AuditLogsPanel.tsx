@@ -224,10 +224,10 @@ export const AuditLogsPanel: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {filteredLogs.map((log) => (
+                  {filteredLogs.map((log, idx) => (
                     <motion.tr 
                       layout
-                      key={log.id} 
+                      key={`audit-trail-log-${log.id || idx}-${idx}`} 
                       className="group hover:bg-indigo-50/30 transition-colors"
                     >
                       <td className="px-8 py-6">

@@ -828,10 +828,11 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
               isSuspended: false
             };
             setCurrentUser(defaultUser as any);
+            await setDoc(doc(db, "users", firebaseUser.uid), defaultUser);
           }
         } catch (err) {
           console.warn("Could not fetch user profile from backend database, setting default:", err);
-          setCurrentUser({
+          const fallbackUser = {
             id: firebaseUser.uid,
             name: firebaseUser.displayName || userEmail || "User",
             email: userEmail || "",
@@ -839,7 +840,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             isActive: true,
             isApproved: true,
             isSuspended: false
-          } as any);
+          };
+          setCurrentUser(fallbackUser as any);
+          await setDoc(doc(db, "users", firebaseUser.uid), fallbackUser);
         }
         setAuthLoading(false);
       } else {

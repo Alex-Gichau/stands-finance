@@ -927,7 +927,7 @@ export const SettingsPanel: React.FC = () => {
                   .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
                   .slice(0, 5)
                   .map((log, index) => (
-                    <div key={log.id} className="flex gap-4 group">
+                    <div key={`settings-logout-log-${log.id || index}-${index}`} className="flex gap-4 group">
                       <div className="flex flex-col items-center">
                         <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-border flex items-center justify-center text-slate-400 group-hover:bg-primary/10 group-hover:text-primary transition-all shadow-sm">
                           <Lock size={12} />
@@ -1589,7 +1589,7 @@ sudo systemctl enable mongod`}
               ) : (
                 lastTenLogs.map((log, idx) => (
                   <motion.div 
-                    key={log.id} 
+                    key={`settings-audit-log-${log.id || idx}-${idx}`} 
                     initial={{ opacity: 0, x: 10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: idx * 0.05 }}

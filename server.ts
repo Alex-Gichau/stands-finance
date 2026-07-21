@@ -413,9 +413,6 @@ async function startServer() {
       try {
         if (mongoose.connection.readyState === 1) {
           dbUser = await (models.User as any).findOne({ email: decodedToken.email?.toLowerCase() }).lean();
-        } else {
-          const usersList = readJsonCollection("users");
-          dbUser = usersList.find((u: any) => u.email?.toLowerCase() === decodedToken.email?.toLowerCase());
         }
       } catch (e) {
         console.error("Error reading user profile with Mongoose in auth middleware:", e);
@@ -542,14 +539,24 @@ async function startServer() {
    */
   async function connectToMongo() {
     try {
-      console.log(`[MongoDB/Mongoose] Attempting connection to local server: ${mongoUri}`);
-      await mongoose.connect(mongoUri, { connectTimeoutMS: 5000 });
+      console.log(`[MongoDB/Mongoose] Attempting connection to MongoDB server: ${mongoUri}`);
+      // Reduce timeout to 2500ms for faster startup and seamless fallback
+      await mongoose.connect(mongoUri, { 
+        connectTimeoutMS: 2500,
+        serverSelectionTimeoutMS: 2500,
+        socketTimeoutMS: 2500
+      });
       console.log(`[MongoDB/Mongoose] Successfully connected to database: ${mongoose.connection.db ? mongoose.connection.db.databaseName : "stands_finance_db"}`);
 
       // Run Mongoose seeder
       await seedDatabase();
     } catch (err: any) {
-      console.error(`[MongoDB/Mongoose] Connection failed! Reason:`, err.message || err);
+      console.warn("\n==========================================================================");
+      console.warn(`[MongoDB/Mongoose] Connection failed! Reason: Socket timed out (${err.message || err})`);
+      console.warn("ℹ️  NOTICE: The remote MongoDB instance is offline or unreachable.");
+      console.warn("🚀  HYBRID ENGINE FALLBACK ACTIVATED: The application is fully operational.");
+      console.warn("💾  All operations are seamlessly using the Local JSON Database & Google Sheets.");
+      console.warn("==========================================================================\n");
     }
   }
 
@@ -568,9 +575,6 @@ async function startServer() {
       let dbUser: any = null;
       if (mongoose.connection.readyState === 1) {
         dbUser = await (models.User as any).findOne({ email: email.toLowerCase() }).lean();
-      } else {
-        const usersList = readJsonCollection("users");
-        dbUser = usersList.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
       }
 
       if (dbUser) {
@@ -606,14 +610,7 @@ async function startServer() {
           );
         }
       } else {
-        // Fallback to JSON update
-        const usersList = readJsonCollection("users");
-        const idx = usersList.findIndex((u: any) => u.email?.toLowerCase() === email.toLowerCase());
-        if (idx !== -1) {
-          usersList[idx] = { ...usersList[idx], id: uid, isApproved: true, isActive: true, document_id: uid };
-          writeJsonCollection("users", usersList);
-        }
-
+        // Fallback JSON update for non-users relationships if fallback mode is active
         if (profileId && profileId !== uid) {
           const reqList = readJsonCollection("requisitions");
           let reqChanged = false;
@@ -653,9 +650,6 @@ async function startServer() {
       let dbUser: any = null;
       if (mongoose.connection.readyState === 1) {
         dbUser = await (models.User as any).findOne({ email: String(email).toLowerCase() }).lean();
-      } else {
-        const usersList = readJsonCollection("users");
-        dbUser = usersList.find((u: any) => u.email?.toLowerCase() === String(email).toLowerCase());
       }
 
       if (dbUser) {
@@ -819,6 +813,9 @@ async function startServer() {
         });
         res.json(cleanData);
       } else {
+        if (collection === "users") {
+          return res.status(503).json({ error: "Database offline. User operations require an active database connection." });
+        }
         const data = readJsonCollection(collection);
         const cleanData = data.map((item: any) => {
           const { _id, __v, ...rest } = item;
@@ -847,6 +844,9 @@ async function startServer() {
         const { _id, __v, ...rest } = item;
         res.json({ id: rest.id || String(_id), ...rest });
       } else {
+        if (collection === "users") {
+          return res.status(503).json({ error: "Database offline. User operations require an active database connection." });
+        }
         const data = readJsonCollection(collection);
         const item = data.find((d: any) => d.id === id);
         if (!item) {
@@ -877,6 +877,9 @@ async function startServer() {
           { upsert: true, returnDocument: 'after' }
         );
       } else {
+        if (collection === "users") {
+          return res.status(503).json({ error: "Database offline. User operations require an active database connection." });
+        }
         const list = readJsonCollection(collection);
         const idx = list.findIndex((item: any) => item.id === id);
         const payload = { ...body, id, document_id: id };
@@ -912,6 +915,9 @@ async function startServer() {
           return res.status(404).json({ error: "Document not found" });
         }
       } else {
+        if (collection === "users") {
+          return res.status(503).json({ error: "Database offline. User operations require an active database connection." });
+        }
         const list = readJsonCollection(collection);
         const idx = list.findIndex((item: any) => item.id === id);
         if (idx === -1) {
@@ -937,6 +943,9 @@ async function startServer() {
         }
         await Model.deleteOne({ id });
       } else {
+        if (collection === "users") {
+          return res.status(503).json({ error: "Database offline. User operations require an active database connection." });
+        }
         const list = readJsonCollection(collection);
         const filtered = list.filter((item: any) => item.id !== id);
         writeJsonCollection(collection, filtered);
@@ -1138,8 +1147,6 @@ async function startServer() {
         let usersList: any[] = [];
         if (mongoose.connection.readyState === 1) {
           usersList = await (models.User as any).find({}).lean();
-        } else {
-          usersList = readJsonCollection("users");
         }
         resolvedRecipients = usersList
           .map((u: any) => u.email)

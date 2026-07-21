@@ -367,7 +367,8 @@ function AppContent() {
     updateUserProfile,
     updateCurrentUserPassword,
     projects,
-    churchGroups
+    churchGroups,
+    systemLogs
   } = useRequisitions();
 
   const [sendingTestSummary, setSendingTestSummary] = useState(false);
@@ -795,6 +796,30 @@ function AppContent() {
 
     return { groups: matchedGroups, projects: matchedProjects };
   }, [globalSearchTerm, churchGroups, projects]);
+
+  const userSessionLogs = useMemo(() => {
+    if (!currentUser || !systemLogs) return [];
+    const nameLower = currentUser.name?.toLowerCase() || "";
+    const emailLower = currentUser.email?.toLowerCase() || "";
+    return systemLogs
+      .filter(log => {
+        const pBy = log.performedBy?.toLowerCase() || "";
+        const matchesUser = pBy.includes(nameLower) || pBy.includes(emailLower) || log.metadata?.email?.toLowerCase() === emailLower;
+        const isInternalSync = log.action?.includes("SYNC") || log.action?.includes("RENDER") || log.action === "QUOTA_MONITOR_REPORT";
+        return matchesUser && !isInternalSync;
+      })
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 3);
+  }, [systemLogs, currentUser]);
+
+  const formatLogTime = (isoString: string) => {
+    try {
+      const date = new Date(isoString);
+      return date.toLocaleTimeString("en-KE", { hour: "2-digit", minute: "2-digit" });
+    } catch (e) {
+      return "";
+    }
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1796,8 +1821,17 @@ function AppContent() {
                           placeholder="••••••••"
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
-                          className="w-full pl-9 pr-10 py-3 bg-background border border-border rounded-xl text-xs font-bold focus:border-primary focus:outline-none transition-colors"
+                          className="w-full pl-9 pr-16 py-3 bg-background border border-border rounded-xl text-xs font-bold focus:border-primary focus:outline-none transition-colors"
                         />
+                        {confirmPassword && (
+                          <div className="absolute right-10 top-3.5 flex items-center justify-center pointer-events-none">
+                            {confirmPassword === newPassword ? (
+                              <Check size={14} className="text-emerald-500 dark:text-emerald-400 stroke-[3]" />
+                            ) : (
+                              <X size={14} className="text-rose-500 dark:text-rose-400 stroke-[3]" />
+                            )}
+                          </div>
+                        )}
                         <button
                           type="button"
                           onClick={() => setShowConfirmPassword(!showConfirmPassword)}
@@ -1895,6 +1929,68 @@ function AppContent() {
                       Sandbox Ok
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Security Audit Log */}
+              <div className="space-y-2.5 text-left">
+                <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-muted">
+                  <Shield size={12} className="text-cyan-500 dark:text-cyan-400" />
+                  <span>Session Security Audit Log</span>
+                  <span className="text-[9px] font-bold text-cyan-500 dark:text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-full uppercase tracking-widest ml-auto">
+                    Recent Actions
+                  </span>
+                </div>
+                
+                <div className="bg-slate-100/60 dark:bg-slate-950/60 border border-border/40 rounded-2xl p-4 space-y-3 max-h-[180px] overflow-y-auto custom-scrollbar">
+                  {userSessionLogs.length > 0 ? (
+                    <div className="space-y-3">
+                      {userSessionLogs.map((log, logIdx) => {
+                        const act = log.action || "";
+                        let colorClass = "text-slate-500 bg-slate-500/10 border-slate-500/20";
+                        if (act.includes("CREATE") || act.includes("SUBMIT") || act.includes("ADD")) {
+                          colorClass = "text-emerald-500 bg-emerald-500/10 border-emerald-500/20";
+                        } else if (act.includes("DELETE") || act.includes("REMOVE") || act.includes("REVOKE") || act.includes("SUSPEND")) {
+                          colorClass = "text-rose-500 bg-rose-500/10 border-rose-500/20";
+                        } else if (act.includes("UPDATE") || act.includes("EDIT") || act.includes("PATCH")) {
+                          colorClass = "text-amber-500 bg-amber-500/10 border-amber-500/20";
+                        } else if (act.includes("APPROVE") || act.includes("ACTIVATE") || act.includes("GRANT") || act.includes("RESOLVE")) {
+                          colorClass = "text-cyan-500 bg-cyan-500/10 border-cyan-500/20";
+                        } else if (act.includes("LOGIN") || act.includes("AUTH")) {
+                          colorClass = "text-indigo-500 bg-indigo-500/10 border-indigo-500/20";
+                        }
+
+                        return (
+                          <div key={`user-session-log-${log.id || logIdx}-${logIdx}`} className="flex gap-2.5 text-left border-b border-border/20 last:border-0 pb-2.5 last:pb-0">
+                            <div className={cn("w-6 h-6 rounded-lg border flex items-center justify-center shrink-0 text-[8px] font-black", colorClass)}>
+                              {act.substring(0, 2).toUpperCase()}
+                            </div>
+                            <div className="space-y-0.5 min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[9px] font-black uppercase tracking-wider text-foreground truncate">
+                                  {act.replace(/_/g, " ")}
+                                </span>
+                                <span className="text-[9px] font-medium font-mono text-muted shrink-0">
+                                  {formatLogTime(log.timestamp)}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-muted leading-relaxed line-clamp-2">
+                                {log.details}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 space-y-1.5">
+                      <CheckCircle size={16} className="text-emerald-500 mx-auto animate-pulse" />
+                      <p className="text-[10px] font-black uppercase tracking-wider text-foreground">Ledger Fully Synced</p>
+                      <p className="text-[9px] text-muted max-w-[240px] mx-auto leading-normal">
+                        No other significant actions recorded in this session. Your activity history has been fully synced.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 

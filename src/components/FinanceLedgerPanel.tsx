@@ -2800,8 +2800,8 @@ export const FinanceLedgerPanel: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {budgetLogs.map(log => (
-                      <tr key={log.id} className="hover:bg-slate-50/50">
+                    {budgetLogs.map((log, idx) => (
+                      <tr key={`budget-log-${log.id || idx}-${idx}`} className="hover:bg-slate-50/50">
                         <td className="py-3 px-6">{formatDate(log.timestamp)}</td>
                         <td className="py-3 px-4 font-bold text-slate-900">{log.action === 'BUDGET_ADJUSTMENT' ? 'ADJUSTMENT' : log.action}</td>
                         <td className="py-3 px-4">{log.performedBy}</td>

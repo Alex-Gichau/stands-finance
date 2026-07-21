@@ -978,7 +978,7 @@ const Dashboard: React.FC<{
                   
                   return (
                     <div 
-                      key={item.id || idx} 
+                      key={`dashboard-timeline-${item.type}-${item.id || idx}-${idx}`} 
                       onClick={() => {
                         if (associatedRequisition) {
                           setSelectedRequisition(associatedRequisition);
