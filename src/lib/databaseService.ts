@@ -15,14 +15,27 @@ import {
   SupplementaryBudgetRequest,
   Vendor 
 } from "../types";
+import { getAuth } from "firebase/auth";
 
 // Helper for making API calls
 async function apiCall(endpoint: string, method: string = "GET", body?: any): Promise<any> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  try {
+    const auth = getAuth();
+    if (auth.currentUser) {
+      const token = await auth.currentUser.getIdToken();
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+  } catch (e) {
+    // Suppress if Firebase is not yet initialized or auth is unavailable
+  }
+
   const options: RequestInit = {
     method,
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers,
   };
   if (body) {
     options.body = JSON.stringify(body);
