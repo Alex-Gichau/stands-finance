@@ -266,6 +266,7 @@ function AppContent() {
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
 
   const getPasswordStrength = (password: string) => {
     if (!password) return { label: "", color: "bg-slate-200" };
@@ -1658,7 +1659,7 @@ function AppContent() {
                   Update Password
                 </h2>
                 <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500 dark:text-indigo-400">
-                  SEC_KEY_REDEFINITION
+                  RESET PASSWORD
                 </span>
               </div>
 
@@ -1686,7 +1687,7 @@ function AppContent() {
                     }}
                     className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer text-center"
                   >
-                    Dismiss Gate
+                    Dismiss
                   </button>
                 </div>
               ) : (
@@ -1734,31 +1735,45 @@ function AppContent() {
                       <div className="relative">
                         <Lock size={14} className="absolute left-3 top-3.5 text-slate-400" />
                         <input
-                          type="password"
+                          type={showCurrentPassword ? "text" : "password"}
                           required
                           placeholder="••••••••"
                           value={currentPassword}
                           onChange={(e) => setCurrentPassword(e.target.value)}
-                          className="w-full pl-9 pr-4 py-3 bg-background border border-border rounded-xl text-xs font-bold focus:border-primary focus:outline-none transition-colors"
+                          className="w-full pl-9 pr-10 py-3 bg-background border border-border rounded-xl text-xs font-bold focus:border-primary focus:outline-none transition-colors"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                          className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-600"
+                        >
+                          {showCurrentPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
                       </div>
                     </div>
 
                     {/* New Password Input */}
                     <div className="space-y-1.5">
                       <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                        <Lock size={12} /> New Security Key
+                        <Lock size={12} /> New Password
                       </label>
                       <div className="relative">
                         <Lock size={14} className="absolute left-3 top-3.5 text-slate-400" />
                         <input
-                          type="password"
+                          type={showNewPassword ? "text" : "password"}
                           required
                           placeholder="••••••••"
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
-                          className="w-full pl-9 pr-4 py-3 bg-background border border-border rounded-xl text-xs font-bold focus:border-primary focus:outline-none transition-colors"
+                          className="w-full pl-9 pr-10 py-3 bg-background border border-border rounded-xl text-xs font-bold focus:border-primary focus:outline-none transition-colors"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPassword(!showNewPassword)}
+                          className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-600"
+                        >
+                          {showNewPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
                       </div>
                       {newPassword && (
                         <div className="flex items-center gap-2 mt-1">
@@ -1771,18 +1786,25 @@ function AppContent() {
                     {/* Confirm Password Input */}
                     <div className="space-y-1.5">
                       <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                        <Lock size={12} /> Confirm New Key
+                        <Lock size={12} /> Confirm New Password
                       </label>
                       <div className="relative">
                         <Lock size={14} className="absolute left-3 top-3.5 text-slate-400" />
                         <input
-                          type="password"
+                          type={showConfirmPassword ? "text" : "password"}
                           required
                           placeholder="••••••••"
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
-                          className="w-full pl-9 pr-4 py-3 bg-background border border-border rounded-xl text-xs font-bold focus:border-primary focus:outline-none transition-colors"
+                          className="w-full pl-9 pr-10 py-3 bg-background border border-border rounded-xl text-xs font-bold focus:border-primary focus:outline-none transition-colors"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-600"
+                        >
+                          {showConfirmPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1792,7 +1814,7 @@ function AppContent() {
                     disabled={isUpdatingPassword}
                     className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer text-center"
                   >
-                    {isUpdatingPassword ? "Updating..." : "Update Security Key"}
+                    {isUpdatingPassword ? "Updating..." : "Update Password"}
                   </button>
                 </form>
               )}

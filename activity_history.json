@@ -8,5 +8,11 @@
       "totalActions": 8,
       "userId": "v8M6WZQOA1aaxFP7DPRHna9NOOJ2"
     }
+  },
+  {
+    "action": "test",
+    "details": "test details",
+    "performedBy": "test user",
+    "timestamp": "2026-07-21"
   }
 ]

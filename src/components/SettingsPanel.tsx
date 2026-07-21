@@ -141,8 +141,17 @@ export const SettingsPanel: React.FC = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
-      const data = await response.json();
-      setSlackActionResult({ type, success: response.ok, ...data });
+      
+      let data: any = {};
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { success: false, error: "Server returned non-JSON response", message: text.substring(0, 200) };
+      }
+      
+      setSlackActionResult({ type, success: response.ok && data.success, ...data });
 
       if (response.ok && data.success) {
         triggerToast({
