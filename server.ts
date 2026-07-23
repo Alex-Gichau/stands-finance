@@ -337,7 +337,7 @@ function generateSlackFullReport(): string {
 
 async function startServer() {
   const app = express();
-  const PORT = parseInt(process.env.PORT || "3000", 10);
+  const PORT = 3000;
 
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -975,12 +975,18 @@ async function startServer() {
     }
 
     try {
-      for (const col of ["users", "requisitions", "church_groups"]) {
-        const Model = modelMappings[col];
-        if (Model) {
-          const ct = await Model.countDocuments();
-          report.mongodb.counts[col] = ct;
-        } else {
+      if (mongoose.connection.readyState === 1) {
+        for (const col of ["users", "requisitions", "church_groups"]) {
+          const Model = modelMappings[col];
+          if (Model) {
+            const ct = await Model.countDocuments();
+            report.mongodb.counts[col] = ct;
+          } else {
+            report.mongodb.counts[col] = 0;
+          }
+        }
+      } else {
+        for (const col of ["users", "requisitions", "church_groups"]) {
           report.mongodb.counts[col] = 0;
         }
       }
