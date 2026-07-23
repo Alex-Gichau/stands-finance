@@ -241,7 +241,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                currentUser?.name.charAt(0)
+                currentUser?.name?.charAt(0) || "U"
               )}
             </div>
             <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-slate-900 rounded-full animate-pulse" />
@@ -251,7 +251,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="flex-1 min-w-0">
               <p className="text-[11px] font-black text-white truncate uppercase tracking-tight">{currentUser?.name}</p>
               <p className="text-[9px] text-primary font-bold truncate uppercase tracking-widest mt-0.5">
-                {currentUser?.role.replace("_", " ")}
+                {currentUser?.role?.replace("_", " ") || "USER"}
               </p>
             </div>
           )}

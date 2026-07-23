@@ -39,7 +39,15 @@ const fileMappings: { [key: string]: string } = {
 };
 function getFilePath(collection: string) {
   const fileName = fileMappings[collection] || (collection + ".json");
-  return path.join(process.cwd(), "server", "data", fileName);
+  const dirPath = path.join(process.cwd(), "server", "data");
+  if (!fs.existsSync(dirPath)) {
+    try {
+      fs.mkdirSync(dirPath, { recursive: true });
+    } catch (e) {
+      console.error("[JSON DB] Failed to create data directory:", e);
+    }
+  }
+  return path.join(dirPath, fileName);
 }
 
 function coerceBooleans(obj: any): any {
@@ -350,6 +358,28 @@ async function startServer() {
   }
   app.use("/uploads", express.static(uploadsDir));
 
+  // Bootstrap JSON database user storage from root users.json if missing
+  const dataDir = path.join(process.cwd(), "server", "data");
+  if (!fs.existsSync(dataDir)) {
+    try {
+      fs.mkdirSync(dataDir, { recursive: true });
+    } catch (e) {
+      console.error("[JSON DB] Failed to create server/data folder:", e);
+    }
+  }
+  const usersExportPath = path.join(dataDir, "users_export.json");
+  if (!fs.existsSync(usersExportPath)) {
+    const rootUsersPath = path.join(process.cwd(), "users.json");
+    if (fs.existsSync(rootUsersPath)) {
+      try {
+        fs.copyFileSync(rootUsersPath, usersExportPath);
+        console.log("[JSON DB] Bootstrapped server/data/users_export.json from root users.json successfully.");
+      } catch (err) {
+        console.error("[JSON DB] Failed to copy users.json:", err);
+      }
+    }
+  }
+
   // Local File Upload Endpoint (VPS Local Storage Support)
   app.post("/api/attachments/upload", async (req, res) => {
     const { fileName, dataUrl } = req.body;
@@ -527,7 +557,62 @@ async function startServer() {
   }
   const StrictRequisitionModel = mongoose.model('Requisition', RequisitionSchema);
 
-  let mongoUri = process.env.MONGODB_URI || "mongodb://178.104.122.211:27017/stands_finance_db";
+  function parseAndValidateMongoUri(uri: string): string {
+    if (!uri) return uri;
+    try {
+      if (!uri.startsWith("mongodb://") && !uri.startsWith("mongodb+srv://")) {
+        return uri;
+      }
+      
+      const isSrv = uri.startsWith("mongodb+srv://");
+      const prefix = isSrv ? "mongodb+srv://" : "mongodb://";
+      const rest = uri.slice(prefix.length);
+      
+      const lastAtIdx = rest.lastIndexOf("@");
+      if (lastAtIdx === -1) {
+        return uri;
+      }
+      
+      const creds = rest.slice(0, lastAtIdx);
+      const hostAndRest = rest.slice(lastAtIdx + 1);
+      
+      const colonIdx = creds.indexOf(":");
+      let username = creds;
+      let password = "";
+      if (colonIdx !== -1) {
+        username = creds.slice(0, colonIdx);
+        password = creds.slice(colonIdx + 1);
+      }
+      
+      const safeEncode = (str: string): string => {
+        const hasPercentEncoding = /%[0-9a-fA-F]{2}/.test(str);
+        if (hasPercentEncoding) {
+          return str;
+        }
+        return encodeURIComponent(str)
+          .replace(/%2F/g, '/')
+          .replace(/%3A/g, ':');
+      };
+      
+      const encodedUsername = safeEncode(username);
+      const encodedPassword = safeEncode(password);
+      
+      let reassembled = prefix;
+      if (encodedPassword) {
+        reassembled += `${encodedUsername}:${encodedPassword}@${hostAndRest}`;
+      } else {
+        reassembled += `${encodedUsername}@${hostAndRest}`;
+      }
+      
+      return reassembled;
+    } catch (err) {
+      console.warn("[MongoDB URI Parser] Failed to parse URI, returning original:", err);
+      return uri;
+    }
+  }
+
+  let rawMongoUri = process.env.MONGODB_URI || "mongodb://178.104.122.211:27017/stands_finance_db";
+  let mongoUri = parseAndValidateMongoUri(rawMongoUri);
   if (mongoUri.includes("@") && !mongoUri.includes("authSource")) {
     if (mongoUri.includes("?")) {
       mongoUri += "&authSource=admin";
@@ -563,7 +648,7 @@ async function startServer() {
   }
 
   // Connect on startup
-  connectToMongo();
+  await connectToMongo();
 
   // --- AUTH ENDPOINTS (PUBLIC: BYPASSES MIDDLEWARE) ---
   /**
@@ -577,6 +662,9 @@ async function startServer() {
       let dbUser: any = null;
       if (mongoose.connection.readyState === 1) {
         dbUser = await (models.User as any).findOne({ email: email.toLowerCase() }).lean();
+      } else {
+        const users = readJsonCollection("users");
+        dbUser = users.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
       }
 
       if (dbUser) {
@@ -612,6 +700,16 @@ async function startServer() {
           );
         }
       } else {
+        // Fallback JSON update for users as well
+        const users = readJsonCollection("users");
+        const idx = users.findIndex((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+        if (idx !== -1) {
+          users[idx].id = uid;
+          users[idx].isApproved = true;
+          users[idx].isActive = true;
+          writeJsonCollection("users", users);
+        }
+
         // Fallback JSON update for non-users relationships if fallback mode is active
         if (profileId && profileId !== uid) {
           const reqList = readJsonCollection("requisitions");
@@ -652,6 +750,9 @@ async function startServer() {
       let dbUser: any = null;
       if (mongoose.connection.readyState === 1) {
         dbUser = await (models.User as any).findOne({ email: String(email).toLowerCase() }).lean();
+      } else {
+        const users = readJsonCollection("users");
+        dbUser = users.find((u: any) => u.email?.toLowerCase() === String(email).toLowerCase());
       }
 
       if (dbUser) {
@@ -818,9 +919,6 @@ async function startServer() {
         });
         res.json(cleanData);
       } else {
-        if (collection === "users") {
-          return res.status(503).json({ error: "Database offline. User operations require an active database connection." });
-        }
         const data = readJsonCollection(collection);
         const cleanData = data.map((item: any) => {
           const { _id, __v, ...rest } = item;
@@ -849,9 +947,6 @@ async function startServer() {
         const { _id, __v, ...rest } = item;
         res.json({ id: rest.id || String(_id), ...rest });
       } else {
-        if (collection === "users") {
-          return res.status(503).json({ error: "Database offline. User operations require an active database connection." });
-        }
         const data = readJsonCollection(collection);
         const item = data.find((d: any) => d.id === id);
         if (!item) {
@@ -882,9 +977,6 @@ async function startServer() {
           { upsert: true, returnDocument: 'after' }
         );
       } else {
-        if (collection === "users") {
-          return res.status(503).json({ error: "Database offline. User operations require an active database connection." });
-        }
         const list = readJsonCollection(collection);
         const idx = list.findIndex((item: any) => item.id === id);
         const payload = { ...body, id, document_id: id };
@@ -920,9 +1012,6 @@ async function startServer() {
           return res.status(404).json({ error: "Document not found" });
         }
       } else {
-        if (collection === "users") {
-          return res.status(503).json({ error: "Database offline. User operations require an active database connection." });
-        }
         const list = readJsonCollection(collection);
         const idx = list.findIndex((item: any) => item.id === id);
         if (idx === -1) {
@@ -948,9 +1037,6 @@ async function startServer() {
         }
         await Model.deleteOne({ id });
       } else {
-        if (collection === "users") {
-          return res.status(503).json({ error: "Database offline. User operations require an active database connection." });
-        }
         const list = readJsonCollection(collection);
         const filtered = list.filter((item: any) => item.id !== id);
         writeJsonCollection(collection, filtered);
