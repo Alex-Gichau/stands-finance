@@ -23,7 +23,9 @@ const fileMappings: { [key: string]: string } = {
   "transactions": "transactions_export.json",
   "ledger_books": "ledger_books_export.json",
   "audit_logs": "activity_history.json",
+  "system_logs": "activity_history.json",
   "alerts": "alerts_export.json",
+  "alert": "alerts_export.json",
   "fiscal_years": "fiscal_years_export.json",
   "projects": "projects_export.json",
   "reports": "reports_export.json",
@@ -674,9 +676,9 @@ async function startServer() {
 
   // --- MONGODB GENERIC COLLECTION REST API ---
   const collectionsList = [
-    "requisitions", "projects", "alerts", "fiscal_years", "transactions",
-    "forecast", "reports", "audit_logs", "users", "permissions",
-    "thresholds", "church_groups", "ledger_books", "supplementary_budgets", "vendors"
+    "requisitions", "projects", "alerts", "alert", "fiscal_years", "transactions",
+    "forecast", "reports", "audit_logs", "system_logs", "users", "permissions",
+    "thresholds", "church_groups", "ledger_books", "supplementary_budgets", "vendors", "settings"
   ];
 
   const modelMappings: { [key: string]: any } = {
@@ -684,7 +686,9 @@ async function startServer() {
     "projects": models.Project,
     "requisitions": mongoose.model('Requisition'),
     "audit_logs": models.AuditLog,
+    "system_logs": models.AuditLog,
     "alerts": models.Alert,
+    "alert": models.Alert,
     "fiscal_years": models.FiscalYear,
     "transactions": models.Transaction,
     "forecast": models.Forecast,
@@ -694,7 +698,8 @@ async function startServer() {
     "church_groups": models.ChurchGroup,
     "ledger_books": models.LedgerBook,
     "supplementary_budgets": models.SupplementaryBudget,
-    "vendors": models.Vendor
+    "vendors": models.Vendor,
+    "settings": (models as any).Settings
   };
 
   // Bulk get (load all 15 datasets at once)

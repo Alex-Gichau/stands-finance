@@ -20,7 +20,7 @@ const AuditLogSchema = new Schema<IAuditLog>({
   groupId: { type: String },
   metadata: { type: Schema.Types.Mixed },
 });
-export const AuditLog = mongoose.models.AuditLog || mongoose.model<IAuditLog>('AuditLog', AuditLogSchema);
+export const AuditLog = mongoose.models.AuditLog || mongoose.model<IAuditLog>('AuditLog', AuditLogSchema, 'system_logs');
 
 // 2. Alert
 /** Alert interface definition */
@@ -43,7 +43,7 @@ const AlertSchema = new Schema<IAlert>({
   isRead: { type: Boolean, default: false },
   targetRole: { type: String },
 });
-export const Alert = mongoose.models.Alert || mongoose.model<IAlert>('Alert', AlertSchema);
+export const Alert = mongoose.models.Alert || mongoose.model<IAlert>('Alert', AlertSchema, 'alert');
 
 // 3. FiscalYear
 /** FiscalYear interface definition */
@@ -64,7 +64,7 @@ const FiscalYearSchema = new Schema<IFiscalYear>({
   createdAt: { type: Date, default: Date.now },
   notes: { type: String },
 });
-export const FiscalYear = mongoose.models.FiscalYear || mongoose.model<IFiscalYear>('FiscalYear', FiscalYearSchema);
+export const FiscalYear = mongoose.models.FiscalYear || mongoose.model<IFiscalYear>('FiscalYear', FiscalYearSchema, 'fiscal_years');
 
 // 4. Transaction
 export interface ITransaction extends Document {
@@ -93,7 +93,7 @@ const TransactionSchema = new Schema<ITransaction>({
   performedBy: { type: String, required: true },
   metadata: { type: Schema.Types.Mixed },
 });
-export const Transaction = mongoose.models.Transaction || mongoose.model<ITransaction>('Transaction', TransactionSchema);
+export const Transaction = mongoose.models.Transaction || mongoose.model<ITransaction>('Transaction', TransactionSchema, 'transactions');
 
 // 5. Forecast
 export interface IForecast extends Document {
@@ -106,7 +106,7 @@ const ForecastSchema = new Schema<IForecast>({
   projected: { type: Number, required: true },
   actual: { type: Number, required: true },
 });
-export const Forecast = mongoose.models.Forecast || mongoose.model<IForecast>('Forecast', ForecastSchema);
+export const Forecast = mongoose.models.Forecast || mongoose.model<IForecast>('Forecast', ForecastSchema, 'forecast');
 
 // 6. Report
 export interface IReport extends Document {
@@ -133,7 +133,7 @@ const ReportSchema = new Schema<IReport>({
   filters: { type: Schema.Types.Mixed, required: true },
   itemCount: { type: Number, required: true },
 });
-export const Report = mongoose.models.Report || mongoose.model<IReport>('Report', ReportSchema);
+export const Report = mongoose.models.Report || mongoose.model<IReport>('Report', ReportSchema, 'reports');
 
 // 7. Permission
 export interface IPermission extends Document {
@@ -148,7 +148,7 @@ const PermissionSchema = new Schema<IPermission>({
   access: { type: Schema.Types.Mixed, required: true },
   actions: { type: Schema.Types.Mixed, required: true },
 });
-export const Permission = mongoose.models.Permission || mongoose.model<IPermission>('Permission', PermissionSchema);
+export const Permission = mongoose.models.Permission || mongoose.model<IPermission>('Permission', PermissionSchema, 'permissions');
 
 // 8. Threshold
 export interface IThreshold extends Document {
@@ -165,7 +165,7 @@ const ThresholdSchema = new Schema<IThreshold>({
   isEnabled: { type: Boolean, default: true },
   notifyEmail: { type: Boolean, default: false },
 });
-export const Threshold = mongoose.models.Threshold || mongoose.model<IThreshold>('Threshold', ThresholdSchema);
+export const Threshold = mongoose.models.Threshold || mongoose.model<IThreshold>('Threshold', ThresholdSchema, 'thresholds');
 
 // 9. ChurchGroup
 export interface IChurchGroup extends Document {
@@ -180,7 +180,7 @@ const ChurchGroupSchema = new Schema<IChurchGroup>({
   description: { type: String },
   createdAt: { type: Date, default: Date.now },
 });
-export const ChurchGroup = mongoose.models.ChurchGroup || mongoose.model<IChurchGroup>('ChurchGroup', ChurchGroupSchema);
+export const ChurchGroup = mongoose.models.ChurchGroup || mongoose.model<IChurchGroup>('ChurchGroup', ChurchGroupSchema, 'church_groups');
 
 // 10. LedgerBook
 export interface ILedgerBook extends Document {
@@ -211,7 +211,7 @@ const LedgerBookSchema = new Schema<ILedgerBook>({
   notes: { type: String },
   status: { type: String, default: 'ACTIVE' },
 });
-export const LedgerBook = mongoose.models.LedgerBook || mongoose.model<ILedgerBook>('LedgerBook', LedgerBookSchema);
+export const LedgerBook = mongoose.models.LedgerBook || mongoose.model<ILedgerBook>('LedgerBook', LedgerBookSchema, 'ledger_books');
 
 // 11. SupplementaryBudget
 export interface ISupplementaryBudget extends Document {
@@ -240,7 +240,7 @@ const SupplementaryBudgetSchema = new Schema<ISupplementaryBudget>({
   submittedAt: { type: Date, default: Date.now },
   status: { type: String, default: 'PENDING' },
 });
-export const SupplementaryBudget = mongoose.models.SupplementaryBudget || mongoose.model<ISupplementaryBudget>('SupplementaryBudget', SupplementaryBudgetSchema);
+export const SupplementaryBudget = mongoose.models.SupplementaryBudget || mongoose.model<ISupplementaryBudget>('SupplementaryBudget', SupplementaryBudgetSchema, 'supplementary_budgets');
 
 // 12. Vendor
 export interface IVendor extends Document {
@@ -263,4 +263,25 @@ const VendorSchema = new Schema<IVendor>({
   addedBy: { type: String, required: true },
   status: { type: String, default: 'PENDING' },
 });
-export const Vendor = mongoose.models.Vendor || mongoose.model<IVendor>('Vendor', VendorSchema);
+export const Vendor = mongoose.models.Vendor || mongoose.model<IVendor>('Vendor', VendorSchema, 'vendors');
+
+// 13. Settings
+export interface ISettings extends Document {
+  id: string;
+  currentFiscalYear: number;
+  fiscalYearStatus: string;
+  announcementIsActive?: boolean;
+  announcementMessage?: string;
+  announcementType?: string;
+  hideSupplementaryBudgetBtn?: boolean;
+  vendorListViewLevel?: string;
+  isSystemOffline?: boolean;
+  requisitionExpiryDays?: number;
+  [key: string]: any;
+}
+const SettingsSchema = new Schema<ISettings>({
+  id: { type: String, required: true, unique: true, index: true },
+  currentFiscalYear: { type: Number, default: 2026 },
+  fiscalYearStatus: { type: String, default: 'OPEN' },
+}, { strict: false });
+export const Settings = mongoose.models.Settings || mongoose.model<ISettings>('Settings', SettingsSchema, 'settings');

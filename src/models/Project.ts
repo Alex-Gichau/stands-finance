@@ -33,4 +33,4 @@ const ProjectSchema = new Schema<IProject>({
   timestamps: { createdAt: 'createdAt', updatedAt: false },
 });
 
-export const Project = mongoose.models.Project || mongoose.model<IProject>('Project', ProjectSchema);
+export const Project = mongoose.models.Project || mongoose.model<IProject>('Project', ProjectSchema, 'projects');

@@ -75,4 +75,4 @@ const RequisitionSchema = new Schema<IRequisition>({
   timestamps: true,
 });
 
-export const Requisition = mongoose.models.Requisition || mongoose.model<IRequisition>('Requisition', RequisitionSchema);
+export const Requisition = mongoose.models.Requisition || mongoose.model<IRequisition>('Requisition', RequisitionSchema, 'requisitions');
