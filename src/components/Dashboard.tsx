@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import { ComposedChart, Area, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { useRequisitions, useActiveFiscalYear } from "../contexts/RequisitionContext";
 import { COMMITTED_REQUISITION_STATUSES, calculateProjectUtilization, getProjectRequisitions } from "../utils/budgetUtils";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
 import { formatCurrency, cn, getDaysSinceSubmission } from "../lib/utils";
-import { AlertTriangle, TrendingUp, Layout, Activity, ClipboardList, CheckCircle, Wallet, Users, X, Eye, Repeat, Clock, ArrowUpRight, Search, Trash2, Printer, FileText, ShieldCheck, CalendarRange, Flag, HelpCircle, Moon, Sun, Plus } from "lucide-react";
+import { AlertTriangle, TrendingUp, Layout, Activity, ClipboardList, CheckCircle, Wallet, Users, X, Eye, Repeat, Clock, ArrowUpRight, Search, Trash2, Printer, FileText, ShieldCheck, CalendarRange, Flag, HelpCircle, Moon, Sun, Plus, Calendar, ChevronLeft, ChevronRight, Bell } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { RequisitionDetailModal } from "./RequisitionsPanel";
 import { ReceiptTemplateGenerator } from "./ReceiptTemplateGenerator";
@@ -528,6 +528,154 @@ const Dashboard: React.FC<{
       .filter((item): item is NonNullable<typeof item> => item !== null);
   }, [requisitions, projects]);
 
+  const [calendarDate, setCalendarDate] = useState(() => new Date());
+  const [selectedDay, setSelectedDay] = useState<{ day: number, month: number, year: number }>(() => {
+    const today = new Date();
+    return { day: today.getDate(), month: today.getMonth(), year: today.getFullYear() };
+  });
+
+  const calendarDays = useMemo(() => {
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+    
+    const firstDay = new Date(year, month, 1);
+    const startOfWeek = firstDay.getDay(); // 0 = Sunday, ..., 6 = Saturday
+    const daysInCurrentMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
+    
+    const cells = [];
+    
+    // Fill previous month's trailing days
+    for (let i = startOfWeek - 1; i >= 0; i--) {
+      cells.push({
+        day: daysInPrevMonth - i,
+        month: month === 0 ? 11 : month - 1,
+        year: month === 0 ? year - 1 : year,
+        isCurrentMonth: false,
+      });
+    }
+    
+    // Fill current month's days
+    for (let i = 1; i <= daysInCurrentMonth; i++) {
+      cells.push({
+        day: i,
+        month,
+        year,
+        isCurrentMonth: true,
+      });
+    }
+    
+    // Fill next month's leading days to make a complete grid (multiple of 7, e.g. 35 or 42)
+    const totalCells = cells.length > 35 ? 42 : 35;
+    const remaining = totalCells - cells.length;
+    for (let i = 1; i <= remaining; i++) {
+      cells.push({
+        day: i,
+        month: month === 11 ? 0 : month + 1,
+        year: month === 11 ? year + 1 : year,
+        isCurrentMonth: false,
+      });
+    }
+    
+    return cells;
+  }, [calendarDate]);
+
+  const getEventsForDate = useCallback((cellYear: number, cellMonth: number, cellDay: number) => {
+    const cellDate = new Date(cellYear, cellMonth, cellDay);
+    const events: any[] = [];
+    
+    // 1. System deadlines
+    if (cellDate.getDay() === 5) { // Friday
+      events.push({
+        id: `sys-weekly-${cellYear}-${cellMonth}-${cellDay}`,
+        title: "Weekly Review Cut-off",
+        description: "All weekly requisitions must be submitted by Friday 5:00 PM for weekend processing.",
+        type: "SYSTEM_WEEKLY",
+        badge: "Weekly Cycle"
+      });
+    }
+    
+    if (cellDay === 25) {
+      events.push({
+        id: `sys-monthly-${cellYear}-${cellMonth}-${cellDay}`,
+        title: "Monthly Submission Cut-off",
+        description: "Final monthly cut-off for standard church group requisitions.",
+        type: "SYSTEM_MONTHLY",
+        badge: "Monthly Cut-off"
+      });
+    }
+
+    const isQuarterEnd = (cellMonth === 2 && cellDay === 31) || 
+                         (cellMonth === 5 && cellDay === 30) || 
+                         (cellMonth === 8 && cellDay === 30) || 
+                         (cellMonth === 11 && cellDay === 31);
+    if (isQuarterEnd) {
+      events.push({
+        id: `sys-quarterly-${cellYear}-${cellMonth}-${cellDay}`,
+        title: "Quarterly Audit Deadline",
+        description: "Final deadline for major fiscal realignment and ledger adjustment.",
+        type: "SYSTEM_QUARTERLY",
+        badge: "Quarterly Review"
+      });
+    }
+    
+    // 2. Requisition expiry/submission deadlines
+    requisitions.forEach(r => {
+      if (r.expiresAt) {
+        const expDate = new Date(r.expiresAt);
+        if (expDate.getFullYear() === cellYear && expDate.getMonth() === cellMonth && expDate.getDate() === cellDay) {
+          events.push({
+            id: `req-expiry-${r.id}`,
+            title: r.title,
+            description: `Requisition expiring/submission recommended deadline.`,
+            type: "REQ_DEADLINE",
+            requisition: r,
+            amount: r.amount,
+            badge: r.status,
+            groupName: r.groupName
+          });
+        }
+      }
+    });
+
+    // 3. Requisition added/submitted date
+    requisitions.forEach(r => {
+      const addedDateStr = r.submittedAt || r.createdAt;
+      if (addedDateStr) {
+        const subDate = new Date(addedDateStr);
+        if (subDate.getFullYear() === cellYear && subDate.getMonth() === cellMonth && subDate.getDate() === cellDay) {
+          events.push({
+            id: `req-added-${r.id}`,
+            title: `Added: ${r.title}`,
+            description: `Requisition was added to the system by ${r.requesterName || "requester"} for Ksh ${r.amount.toLocaleString()}.`,
+            type: "REQ_ADDED",
+            requisition: r,
+            amount: r.amount,
+            badge: "Requisition Added",
+            groupName: r.groupName
+          });
+        }
+      }
+    });
+    
+    return events;
+  }, [requisitions]);
+
+  const upcomingDeadlines = useMemo(() => {
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+    const list: any[] = [];
+    
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dayEvents = getEventsForDate(year, month, day);
+      if (dayEvents.length > 0) {
+        list.push(...dayEvents);
+      }
+    }
+    return list;
+  }, [calendarDate, getEventsForDate]);
+
   if (loading) {
     return (
       <div className="space-y-6 lg:space-y-8 animate-pulse p-4 md:p-8">
@@ -580,35 +728,10 @@ const Dashboard: React.FC<{
   return (
     <div className="space-y-6 animate-in fade-in transition-all duration-700">
       {/* Role-aware Greeting */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4 mb-2">
         <div>
           <h1 className="text-lg md:text-2xl font-bold text-slate-900 tracking-tight">System Dashboard</h1>
           <p className="text-slate-500 text-[9px] md:text-sm">Welcome, {currentUser?.name} • <span className="font-mono text-[8px] md:text-[10px] uppercase tracking-widest">{currentUser?.role} Mode</span></p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 md:gap-3">
-          {(false && !systemSettings.hideSupplementaryBudgetBtn && currentUser && [UserRole.CHURCH_GROUP, UserRole.APPROVER_L1, UserRole.APPROVER_L2, UserRole.ADMIN, UserRole.SUPER_ADMIN].includes(currentUser.role)) && (
-            <button
-              onClick={() => {
-                setSupProjectId("");
-                setSupAmount("");
-                setSupJustification("");
-                setSupError(null);
-                setSupSuccess(null);
-                setIsSupplementaryModalOpen(true);
-              }}
-              className="px-4 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest shadow-sm hover:shadow active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <TrendingUp size={13} className="text-amber-600 animate-pulse" />
-              <span>Supplementary Budget</span>
-            </button>
-          )}
-          <button
-              onClick={() => setIsNewRequisitionModalOpen(true)}
-              className="px-4 py-2.5 bg-primary hover:bg-primary/90 text-white border border-primary rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest shadow-sm hover:shadow active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Plus size={13} />
-              <span>New Requisition</span>
-            </button>
         </div>
       </div>
 
@@ -736,6 +859,289 @@ const Dashboard: React.FC<{
 
       {/* Budget Circular Gauges for different Church Group categories */}
       <BudgetCircularGauges projects={projects} />
+
+      {/* Side-by-Side: Quick Action Panel & Calendar Widget */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+        {/* Left Side: Quick Action Panel with New Requisition */}
+        <div className="lg:col-span-1 flex flex-col justify-between bg-white rounded-2xl border border-slate-200 shadow-sm p-5 md:p-6 space-y-6 relative overflow-hidden group">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-primary/10 rounded-xl text-primary">
+                <Activity size={18} />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Quick Actions</h2>
+                <p className="text-[10px] text-slate-400 uppercase font-mono tracking-tight mt-0.5">Control & submission center</p>
+              </div>
+            </div>
+            
+            <p className="text-xs text-slate-500 leading-relaxed font-sans">
+              Initiate new financial requests, check active submission timelines, and monitor cut-offs to ensure timely fund disbursements.
+            </p>
+
+            {/* Quick Tips or Guidelines */}
+            <div className="bg-slate-50 border border-slate-150 rounded-xl p-3.5 space-y-2.5">
+              <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 font-mono block">Submission Checklist:</span>
+              <ul className="space-y-2 text-[10px] text-slate-600 font-sans">
+                <li className="flex items-start gap-2">
+                  <span className="text-emerald-500 font-bold mt-0.5">✓</span>
+                  <span>Ensure physical receipts/invoices are scanned & attached</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-emerald-500 font-bold mt-0.5">✓</span>
+                  <span>Verify correct budget category & church group mapping</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-emerald-500 font-bold mt-0.5">✓</span>
+                  <span>Verify remaining group budget allocation holds sufficient funds</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <button
+              onClick={() => setIsNewRequisitionModalOpen(true)}
+              className="w-full py-4 px-4 bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/95 hover:to-indigo-550 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-md hover:shadow-lg hover:shadow-indigo-100 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer group-hover:scale-[1.01]"
+            >
+              <Plus size={16} strokeWidth={3} />
+              <span>New Requisition</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Right Side: Requisition Submission Deadlines Calendar Widget */}
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-6 space-y-4 md:space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-primary/15 rounded-xl text-primary">
+                <CalendarRange size={18} />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Submission & Expiry Calendar</h2>
+                <p className="text-[10px] text-slate-400 uppercase font-mono tracking-tight mt-0.5">Upcoming Requisition Deadlines & Cut-off Dates</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-end sm:self-auto bg-slate-50 border border-slate-200/60 p-1 rounded-xl">
+              <button
+                onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
+                className="p-1.5 hover:bg-white hover:text-primary hover:shadow-sm rounded-lg text-slate-500 transition-all cursor-pointer"
+                title="Previous Month"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="text-xs font-black text-slate-800 uppercase tracking-widest px-3 min-w-[100px] text-center font-sans">
+                {calendarDate.toLocaleString("default", { month: "long", year: "numeric" })}
+              </span>
+              <button
+                onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
+                className="p-1.5 hover:bg-white hover:text-primary hover:shadow-sm rounded-lg text-slate-500 transition-all cursor-pointer"
+                title="Next Month"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Side: Calendar Grid */}
+            <div className="lg:col-span-2 space-y-3">
+              {/* Days of Week Header */}
+              <div className="grid grid-cols-7 gap-1 text-center border-b border-slate-100 pb-2">
+                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                  <span key={d} className="text-[10px] font-black text-slate-400 uppercase tracking-widest py-1">
+                    {d}
+                  </span>
+                ))}
+              </div>
+
+              {/* Grid Cells */}
+              <div className="grid grid-cols-7 gap-1">
+                {calendarDays.map((cell, idx) => {
+                  const dayEvents = getEventsForDate(cell.year, cell.month, cell.day);
+                  const hasWeekly = dayEvents.some(e => e.type === "SYSTEM_WEEKLY");
+                  const hasMonthly = dayEvents.some(e => e.type === "SYSTEM_MONTHLY");
+                  const hasQuarterly = dayEvents.some(e => e.type === "SYSTEM_QUARTERLY");
+                  const hasReqs = dayEvents.some(e => e.type === "REQ_DEADLINE");
+                  const hasAdded = dayEvents.some(e => e.type === "REQ_ADDED");
+                  
+                  const isSelected = selectedDay.day === cell.day && selectedDay.month === cell.month && selectedDay.year === cell.year;
+                  const isToday = (() => {
+                    const today = new Date();
+                    return today.getDate() === cell.day && today.getMonth() === cell.month && today.getFullYear() === cell.year;
+                  })();
+
+                  return (
+                    <button
+                      key={`${cell.year}-${cell.month}-${cell.day}-${idx}`}
+                      onClick={() => setSelectedDay({ day: cell.day, month: cell.month, year: cell.year })}
+                      className={cn(
+                        "min-h-[55px] p-1.5 flex flex-col justify-between rounded-xl border transition-all text-left group cursor-pointer relative",
+                        !cell.isCurrentMonth 
+                          ? "bg-slate-50/55 border-transparent text-slate-350 hover:bg-slate-50" 
+                          : "bg-white border-slate-100 text-slate-700 hover:border-slate-300 hover:bg-slate-50/40",
+                        isToday && cell.isCurrentMonth && "border-indigo-600 ring-2 ring-indigo-50/50",
+                        isSelected && "bg-primary border-primary text-white hover:bg-primary/95"
+                      )}
+                    >
+                      <span className={cn(
+                        "text-[11px] font-bold",
+                        isSelected ? "text-white" : cell.isCurrentMonth ? "text-slate-800" : "text-slate-400"
+                      )}>
+                        {cell.day}
+                      </span>
+
+                      {/* Indicators container */}
+                      <div className="flex flex-wrap gap-0.5 mt-auto">
+                        {hasWeekly && (
+                          <span 
+                            title="Weekly Cut-off Cycle"
+                            className={cn("w-1.5 h-1.5 rounded-full shrink-0", isSelected ? "bg-white" : "bg-emerald-500")} 
+                          />
+                        )}
+                        {hasMonthly && (
+                          <span 
+                            title="Monthly Review Cut-off"
+                            className={cn("w-1.5 h-1.5 rounded-full shrink-0", isSelected ? "bg-white" : "bg-blue-500")} 
+                          />
+                        )}
+                        {hasQuarterly && (
+                          <span 
+                            title="Quarterly Alignment"
+                            className={cn("w-1.5 h-1.5 rounded-full shrink-0", isSelected ? "bg-white" : "bg-amber-500")} 
+                          />
+                        )}
+                        {hasReqs && (
+                          <span 
+                            title={`${dayEvents.filter(e => e.type === "REQ_DEADLINE").length} Requisition Expiration(s)`}
+                            className={cn("w-1.5 h-1.5 rounded-full shrink-0 animate-pulse", isSelected ? "bg-white" : "bg-rose-500")} 
+                          />
+                        )}
+                        {hasAdded && (
+                          <span 
+                            title={`${dayEvents.filter(e => e.type === "REQ_ADDED").length} Requisition(s) Added`}
+                            className={cn("w-1.5 h-1.5 rounded-full shrink-0", isSelected ? "bg-white" : "bg-indigo-600")} 
+                          />
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              
+              {/* Legend indicators descriptive panel */}
+              <div className="flex flex-wrap gap-4 pt-2 text-[9px] text-slate-400 border-t border-slate-100 uppercase font-mono">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Weekly cut-offs (Fridays)
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Monthly cut-offs (25th)
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Quarterly audits
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Expiring Requisitions
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" /> Requisitions Added
+                </span>
+              </div>
+            </div>
+
+            {/* Right Side: selected day details / Month deadlines Overview panel */}
+            <div className="bg-slate-50/50 border border-slate-200/50 rounded-2xl p-4 flex flex-col justify-between space-y-4">
+              <div className="space-y-3">
+                <div className="border-b border-slate-200/60 pb-2 flex justify-between items-center">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    Deadlines for {new Date(selectedDay.year, selectedDay.month, selectedDay.day).toLocaleDateString("default", { month: "short", day: "numeric", year: "numeric" })}
+                  </span>
+                  <span className="text-[8px] font-mono bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-md uppercase font-bold">
+                    {getEventsForDate(selectedDay.year, selectedDay.month, selectedDay.day).length} Found
+                  </span>
+                </div>
+
+                {/* Day events render */}
+                <div className="space-y-2.5 max-h-[190px] overflow-y-auto pr-1">
+                  {(() => {
+                    const dayEvents = getEventsForDate(selectedDay.year, selectedDay.month, selectedDay.day);
+                    if (dayEvents.length === 0) {
+                      return (
+                        <div className="py-8 text-center text-slate-400 space-y-1">
+                          <Clock size={16} className="mx-auto text-slate-300" />
+                          <p className="text-[10px] font-bold uppercase tracking-wider">No specific deadlines</p>
+                          <p className="text-[9px] lowercase font-normal italic text-slate-400">Regular ledger rules apply</p>
+                        </div>
+                      );
+                    }
+                    
+                    return dayEvents.map((e, index) => (
+                      <div 
+                        key={`${e.id}-${index}`}
+                        className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm space-y-1.5 transition-all hover:shadow hover:border-slate-300"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={cn(
+                            "text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-widest text-white shrink-0",
+                            e.type.startsWith("SYSTEM") 
+                              ? (e.type === "SYSTEM_WEEKLY" ? "bg-emerald-500" : e.type === "SYSTEM_MONTHLY" ? "bg-blue-500" : "bg-amber-500") 
+                              : e.type === "REQ_ADDED" ? "bg-indigo-600" : "bg-rose-500"
+                          )}>
+                            {e.badge}
+                          </span>
+                          {e.amount && (
+                            <span className="font-mono text-[10px] font-black text-slate-900 shrink-0">
+                              Ksh {e.amount.toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                        
+                        <h4 className="text-[11px] font-bold text-slate-800 uppercase tracking-tight line-clamp-1">
+                          {e.title}
+                        </h4>
+                        <p className="text-[10px] text-slate-500 leading-snug">
+                          {e.description}
+                        </p>
+
+                        {e.requisition && (
+                          <button
+                            onClick={() => setSelectedRequisition(e.requisition)}
+                            className="mt-1 flex items-center gap-1 text-[8px] text-primary hover:text-primary/80 font-black uppercase tracking-widest cursor-pointer self-start transition-all"
+                          >
+                            <Eye size={10} /> Inspect Requisition
+                          </button>
+                        )}
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
+
+              {/* Month Summary Feed Footer */}
+              <div className="border-t border-slate-200/60 pt-3 space-y-2">
+                <h3 className="text-[9px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                  <Bell size={10} className="text-amber-500" /> Upcoming This Month ({upcomingDeadlines.length})
+                </h3>
+                <div className="max-h-[105px] overflow-y-auto space-y-1.5 pr-1 text-[10px]">
+                  {upcomingDeadlines.slice(0, 3).map((u, i) => (
+                    <div key={`${u.id}-up-${i}`} className="flex items-center justify-between gap-2 p-1.5 bg-white/40 hover:bg-white border border-slate-100 hover:border-slate-200/80 rounded-lg transition-all">
+                      <span className="font-bold text-slate-700 uppercase tracking-tight text-[9px] truncate max-w-[150px]">
+                        {u.title}
+                      </span>
+                      <span className="text-[8px] font-mono text-slate-400 shrink-0 uppercase">
+                        {u.badge}
+                      </span>
+                    </div>
+                  ))}
+                  {upcomingDeadlines.length === 0 && (
+                    <p className="text-[9px] text-slate-400 italic">No scheduled upcoming events.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Main Grid View */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
