@@ -76,11 +76,29 @@ export const SettingsPanel: React.FC = () => {
 
   React.useEffect(() => {
     if (currentUser?.activeDevices) {
-      setLocalActiveDevices(currentUser.activeDevices);
+      const rawDevices = currentUser.activeDevices as any;
+      if (Array.isArray(rawDevices)) {
+        setLocalActiveDevices(rawDevices);
+      } else if (typeof rawDevices === "string" && rawDevices.trim() !== "") {
+        try {
+          const parsed = JSON.parse(rawDevices);
+          if (Array.isArray(parsed)) {
+            setLocalActiveDevices(parsed);
+          } else {
+            setLocalActiveDevices([]);
+          }
+        } catch (e) {
+          setLocalActiveDevices([]);
+        }
+      } else {
+        setLocalActiveDevices([]);
+      }
     } else {
       setLocalActiveDevices([]);
     }
   }, [currentUser?.activeDevices]);
+
+  const devices = Array.isArray(localActiveDevices) ? localActiveDevices : [];
 
   const runFullBackup = async () => {
     setIsBackingUp(true);
@@ -811,11 +829,11 @@ export const SettingsPanel: React.FC = () => {
                 Connected Devices
               </h3>
               <div className="flex items-center gap-1.5 px-2.5 py-1 bg-primary/10 text-primary border border-primary/20 rounded-lg">
-                <span className="text-[9px] font-black uppercase tracking-widest">{localActiveDevices.length} {localActiveDevices.length === 1 ? 'Device' : 'Devices'} Connected</span>
+                <span className="text-[9px] font-black uppercase tracking-widest">{devices.length} {devices.length === 1 ? 'Device' : 'Devices'} Connected</span>
               </div>
             </div>
             <div className="p-8 relative z-10 space-y-4">
-              {localActiveDevices.map((device, i) => {
+              {devices.map((device, i) => {
                 const localSessionId = typeof window !== "undefined" ? localStorage.getItem("device_session_id") : null;
                 const isCurrent = device.id === localSessionId;
                 return (
@@ -827,7 +845,7 @@ export const SettingsPanel: React.FC = () => {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-xs font-bold text-foreground">
-                            {device.userAgent.slice(0, 50)}...
+                            {device.userAgent ? `${device.userAgent.slice(0, 50)}...` : 'Unknown User Agent'}
                           </p>
                           {isCurrent && (
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 rounded-md text-[8px] font-black uppercase tracking-widest shrink-0 shadow-sm">
@@ -837,16 +855,16 @@ export const SettingsPanel: React.FC = () => {
                           )}
                         </div>
                         <div className="flex items-center gap-3 mt-1.5 text-[9px] text-muted font-medium uppercase tracking-widest">
-                          <span>Logged in: {new Date(device.loginTime).toLocaleDateString()}</span>
+                          <span>Logged in: {device.loginTime ? new Date(device.loginTime).toLocaleDateString() : 'N/A'}</span>
                           <span className="w-1 h-1 bg-border rounded-full" />
-                          <span>Last Active: {new Date(device.lastActive).toLocaleDateString()}</span>
+                          <span>Last Active: {device.lastActive ? new Date(device.lastActive).toLocaleDateString() : 'N/A'}</span>
                         </div>
                       </div>
                     </div>
                     <button 
                       onClick={() => {
                           if (confirm(`Revoke session for this device?`)) {
-                             const updated = localActiveDevices.filter(d => d.id !== device.id);
+                             const updated = devices.filter(d => d.id !== device.id);
                              setLocalActiveDevices(updated);
                              if (currentUser) {
                                updateUserProfile(currentUser.id, { activeDevices: updated });
@@ -869,7 +887,7 @@ export const SettingsPanel: React.FC = () => {
                 );
               })}
 
-              {localActiveDevices.length > 0 && (
+              {devices.length > 0 && (
                 <div className="pt-4 border-t border-border mt-4">
                   <button 
                     onClick={async () => {
@@ -897,7 +915,7 @@ export const SettingsPanel: React.FC = () => {
                 </div>
               )}
 
-              {(!localActiveDevices || localActiveDevices.length === 0) && (
+              {(!devices || devices.length === 0) && (
                  <div className="text-center py-6 border border-dashed border-border rounded-xl">
                    <p className="text-[10px] font-bold text-muted uppercase tracking-widest">No Active Devices Detected</p>
                  </div>

@@ -69,6 +69,37 @@ const getAuthHeaders = async () => {
   return headers;
 };
 
+export function normalizeUserProfile(u: any): UserProfile {
+  if (!u) return u;
+  let parsedGroups: string[] = [];
+  if (u.groups) {
+    if (Array.isArray(u.groups)) {
+      parsedGroups = u.groups;
+    } else if (typeof u.groups === "string" && u.groups.trim() !== "") {
+      try {
+        const parsed = JSON.parse(u.groups);
+        if (Array.isArray(parsed)) {
+          parsedGroups = parsed;
+        } else {
+          parsedGroups = [u.groups];
+        }
+      } catch (e) {
+        parsedGroups = [u.groups];
+      }
+    } else if (typeof u.groups === "string") {
+      parsedGroups = [];
+    } else {
+      parsedGroups = [];
+    }
+  } else {
+    parsedGroups = u.group ? [u.group] : [];
+  }
+  return {
+    ...u,
+    groups: parsedGroups
+  };
+}
+
 // @ts-ignore
 const db = {}; // Dummy db to allow migration progress
 // Supabase Auth usages replaced.
@@ -805,7 +836,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             }
 
             const isSuperAdmin = dbUser.role === UserRole.SUPER_ADMIN || dbUser.role === "SUPER_ADMIN";
-            setCurrentUser({
+            setCurrentUser(normalizeUserProfile({
               ...dbUser,
               approverCode: dbUser.approverCode || dbUser.approver_code,
               isActive: isSuperAdmin ? true : (dbUser.isActive !== undefined ? dbUser.isActive : (dbUser.is_active !== undefined ? dbUser.is_active : true)),
@@ -816,7 +847,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
               isOnline: dbUser.isOnline !== undefined ? dbUser.isOnline : (dbUser.is_online !== undefined ? dbUser.is_online : false),
               lastSeen: dbUser.lastSeen || dbUser.last_seen,
               idleTimeoutDuration: dbUser.idleTimeoutDuration || dbUser.idle_timeout_duration || 15
-            } as UserProfile);
+            } as UserProfile));
           } else {
             const defaultUser = {
               id: firebaseUser.uid,
@@ -1801,7 +1832,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     let isFirstSnap = true;
 
     const unsubUsers = onSnapshot(collection(db, "users"), (snap) => {
-      let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
+      let data = snap.docs.map(doc => normalizeUserProfile({ id: doc.id, ...doc.data() } as UserProfile));
       if (shouldFilter && parsedGroups.length > 0) data = data.filter(u => parsedGroups.includes(u.group || "") || (u.groups && u.groups.some(g => parsedGroups.includes(g))));
       if (hidePrototype) data = data.filter(u => !u.id.startsWith("u-"));
 
@@ -2375,7 +2406,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
         // Process Users
         if (dbData.users) {
-          const data = dbData.users.map((u: any) => ({
+          const data = dbData.users.map((u: any) => normalizeUserProfile({
             id: u.id,
             name: u.name,
             email: u.email,

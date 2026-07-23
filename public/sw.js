@@ -13,6 +13,14 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  // Pass all requests to network and never cache
-  e.respondWith(fetch(e.request));
+  // Only intercept HTTP/HTTPS schemes to avoid browser extension/internal errors
+  if (!e.request.url.startsWith('http') && !e.request.url.startsWith('https')) {
+    return;
+  }
+  e.respondWith(
+    fetch(e.request).catch((err) => {
+      console.warn('[SW] Fetch failed for:', e.request.url, err);
+      throw err;
+    })
+  );
 });
