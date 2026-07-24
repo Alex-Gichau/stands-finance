@@ -558,6 +558,26 @@ async function startServer() {
   const StrictRequisitionModel = mongoose.model('Requisition', RequisitionSchema);
 
   // Helper functions to recursively convert object keys between snake_case and camelCase to bridge MongoDB camelCase schemas and client snake_case payloads.
+  function isPlainObject(item: any): boolean {
+    if (typeof item !== "object" || item === null || item instanceof Date || item instanceof RegExp) {
+      return false;
+    }
+    if (Buffer.isBuffer(item)) {
+      return false;
+    }
+    if (item.constructor && (
+      item.constructor.name === "ObjectId" || 
+      item.constructor.name === "ObjectID" ||
+      item.constructor.name === "Decimal128" ||
+      item.constructor.name === "Long" ||
+      item.constructor.name === "Binary"
+    )) {
+      return false;
+    }
+    const proto = Object.getPrototypeOf(item);
+    return proto === null || proto === Object.prototype;
+  }
+
   function toCamelCase(data: any): any {
     if (data === null || data === undefined) {
       return data;
@@ -565,8 +585,13 @@ async function startServer() {
     if (Array.isArray(data)) {
       return data.map(toCamelCase);
     }
-    if (typeof data === "object" && !(data instanceof Date)) {
-      const obj = (typeof data.toObject === "function") ? data.toObject() : data;
+    
+    let obj = data;
+    if (typeof data.toObject === "function") {
+      obj = data.toObject();
+    }
+    
+    if (isPlainObject(obj)) {
       const camelData: any = {};
       for (const [key, val] of Object.entries(obj)) {
         let camelKey = key;
@@ -579,7 +604,12 @@ async function startServer() {
       }
       return camelData;
     }
-    return data;
+    
+    if (obj.constructor && (obj.constructor.name === "ObjectId" || obj.constructor.name === "ObjectID" || obj.constructor.name === "Decimal128")) {
+      return obj.toString();
+    }
+    
+    return obj;
   }
 
   function toSnakeCase(data: any): any {
@@ -589,8 +619,13 @@ async function startServer() {
     if (Array.isArray(data)) {
       return data.map(toSnakeCase);
     }
-    if (typeof data === "object" && !(data instanceof Date)) {
-      const obj = (typeof data.toObject === "function") ? data.toObject() : data;
+    
+    let obj = data;
+    if (typeof data.toObject === "function") {
+      obj = data.toObject();
+    }
+    
+    if (isPlainObject(obj)) {
       const snakeData: any = {};
       for (const [key, val] of Object.entries(obj)) {
         let snakeKey = key;
@@ -603,7 +638,12 @@ async function startServer() {
       }
       return snakeData;
     }
-    return data;
+    
+    if (obj.constructor && (obj.constructor.name === "ObjectId" || obj.constructor.name === "ObjectID" || obj.constructor.name === "Decimal128")) {
+      return obj.toString();
+    }
+    
+    return obj;
   }
 
   function parseAndValidateMongoUri(uri: string): string {
