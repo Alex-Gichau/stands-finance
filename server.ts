@@ -703,7 +703,7 @@ async function startServer() {
     }
   }
 
-  let rawMongoUri = process.env.MONGODB_URI || "mongodb://178.104.122.211:27017/stands_finance_db";
+  let rawMongoUri = process.env.MONGODB_URI || "mongodb://178.104.122.211:41282/stands_finance_db";
   let mongoUri = parseAndValidateMongoUri(rawMongoUri);
   if (mongoUri.includes("@") && !mongoUri.includes("authSource")) {
     if (mongoUri.includes("?")) {

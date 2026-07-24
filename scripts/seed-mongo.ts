@@ -22,7 +22,7 @@ import {
 
 dotenv.config();
 
-let MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/stands_finance_db";
+let MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:41282/stands_finance_db";
 if (MONGODB_URI.includes("@") && !MONGODB_URI.includes("authSource")) {
   if (MONGODB_URI.includes("?")) {
     MONGODB_URI += "&authSource=admin";

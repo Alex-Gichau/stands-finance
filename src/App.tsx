@@ -2804,10 +2804,10 @@ function AppContent() {
                           setCurrentView("settings");
                           setIsProfileOpen(false);
                         }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-left cursor-pointer"
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors text-left cursor-pointer"
                       >
-                        <Settings size={14} className="text-slate-400" />
-                        SYSTEM
+                        <Settings size={14} className="text-primary" />
+                        SYSTEM SETTINGS
                       </button>
                       <button
                         onClick={() => {

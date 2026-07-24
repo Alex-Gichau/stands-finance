@@ -28,7 +28,7 @@ Featuring a **dual-database architecture** (MongoDB with automated fallback to J
 </p>
 
 <p align="center">
-  <img src="https://github-readme-streak-stats.herokuapp.com/?user=gichaumburu&theme=tokyonight" alt="GitHub Streak" />
+  <img src="https://github-readme-streak-stats.herokuapp.com/?user=Alex-Gichau&theme=tokyonight" alt="GitHub Streak" />
 </p>
 
 ---
@@ -128,34 +128,6 @@ Featuring a **dual-database architecture** (MongoDB with automated fallback to J
 | `POST` | `/api/slack` | Route operational notifications to Slack channel | Yes |
 | `POST` | `/api/attachments/upload` | Upload supporting receipts or invoice documents | Yes |
 
----
-
-## ⚙️ Environment Configuration
-
-To run the application locally or in production, configure `.env` based on `.env.example`:
-
-```env
-# Server Configuration
-PORT=3000
-NODE_ENV=production
-
-# Database Configuration
-MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.mongodb.net/stands_finance_db
-
-# Firebase Credentials
-FIREBASE_PROJECT_ID=ai-studio-standrewsrequisi-4557280f
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk@pceastandrews.org
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n..."
-
-# SMTP Mail Server
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=ict.team@pceastandrews.org
-SMTP_PASS=xxxx-xxxx-xxxx-xxxx
-
-# Integrations
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
-```
 
 ---
 
@@ -166,34 +138,11 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
 - npm or yarn
 - MongoDB Instance or Cloud Atlas cluster
 
-### Local Installation
-
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/gichaumburu/pcea-stands-requisition.git
-   cd pcea-stands-requisition
-   ```
-
-2. **Install Dependencies**:
-   ```bash
-   npm install
-   ```
-
-3. **Start Development Server**:
-   ```bash
-   npm run dev
-   ```
-   *The application will launch on `http://localhost:3000`.*
-
-4. **Build for Production**:
-   ```bash
-   npm run build
-   npm start
-   ```
-
----
 
 ## 🛡️ License & Acknowledgments
 
-Developed with ❤️ for **PCEA St. Andrew's Church — ICT & Finance Department**.  
-*All rights reserved.*
+Developed for **STANDS Finance**.  
+*All rights reserved.* © 2026
+
+
+

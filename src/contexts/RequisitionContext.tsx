@@ -970,7 +970,6 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         await setDoc(doc(db, "settings", "system"), updates, { merge: true });
       }
       await addSystemLog("SYSTEM_SETTINGS_UPDATE", `System settings updated: ${JSON.stringify(updates)}`, { updates });
-      triggerToast({ type: "SYSTEM_INFO", message: "System settings saved successfully", severity: "LOW", timestamp: new Date().toISOString() });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, "settings/system");
     }

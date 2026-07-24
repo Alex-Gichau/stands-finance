@@ -37,12 +37,15 @@ import {
   RefreshCw,
   Trash2,
   Power,
-  LogOut
+  LogOut,
+  Check,
+  KeyRound,
+  HelpCircle
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { cn, sendSlackNotification } from "../lib/utils";
 import { UserRole } from "../types";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { SystemHealth } from "./SystemHealth";
 import { databaseService } from "../lib/databaseService";
 
@@ -374,17 +377,77 @@ export const SettingsPanel: React.FC = () => {
 
   const lastTenLogs = systemLogs.slice(0, 10);
 
+  const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false);
+  const [isSavingSettings, setIsSavingSettings] = React.useState(false);
+  const [editingName, setEditingName] = React.useState(currentUser?.name || "");
+
+  React.useEffect(() => {
+    if (currentUser?.name && !hasUnsavedChanges) {
+      setEditingName(currentUser.name);
+    }
+  }, [currentUser?.name]);
+
+  const handleSaveAllSettings = async () => {
+    setIsSavingSettings(true);
+    try {
+      if (currentUser && editingName && editingName !== currentUser.name) {
+        await updateUserProfile(currentUser.id, { name: editingName });
+      }
+      triggerToast({
+        type: "SYSTEM_INFO",
+        severity: "LOW",
+        message: "System settings and profile updated successfully!",
+        timestamp: new Date().toISOString()
+      });
+      setHasUnsavedChanges(false);
+    } catch (err: any) {
+      triggerToast({
+        type: "SYSTEM_INFO",
+        severity: "HIGH",
+        message: err.message || "Failed to save settings.",
+        timestamp: new Date().toISOString()
+      });
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
   return (
-    <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-700">
-       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-700 relative">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-1">
           <h2 className="text-2xl font-black text-foreground tracking-tight flex items-center gap-2">
             <Settings2 size={28} className="text-primary" />
-            System Configuration
+            System & Profile Settings
           </h2>
           <p className="text-sm text-muted font-medium max-w-xl">
-            Configure authorization pipelines, security thresholds, and organizational audit parameters.
+            Configure user display name, authentication security, global announcement banners, and operational thresholds.
           </p>
+        </div>
+
+        {/* Quick Jump Shortcuts for User Profile Dropdown Menu */}
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href="#user-profile-section"
+            className="px-4 py-2.5 bg-card hover:bg-slate-100 dark:hover:bg-slate-800 border border-border rounded-xl text-[10px] font-black uppercase tracking-wider text-foreground flex items-center gap-2 transition-colors cursor-pointer"
+          >
+            <User size={14} className="text-primary" />
+            Change Name
+          </a>
+          <a
+            href="#password-pipeline-section"
+            className="px-4 py-2.5 bg-card hover:bg-slate-100 dark:hover:bg-slate-800 border border-border rounded-xl text-[10px] font-black uppercase tracking-wider text-foreground flex items-center gap-2 transition-colors cursor-pointer"
+          >
+            <KeyRound size={14} className="text-primary" />
+            Reset Password
+          </a>
+          <a
+            href="#global-announcement-section"
+            className="px-4 py-2.5 bg-card hover:bg-slate-100 dark:hover:bg-slate-800 border border-border rounded-xl text-[10px] font-black uppercase tracking-wider text-foreground flex items-center gap-2 transition-colors cursor-pointer"
+          >
+            <Bell size={14} className="text-primary" />
+            Announcement Banner
+          </a>
         </div>
       </div>
 
@@ -684,21 +747,39 @@ export const SettingsPanel: React.FC = () => {
           )}
 
           {/* User Profile Identity */}
-          <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm relative">
+          <section id="user-profile-section" className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm relative">
              <div className="absolute top-0 right-0 p-10 opacity-5 pointer-events-none">
                 <UserCheck size={120} className="text-primary" />
              </div>
-            <div className="px-8 py-6 border-b border-border">
+            <div className="px-8 py-6 border-b border-border flex items-center justify-between">
               <h3 className="text-xs font-black text-foreground uppercase tracking-[0.2em] flex items-center gap-2">
                 <UserCheck size={18} className="text-primary" />
-                Session Identity Transaction
+                Session Identity & Profile Settings
               </h3>
+              <div className="text-[9px] font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">
+                Editable Profile
+              </div>
             </div>
             
             <div className="p-10 grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1">LEGAL_NAME_DISPLAY</label>
-                <div className="p-4 bg-background rounded-2xl text-xs text-foreground border border-border font-bold">{currentUser?.name}</div>
+                <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1 flex items-center justify-between">
+                  <span>Legal Name / User Display</span>
+                  <span className="text-[9px] text-primary font-bold">Editable</span>
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-3.5 text-slate-400" size={16} />
+                  <input
+                    type="text"
+                    value={editingName}
+                    onChange={(e) => {
+                      setEditingName(e.target.value);
+                      setHasUnsavedChanges(true);
+                    }}
+                    placeholder="Enter full name..."
+                    className="w-full pl-10 pr-4 py-3 bg-background border border-border rounded-2xl text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-all"
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1">IDENTITY_EMAIL</label>
@@ -716,7 +797,7 @@ export const SettingsPanel: React.FC = () => {
           </section>
 
           {/* User Password Update Security */}
-          <section className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm relative">
+          <section id="password-pipeline-section" className="bg-card rounded-[2rem] border border-border overflow-hidden shadow-sm relative">
             <div className="absolute top-0 right-0 p-10 opacity-5 pointer-events-none">
               <Lock size={120} className="text-primary" />
             </div>
@@ -1103,7 +1184,7 @@ sudo systemctl enable mongod`}
                       </div>
 
                       <div className="p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/40 rounded-xl text-xs text-amber-700 dark:text-amber-400">
-                        <span className="font-bold">⚠️ Production Security Notice:</span> Keep MongoDB bound to <code className="font-mono bg-amber-100 dark:bg-amber-900/60 px-1 rounded text-[11px]">127.0.0.1</code> in your <code className="font-mono bg-amber-100 dark:bg-amber-900/60 px-1 rounded text-[11px]">/etc/mongod.conf</code> configuration file. Never open port 27017 directly to the public internet without solid authentication and firewall configuration.
+                        <span className="font-bold">⚠️ Production Security Notice:</span> Keep MongoDB bound to <code className="font-mono bg-amber-100 dark:bg-amber-900/60 px-1 rounded text-[11px]">127.0.0.1</code> in your <code className="font-mono bg-amber-100 dark:bg-amber-900/60 px-1 rounded text-[11px]">/etc/mongod.conf</code> configuration file. Never open port 41282 directly to the public internet without solid authentication and firewall configuration.
                       </div>
                     </div>
                   </div>
@@ -1119,7 +1200,7 @@ sudo systemctl enable mongod`}
                       <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">Compass Connection Settings</h4>
                       <ol className="list-decimal pl-4 text-xs space-y-2 text-slate-600 dark:text-slate-300">
                         <li>Open **MongoDB Compass** on your desktop, click <span className="font-semibold text-emerald-600">New Connection</span>.</li>
-                        <li>For Connection String, enter: <code className="font-mono bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">mongodb://localhost:27017</code></li>
+                        <li>For Connection String, enter: <code className="font-mono bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">mongodb://localhost:41282</code></li>
                         <li>Click the **Advanced Connection Options** toggle.</li>
                         <li>Navigate to the **SSH Tunnel** tab and select <span className="font-semibold text-slate-800 dark:text-white">SSH Identity File</span>:</li>
                         <ul className="list-disc pl-5 mt-1 space-y-1">
@@ -1181,7 +1262,7 @@ sudo systemctl enable mongod`}
             </section>
 
             {/* Dashboard Announcement Banner Configuration */}
-            <section className="bg-card rounded-[2rem] border border-border p-8 shadow-sm transition-all space-y-6">
+            <section id="global-announcement-section" className="bg-card rounded-[2rem] border border-border p-8 shadow-sm transition-all space-y-6">
               <div className="flex items-center gap-3">
                 <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-orange-100 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 font-bold text-lg">
                   📢
@@ -1193,7 +1274,7 @@ sudo systemctl enable mongod`}
               </div>
 
               <p className="text-[10px] text-muted leading-relaxed font-semibold">
-                Configure a dismissible announcement banner to be displayed to and visible to all system users.
+                Configure a dismissible announcement banner to be displayed to and visible to all system users. Changes save in real-time as you type for every character.
               </p>
 
               <div className="space-y-4">
@@ -1201,7 +1282,11 @@ sudo systemctl enable mongod`}
                   <label className="text-[10px] font-bold text-foreground">Announcement Message</label>
                   <textarea
                     value={systemSettings.announcementMessage || ""}
-                    onChange={(e) => updateSystemSettings({ announcementMessage: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      updateSystemSettings({ announcementMessage: val });
+                      setHasUnsavedChanges(true);
+                    }}
                     placeholder="Enter broadcast message here..."
                     className="w-full bg-background border border-border rounded-xl px-4 py-3 text-[11px] font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary min-h-[80px]"
                   />
@@ -1213,7 +1298,10 @@ sudo systemctl enable mongod`}
                     <div className="relative">
                       <select
                         value={systemSettings.announcementType || "info"}
-                        onChange={(e) => updateSystemSettings({ announcementType: e.target.value as any })}
+                        onChange={(e) => {
+                          updateSystemSettings({ announcementType: e.target.value as any });
+                          setHasUnsavedChanges(true);
+                        }}
                         className="w-full bg-background border border-border rounded-xl px-4 py-3 pb-3 text-[11px] font-bold text-foreground appearance-none focus:outline-none focus:ring-2 focus:ring-primary uppercase tracking-wider h-[42px]"
                       >
                         <option value="info">Info (Blue)</option>
@@ -1229,7 +1317,10 @@ sudo systemctl enable mongod`}
                     <label className="text-[10px] font-bold text-foreground">Status</label>
                     <button
                       type="button"
-                      onClick={() => updateSystemSettings({ announcementIsActive: !systemSettings.announcementIsActive })}
+                      onClick={() => {
+                        updateSystemSettings({ announcementIsActive: !systemSettings.announcementIsActive });
+                        setHasUnsavedChanges(true);
+                      }}
                       className={`w-full py-3 h-[42px] rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer flex items-center justify-center gap-2 ${
                         systemSettings.announcementIsActive
                           ? "bg-rose-500 hover:bg-rose-600 text-white shadow-sm"
@@ -1776,6 +1867,60 @@ sudo systemctl enable mongod`}
           </section>
         </div>
       </div>
+
+      {/* Floating Hovering Save Settings Bar */}
+      <AnimatePresence>
+        {hasUnsavedChanges && (
+          <motion.div
+            initial={{ y: 80, opacity: 0, scale: 0.95 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: 80, opacity: 0, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 350, damping: 25 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[150] max-w-lg w-[90%] bg-slate-900 dark:bg-slate-950 border border-primary/40 text-white px-6 py-4 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center justify-between gap-4 backdrop-blur-xl"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-primary/20 text-primary border border-primary/30 flex items-center justify-center shrink-0 animate-pulse">
+                <Save size={18} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-wider text-white truncate">Unsaved Settings Detected</p>
+                <p className="text-[10px] text-slate-400 truncate">Click save to commit changes to system context.</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setHasUnsavedChanges(false);
+                  if (currentUser) setEditingName(currentUser.name || "");
+                }}
+                className="px-3 py-2 text-[10px] font-bold text-slate-400 hover:text-white uppercase tracking-wider transition-colors cursor-pointer"
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAllSettings}
+                disabled={isSavingSettings}
+                className="px-5 py-2.5 bg-primary hover:bg-primary/90 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-md active:scale-95 flex items-center gap-2 cursor-pointer"
+              >
+                {isSavingSettings ? (
+                  <>
+                    <RefreshCw className="animate-spin" size={12} />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Check size={14} />
+                    Save Settings
+                  </>
+                )}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
