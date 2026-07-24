@@ -353,6 +353,10 @@ try {
   const outputPath = path.join(publicDir, "User_Manual_StAndrews.pdf");
   
   fs.writeFileSync(outputPath, new Uint8Array(uint8));
+  const distDir = path.join(process.cwd(), "dist");
+  if (fs.existsSync(distDir)) {
+    fs.writeFileSync(path.join(distDir, "User_Manual_StAndrews.pdf"), new Uint8Array(uint8));
+  }
   console.log(`PDF created successfully at: ${outputPath}`);
 } catch (error) {
   console.error("Error creating User Manual PDF:", error);

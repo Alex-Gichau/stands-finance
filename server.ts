@@ -3511,6 +3511,232 @@ async function startServer() {
   });
 
   // API Route for Google Sheets Synchronization (Durable Persistence & Quota Fallback)
+  app.post("/api/sync-to-sheet", async (req, res) => {
+    try {
+      const { requisition, sheetTitle: customSheetTitle } = req.body || {};
+      const reqObj = requisition || req.body;
+
+      if (!reqObj || !reqObj.id) {
+        return res.status(400).json({ error: "Missing required requisition data for sheets sync." });
+      }
+
+      const fy = reqObj.fiscalYear || new Date().getFullYear();
+      const sheetTitle = customSheetTitle || `STANDS Financial Records FY${fy}`;
+
+      // Upload attachments if any
+      let uploadedAttachments: string[] = [];
+      let driveClient: any = null;
+
+      try {
+        const clients = getGoogleClients();
+        driveClient = clients.drive;
+      } catch (e) {
+        // No drive credentials available
+      }
+
+      if (Array.isArray(reqObj.attachments) && reqObj.attachments.length > 0) {
+        if (driveClient) {
+          uploadedAttachments = await Promise.all(
+            reqObj.attachments.map((att: string) => uploadAttachmentToDrive(att, driveClient))
+          );
+        } else {
+          uploadedAttachments = reqObj.attachments;
+        }
+      }
+
+      // Try Google Sheets sync
+      try {
+        const clients = getGoogleClients();
+        const sheets = clients.sheets;
+        const drive = clients.drive;
+
+        let spreadsheetId: string | null = null;
+        try {
+          const listRes = await drive.files.list({
+            q: `name = '${sheetTitle}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`,
+            fields: "files(id, name, webViewLink)",
+            spaces: "drive",
+          });
+
+          if (listRes.data?.files && listRes.data.files.length > 0) {
+            spreadsheetId = listRes.data.files[0].id;
+          } else {
+            const createRes = await sheets.spreadsheets.create({
+              requestBody: {
+                properties: { title: sheetTitle },
+                sheets: [
+                  {
+                    properties: { title: "Requisitions" },
+                    data: [
+                      {
+                        rowData: [
+                          {
+                            values: [
+                              { userEnteredValue: { stringValue: "Requisition ID" } },
+                              { userEnteredValue: { stringValue: "Submitted At" } },
+                              { userEnteredValue: { stringValue: "Requester Name" } },
+                              { userEnteredValue: { stringValue: "Requester Email" } },
+                              { userEnteredValue: { stringValue: "Group / Department" } },
+                              { userEnteredValue: { stringValue: "Title / Purpose" } },
+                              { userEnteredValue: { stringValue: "Amount (KES)" } },
+                              { userEnteredValue: { stringValue: "Status" } },
+                              { userEnteredValue: { stringValue: "Payable To" } },
+                              { userEnteredValue: { stringValue: "Attachments" } },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            });
+            spreadsheetId = createRes.data.spreadsheetId;
+          }
+        } catch (driveErr: any) {
+          console.warn("[Google Sheets] Spreadsheet lookup/creation failed:", driveErr.message);
+        }
+
+        if (spreadsheetId) {
+          const values = [
+            [
+              reqObj.id || "",
+              reqObj.submittedAt || reqObj.createdAt || new Date().toISOString(),
+              reqObj.requesterName || "",
+              reqObj.requesterEmail || "",
+              reqObj.groupName || reqObj.groupId || "",
+              reqObj.title || "",
+              reqObj.amount || 0,
+              reqObj.status || "SUBMITTED",
+              reqObj.payableTo || "",
+              (uploadedAttachments || []).join("; "),
+            ],
+          ];
+
+          await sheets.spreadsheets.values.append({
+            spreadsheetId,
+            range: "Requisitions!A:J",
+            valueInputOption: "USER_ENTERED",
+            requestBody: { values },
+          });
+
+          return res.json({
+            success: true,
+            mode: "google_sheets_live",
+            message: `Successfully synced requisition ${reqObj.id} to Google Sheets.`,
+            sheetTitle,
+            spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}`,
+            uploadedAttachments,
+          });
+        }
+      } catch (sheetsErr: any) {
+        console.warn("[Google Sheets Live Sync Failed, falling back to simulated ledger]:", sheetsErr.message || sheetsErr);
+      }
+
+      // Fallback to simulated offline sheets ledger
+      const fallbackResult = handleOfflineFallback({ ...reqObj, attachments: uploadedAttachments }, sheetTitle);
+      return res.json({
+        ...fallbackResult,
+        uploadedAttachments,
+      });
+    } catch (err: any) {
+      console.error("[/api/sync-to-sheet error]:", err);
+      return res.status(500).json({
+        error: err.message || "Failed to execute Google Sheets sync",
+        uploadedAttachments: req.body?.requisition?.attachments || [],
+      });
+    }
+  });
+
+  app.post("/api/backup-all-to-sheets", async (req, res) => {
+    try {
+      const requisitions = req.body?.requisitions || readJsonCollection("requisitions") || [];
+      const users = req.body?.users || readJsonCollection("users") || [];
+
+      const sheetTitle = `STANDS Financial Records FY${new Date().getFullYear()} Backup`;
+
+      try {
+        const clients = getGoogleClients();
+        const sheets = clients.sheets;
+        const drive = clients.drive;
+
+        let spreadsheetId: string | null = null;
+        const listRes = await drive.files.list({
+          q: `name = '${sheetTitle}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`,
+          fields: "files(id, name)",
+          spaces: "drive",
+        });
+
+        if (listRes.data?.files && listRes.data.files.length > 0) {
+          spreadsheetId = listRes.data.files[0].id;
+        } else {
+          const createRes = await sheets.spreadsheets.create({
+            requestBody: {
+              properties: { title: sheetTitle },
+              sheets: [
+                { properties: { title: "Requisitions" } },
+                { properties: { title: "Users" } },
+              ],
+            },
+          });
+          spreadsheetId = createRes.data.spreadsheetId;
+        }
+
+        if (spreadsheetId) {
+          const reqRows = [
+            ["ID", "Submitted At", "Requester", "Group", "Title", "Amount", "Status", "Payable To"],
+            ...requisitions.map((r: any) => [
+              r.id || "",
+              r.submittedAt || r.createdAt || "",
+              r.requesterName || "",
+              r.groupName || r.groupId || "",
+              r.title || "",
+              r.amount || 0,
+              r.status || "",
+              r.payableTo || "",
+            ]),
+          ];
+
+          await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: "Requisitions!A1",
+            valueInputOption: "USER_ENTERED",
+            requestBody: { values: reqRows },
+          });
+
+          return res.json({
+            success: true,
+            mode: "google_sheets_live",
+            message: `Successfully backed up ${requisitions.length} requisitions and ${users.length} users to Google Sheets.`,
+            sheetTitle,
+            spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}`,
+            backupCount: requisitions.length,
+          });
+        }
+      } catch (sheetsErr: any) {
+        console.warn("[Google Sheets Bulk Backup Live Failed, using local simulated fallback]:", sheetsErr.message || sheetsErr);
+      }
+
+      // Offline simulated backup fallback
+      const backupPath = path.join(process.cwd(), "financial_records_google_sheets_simulated.json");
+      fs.writeFileSync(backupPath, JSON.stringify({ requisitions, users, backedUpAt: new Date().toISOString() }, null, 2), "utf-8");
+
+      return res.json({
+        success: true,
+        mode: "simulated_fallback",
+        message: `Successfully backed up ${requisitions.length} requisitions and ${users.length} users to simulated Sheets ledger.`,
+        sheetTitle,
+        spreadsheetUrl: "#simulated-google-sheets",
+        backupCount: requisitions.length,
+      });
+    } catch (err: any) {
+      console.error("[/api/backup-all-to-sheets error]:", err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Failed to execute bulk backup to Google Sheets",
+      });
+    }
+  });
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

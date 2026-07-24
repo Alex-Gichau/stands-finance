@@ -3207,9 +3207,15 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requisition: req })
       });
-      const data = await response.json();
+      const text = await response.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (pErr) {
+        data = { error: "Server returned non-JSON response" };
+      }
       if (!response.ok) {
-        console.log("Failed to sync to Google Sheets:", data.error);
+        console.log("Failed to sync to Google Sheets:", data.error || response.statusText);
       } else {
         console.log(`[Google Sheets] Synced Requisition ${req.id} successfully:`, data);
 

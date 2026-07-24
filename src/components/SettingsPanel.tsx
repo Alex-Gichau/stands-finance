@@ -112,7 +112,13 @@ export const SettingsPanel: React.FC = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requisitions, users })
       });
-      const data = await response.json();
+      const text = await response.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (pErr) {
+        data = { success: false, error: "Server returned non-JSON response." };
+      }
       setBackupResult(data);
       if (response.ok && data.success) {
         triggerToast({
