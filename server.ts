@@ -445,9 +445,12 @@ async function startServer() {
       try {
         if (mongoose.connection.readyState === 1) {
           dbUser = await (models.User as any).findOne({ email: decodedToken.email?.toLowerCase() }).lean();
+        } else {
+          const localUsers = readJsonCollection("users");
+          dbUser = localUsers.find((u: any) => String(u.email || u.email_address).toLowerCase() === decodedToken.email?.toLowerCase());
         }
       } catch (e) {
-        console.error("Error reading user profile with Mongoose in auth middleware:", e);
+        console.error("Error reading user profile in auth middleware:", e);
       }
 
       if (dbUser) {
@@ -1344,10 +1347,12 @@ async function startServer() {
         let usersList: any[] = [];
         if (mongoose.connection.readyState === 1) {
           usersList = await (models.User as any).find({}).lean();
+        } else {
+          usersList = readJsonCollection("users");
         }
         resolvedRecipients = usersList
-          .map((u: any) => u.email)
-          .filter((email: string) => email && email.includes('@'));
+          .map((u: any) => u.email || u.email_address)
+          .filter((email: string) => email && typeof email === "string" && email.includes('@'));
       } catch (e: any) {
         console.error("Error fetching users for bulk email:", e);
         return res.status(500).json({ error: "Failed to retrieve user mailing list: " + e.message });

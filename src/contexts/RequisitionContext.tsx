@@ -3774,7 +3774,13 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         },
         body: JSON.stringify({ subject, content, recipients })
       });
-      const data = await response.json();
+      const responseText = await response.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        throw new Error(`Server returned non-JSON response (${response.status}): ${responseText.slice(0, 300)}`);
+      }
       if (!response.ok) {
         throw new Error(data.error || `Bulk email dispatch failed with status: ${response.status}`);
       }
