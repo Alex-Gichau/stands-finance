@@ -557,6 +557,55 @@ async function startServer() {
   }
   const StrictRequisitionModel = mongoose.model('Requisition', RequisitionSchema);
 
+  // Helper functions to recursively convert object keys between snake_case and camelCase to bridge MongoDB camelCase schemas and client snake_case payloads.
+  function toCamelCase(data: any): any {
+    if (data === null || data === undefined) {
+      return data;
+    }
+    if (Array.isArray(data)) {
+      return data.map(toCamelCase);
+    }
+    if (typeof data === "object" && !(data instanceof Date)) {
+      const obj = (typeof data.toObject === "function") ? data.toObject() : data;
+      const camelData: any = {};
+      for (const [key, val] of Object.entries(obj)) {
+        let camelKey = key;
+        if (key === 'photo_url') {
+          camelKey = 'photoURL';
+        } else {
+          camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+        }
+        camelData[camelKey] = toCamelCase(val);
+      }
+      return camelData;
+    }
+    return data;
+  }
+
+  function toSnakeCase(data: any): any {
+    if (data === null || data === undefined) {
+      return data;
+    }
+    if (Array.isArray(data)) {
+      return data.map(toSnakeCase);
+    }
+    if (typeof data === "object" && !(data instanceof Date)) {
+      const obj = (typeof data.toObject === "function") ? data.toObject() : data;
+      const snakeData: any = {};
+      for (const [key, val] of Object.entries(obj)) {
+        let snakeKey = key;
+        if (key === 'photoURL') {
+          snakeKey = 'photo_url';
+        } else {
+          snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+        }
+        snakeData[snakeKey] = toSnakeCase(val);
+      }
+      return snakeData;
+    }
+    return data;
+  }
+
   function parseAndValidateMongoUri(uri: string): string {
     if (!uri) return uri;
     try {
@@ -668,7 +717,7 @@ async function startServer() {
       }
 
       if (dbUser) {
-        return res.json({ exists: true, profile: dbUser });
+        return res.json({ exists: true, profile: toSnakeCase(dbUser) });
       } else {
         return res.json({ exists: false });
       }
@@ -756,7 +805,7 @@ async function startServer() {
       }
 
       if (dbUser) {
-        return res.json({ exists: true, profile: dbUser });
+        return res.json({ exists: true, profile: toSnakeCase(dbUser) });
       } else {
         return res.json({ exists: false });
       }
@@ -817,7 +866,8 @@ async function startServer() {
             const data = await Model.find({}).lean();
             result[col] = data.map((item: any) => {
               const { _id, __v, ...rest } = item;
-              return { id: rest.id || String(_id), ...rest };
+              const snakeRest = toSnakeCase(rest);
+              return { id: snakeRest.id || String(_id), ...snakeRest };
             });
           } else {
             result[col] = [];
@@ -826,7 +876,8 @@ async function startServer() {
           const data = readJsonCollection(col);
           result[col] = data.map((item: any) => {
             const { _id, __v, ...rest } = item;
-            return { id: rest.id || String(_id), ...rest };
+            const snakeRest = toSnakeCase(rest);
+            return { id: snakeRest.id || String(_id), ...snakeRest };
           });
         }
       }
@@ -848,14 +899,16 @@ async function startServer() {
         const data = await mongoose.model('Requisition').find({}).sort({ createdAt: -1 }).lean();
         const cleanData = data.map((item: any) => {
           const { _id, __v, ...rest } = item;
-          return { id: rest.id || String(_id), ...rest };
+          const snakeRest = toSnakeCase(rest);
+          return { id: snakeRest.id || String(_id), ...snakeRest };
         });
         res.json(cleanData);
       } else {
         const data = readJsonCollection("requisitions");
         const cleanData = data.map((item: any) => {
           const { _id, __v, ...rest } = item;
-          return { id: rest.id || String(_id), ...rest };
+          const snakeRest = toSnakeCase(rest);
+          return { id: snakeRest.id || String(_id), ...snakeRest };
         });
         res.json(cleanData);
       }
@@ -875,13 +928,14 @@ async function startServer() {
       const id = body.id || `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       
       if (mongoose.connection.readyState === 1) {
-        const payload = { ...body, id };
+        const camelBody = toCamelCase(body);
+        const payload = { ...camelBody, id };
         const newDoc = await mongoose.model('Requisition').findOneAndUpdate(
           { id },
           { $set: payload },
           { upsert: true, returnDocument: 'after' }
-        );
-        res.status(201).json(newDoc);
+        ).lean();
+        res.status(201).json(toSnakeCase(newDoc));
       } else {
         const list = readJsonCollection("requisitions");
         const idx = list.findIndex((item: any) => item.id === id);
@@ -915,14 +969,16 @@ async function startServer() {
         const data = await Model.find({}).lean();
         const cleanData = data.map((item: any) => {
           const { _id, __v, ...rest } = item;
-          return { id: rest.id || String(_id), ...rest };
+          const snakeRest = toSnakeCase(rest);
+          return { id: snakeRest.id || String(_id), ...snakeRest };
         });
         res.json(cleanData);
       } else {
         const data = readJsonCollection(collection);
         const cleanData = data.map((item: any) => {
           const { _id, __v, ...rest } = item;
-          return { id: rest.id || String(_id), ...rest };
+          const snakeRest = toSnakeCase(rest);
+          return { id: snakeRest.id || String(_id), ...snakeRest };
         });
         res.json(cleanData);
       }
@@ -945,7 +1001,8 @@ async function startServer() {
           return res.status(404).json({ error: "Document not found" });
         }
         const { _id, __v, ...rest } = item;
-        res.json({ id: rest.id || String(_id), ...rest });
+        const snakeRest = toSnakeCase(rest);
+        res.json({ id: snakeRest.id || String(_id), ...snakeRest });
       } else {
         const data = readJsonCollection(collection);
         const item = data.find((d: any) => d.id === id);
@@ -953,7 +1010,8 @@ async function startServer() {
           return res.status(404).json({ error: "Document not found" });
         }
         const { _id, __v, ...rest } = item;
-        res.json({ id: rest.id || String(_id), ...rest });
+        const snakeRest = toSnakeCase(rest);
+        res.json({ id: snakeRest.id || String(_id), ...snakeRest });
       }
     } catch (err: any) {
       res.status(500).json({ error: err.message || err });
@@ -970,7 +1028,8 @@ async function startServer() {
         if (!Model) {
           return res.status(400).json({ error: `Unknown collection: ${collection}` });
         }
-        const payload = { ...body, id };
+        const camelBody = toCamelCase(body);
+        const payload = { ...camelBody, id };
         await Model.findOneAndUpdate(
           { id },
           { $set: payload },
@@ -1003,9 +1062,10 @@ async function startServer() {
         if (!Model) {
           return res.status(400).json({ error: `Unknown collection: ${collection}` });
         }
+        const camelBody = toCamelCase(body);
         const item = await Model.findOneAndUpdate(
           { id },
-          { $set: body },
+          { $set: camelBody },
           { returnDocument: 'after' }
         );
         if (!item) {

@@ -2227,292 +2227,421 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const fetchAllFromMongoDB = async () => {
       const hidePrototype = true;
       const isGroupUser = currentUserRole === UserRole.CHURCH_GROUP || currentUserRole === UserRole.APPROVER_L1 || currentUserRole === UserRole.APPROVER_L2;
-      const filterGroups = JSON.parse(currentUserGroupsJSON) as string[];
+      let filterGroups: string[] = [];
+      try {
+        filterGroups = JSON.parse(currentUserGroupsJSON || "[]") as string[];
+      } catch (e) {
+        console.error("Failed to parse user groups JSON:", e);
+      }
       const parsedGroups = filterGroups.length > 0 ? filterGroups : (currentUserGroup ? [currentUserGroup] : []);
 
       try {
         const headers = await getAuthHeaders();
-        const response = await fetch("/api/db-all", { headers });
-        if (!response.ok) {
-          throw new Error(`Failed to fetch database: ${response.statusText}`);
+        let response;
+        try {
+          response = await fetch("/api/db-all", { headers });
+        } catch (fetchErr) {
+          console.error("Network or 502 Error when fetching database:", fetchErr);
+          return;
         }
-        const dbData = await response.json();
+
+        if (!response || !response.ok) {
+          console.warn(`[DB Sync] Server returned status ${response?.status || "unknown"}`);
+          return;
+        }
+
+        let dbData: any = null;
+        try {
+          dbData = await response.json();
+        } catch (jsonErr) {
+          console.error("[DB Sync] Malformed JSON received from backend:", jsonErr);
+          return;
+        }
 
         if (!active) return;
+        if (!dbData || typeof dbData !== 'object') {
+          console.warn("[DB Sync] Data received is not an object:", dbData);
+          return;
+        }
 
         // Process Requisitions
-        if (dbData.requisitions) {
-          let data = dbData.requisitions.map((r: any) => ({
-            id: r.id,
-            projectId: r.project_id,
-            title: r.title,
-            description: r.description,
-            amount: Number(r.amount) || 0,
-            amountWords: r.amount_words,
-            groupId: r.group_id,
-            groupName: r.group_name,
-            requesterId: r.requester_id,
-            requesterName: r.requester_name,
-            requesterEmail: r.requester_email,
-            status: r.status,
-            submittedAt: r.submitted_at,
-            updatedAt: r.updated_at,
-            expiresAt: r.expires_at,
-            escalationLevel: r.escalation_level,
-            escalationNotificationsSent: r.escalation_notifications_sent,
-            approvedAtL1: r.approved_at_l1,
-            approvedAtL2: r.approved_at_l2,
-            disbursedAt: r.disbursed_at,
-            rejectionReason: r.rejection_reason,
-            approvalHistory: safeNormalizeApprovalHistory(r.approval_history || r.approvalHistory),
-            digitalSignature: r.digital_signature,
-            payableTo: r.payable_to,
-            recurrence: r.recurrence,
-            lastRecurrenceGeneratedAt: r.last_recurrence_generated_at,
-            additionalInfo: r.additional_info,
-            attachments: safeNormalizeAttachments(r.attachments),
-            receipts: safeNormalizeReceipts(r.receipts),
-            flaggedForAudit: r.flagged_for_audit,
-            inProcurement: r.in_procurement,
-            requiresMoreInfo: r.requires_more_info,
-            fiscalYear: r.fiscal_year
-          } as Requisition));
+        try {
+          if (dbData?.requisitions && Array.isArray(dbData.requisitions)) {
+            let data = dbData.requisitions.map((r: any) => {
+              if (!r) return null;
+              return {
+                id: r?.id || "",
+                projectId: r?.project_id || r?.projectId || "",
+                title: r?.title || "",
+                description: r?.description || "",
+                amount: Number(r?.amount) || 0,
+                amountWords: r?.amount_words || r?.amountWords || "",
+                groupId: r?.group_id || r?.groupId || "",
+                groupName: r?.group_name || r?.groupName || "",
+                requesterId: r?.requester_id || r?.requesterId || "",
+                requesterName: r?.requester_name || r?.requesterName || "",
+                requesterEmail: r?.requester_email || r?.requesterEmail || "",
+                status: r?.status || "DRAFT",
+                submittedAt: r?.submitted_at || r?.submittedAt || "",
+                updatedAt: r?.updated_at || r?.updatedAt || "",
+                expiresAt: r?.expires_at || r?.expiresAt || "",
+                escalationLevel: Number(r?.escalation_level) || Number(r?.escalationLevel) || 0,
+                escalationNotificationsSent: Boolean(r?.escalation_notifications_sent || r?.escalationNotificationsSent),
+                approvedAtL1: r?.approved_at_l1 || r?.approvedAtL1 || "",
+                approvedAtL2: r?.approved_at_l2 || r?.approvedAtL2 || "",
+                disbursedAt: r?.disbursed_at || r?.disbursedAt || "",
+                rejectionReason: r?.rejection_reason || r?.rejectionReason || "",
+                approvalHistory: safeNormalizeApprovalHistory(r?.approval_history || r?.approvalHistory || []),
+                digitalSignature: r?.digital_signature || r?.digitalSignature || "",
+                payableTo: r?.payable_to || r?.payableTo || "",
+                recurrence: r?.recurrence || null,
+                lastRecurrenceGeneratedAt: r?.last_recurrence_generated_at || r?.lastRecurrenceGeneratedAt || "",
+                additionalInfo: r?.additional_info || r?.additionalInfo || null,
+                attachments: safeNormalizeAttachments(r?.attachments),
+                receipts: safeNormalizeReceipts(r?.receipts),
+                flaggedForAudit: Boolean(r?.flagged_for_audit || r?.flaggedForAudit),
+                inProcurement: Boolean(r?.in_procurement || r?.inProcurement),
+                requiresMoreInfo: Boolean(r?.requires_more_info || r?.requiresMoreInfo),
+                fiscalYear: Number(r?.fiscal_year || r?.fiscalYear) || undefined
+              } as Requisition;
+            }).filter(Boolean) as Requisition[];
 
-          if (isGroupUser && parsedGroups.length > 0) {
-            data = data.filter(req => parsedGroups.includes(req.groupId) || parsedGroups.includes(req.groupName));
+            if (isGroupUser && parsedGroups.length > 0) {
+              data = data.filter(req => req && req.groupId && (parsedGroups.includes(req.groupId) || parsedGroups.includes(req.groupName)));
+            }
+            if (hidePrototype) {
+              data = data.filter(req => req && req.id && !req.id.startsWith("req-seed-"));
+            }
+            setRequisitions(data);
           }
-          if (hidePrototype) {
-            data = data.filter(req => !req.id.startsWith("req-seed-"));
-          }
-          setRequisitions(data);
+        } catch (reqErr) {
+          console.error("[DB Sync] Error mapping requisitions:", reqErr);
         }
 
         // Process Projects
-        if (dbData.projects) {
-          let data = dbData.projects.map((p: any) => ({
-            id: p.id,
-            name: p.name,
-            groupId: p.group_id,
-            allocatedBudget: Number(p.allocated_budget) || 0,
-            spentAmount: Number(p.spent_amount) || 0,
-            status: p.status,
-            color: p.color,
-            fiscalYear: p.fiscal_year,
-            requisitionLimit: Number(p.requisition_limit) || 0,
-            accountNumber: p.account_number
-          } as Project));
+        try {
+          if (dbData?.projects && Array.isArray(dbData.projects)) {
+            let data = dbData.projects.map((p: any) => {
+              if (!p) return null;
+              return {
+                id: p?.id || "",
+                name: p?.name || "",
+                groupId: p?.group_id || p?.groupId || "",
+                allocatedBudget: Number(p?.allocated_budget) || Number(p?.allocatedBudget) || 0,
+                spentAmount: Number(p?.spent_amount) || Number(p?.spentAmount) || 0,
+                status: p?.status || "ACTIVE",
+                color: p?.color || "",
+                fiscalYear: p?.fiscal_year || p?.fiscalYear || 2026,
+                requisitionLimit: Number(p?.requisition_limit) || Number(p?.requisitionLimit) || 0,
+                accountNumber: p?.account_number || p?.accountNumber || ""
+              } as Project;
+            }).filter(Boolean) as Project[];
 
-          if (isGroupUser && parsedGroups.length > 0) {
-            data = data.filter(p => parsedGroups.includes(p.groupId) || parsedGroups.includes(p.name));
+            if (isGroupUser && parsedGroups.length > 0) {
+              data = data.filter(p => p && p.groupId && (parsedGroups.includes(p.groupId) || parsedGroups.includes(p.name)));
+            }
+            if (hidePrototype) {
+              data = data.filter(p => p && p.id && !["p1", "p2", "p3", "p4", "p5"].includes(p.id));
+            }
+            setProjects(data);
           }
-          if (hidePrototype) {
-            data = data.filter(p => !["p1", "p2", "p3", "p4", "p5"].includes(p.id));
-          }
-          setProjects(data);
+        } catch (projErr) {
+          console.error("[DB Sync] Error mapping projects:", projErr);
         }
 
         // Process Alerts
-        if (dbData.alerts) {
-          let data = dbData.alerts.map((a: any) => ({
-            id: a.id,
-            type: a.type,
-            severity: a.severity,
-            message: a.message,
-            timestamp: a.timestamp,
-            isRead: a.is_read,
-            targetRole: a.target_role
-          } as BudgetAlert));
+        try {
+          if (dbData?.alerts && Array.isArray(dbData.alerts)) {
+            let data = dbData.alerts.map((a: any) => {
+              if (!a) return null;
+              return {
+                id: a?.id || "",
+                type: a?.type || "",
+                severity: a?.severity || "",
+                message: a?.message || "",
+                timestamp: a?.timestamp || "",
+                isRead: Boolean(a?.is_read || a?.isRead),
+                targetRole: a?.target_role || a?.targetRole
+              } as BudgetAlert;
+            }).filter(Boolean) as BudgetAlert[];
 
-          if (isGroupUser && parsedGroups.length > 0) {
-            data = data.filter(a => parsedGroups.some(g => a.message.includes(g)));
+            if (isGroupUser && parsedGroups.length > 0) {
+              data = data.filter(a => a && a.message && parsedGroups.some(g => a.message.includes(g)));
+            }
+            if (hidePrototype) {
+              data = data.filter(a => a && a.id && !a.id.includes("req-seed-") && !a.id.match(/budget-p[0-9]+/));
+            }
+            setAlerts(data);
           }
-          if (hidePrototype) {
-            data = data.filter(a => !a.id.includes("req-seed-") && !a.id.match(/budget-p[0-9]+/));
-          }
-          setAlerts(data);
+        } catch (alertErr) {
+          console.error("[DB Sync] Error mapping alerts:", alertErr);
         }
 
         // Process Fiscal Years
-        if (dbData.fiscal_years) {
-          const data = dbData.fiscal_years.map((fy: any) => ({
-            id: fy.id,
-            year: fy.year,
-            label: fy.label,
-            status: fy.status,
-            createdAt: fy.created_at,
-            notes: fy.notes
-          } as FiscalYear));
-          setFiscalYears(data);
+        try {
+          if (dbData?.fiscal_years && Array.isArray(dbData.fiscal_years)) {
+            const data = dbData.fiscal_years.map((fy: any) => {
+              if (!fy) return null;
+              return {
+                id: fy?.id || "",
+                year: Number(fy?.year) || 2026,
+                label: fy?.label || "",
+                status: fy?.status || "CLOSED",
+                createdAt: fy?.created_at || fy?.createdAt || "",
+                notes: fy?.notes || ""
+              } as FiscalYear;
+            }).filter(Boolean) as FiscalYear[];
+            setFiscalYears(data);
+          }
+        } catch (fyErr) {
+          console.error("[DB Sync] Error mapping fiscal years:", fyErr);
         }
 
         // Process Transactions
-        if (dbData.transactions) {
-          const data = dbData.transactions.map((tx: any) => ({
-            id: tx.id,
-            externalRef: tx.external_ref,
-            sourceSystem: tx.source_system,
-            amount: Number(tx.amount) || 0,
-            type: tx.type,
-            status: tx.status,
-            description: tx.description,
-            category: tx.category,
-            timestamp: tx.timestamp,
-            performedBy: tx.performed_by,
-            metadata: tx.metadata
-          } as Transaction));
-          setTransactions(data);
+        try {
+          if (dbData?.transactions && Array.isArray(dbData.transactions)) {
+            const data = dbData.transactions.map((tx: any) => {
+              if (!tx) return null;
+              return {
+                id: tx?.id || "",
+                externalRef: tx?.external_ref || tx?.externalRef || "",
+                sourceSystem: tx?.source_system || tx?.sourceSystem || "",
+                amount: Number(tx?.amount) || 0,
+                type: tx?.type || "",
+                status: tx?.status || "",
+                description: tx?.description || "",
+                category: tx?.category || "",
+                timestamp: tx?.timestamp || "",
+                performedBy: tx?.performed_by || tx?.performedBy || "",
+                metadata: tx?.metadata || null
+              } as Transaction;
+            }).filter(Boolean) as Transaction[];
+            setTransactions(data);
+          }
+        } catch (txErr) {
+          console.error("[DB Sync] Error mapping transactions:", txErr);
         }
 
         // Process Forecast
-        if (dbData.forecast) {
-          const data = dbData.forecast.map((f: any) => ({
-            month: f.month,
-            projected: f.projected,
-            actual: f.actual
-          } as ForecastMonth));
-          setForecastData(data);
+        try {
+          if (dbData?.forecast && Array.isArray(dbData.forecast)) {
+            const data = dbData.forecast.map((f: any) => {
+              if (!f) return null;
+              return {
+                month: f?.month || "",
+                projected: Number(f?.projected) || 0,
+                actual: Number(f?.actual) || 0
+              } as ForecastMonth;
+            }).filter(Boolean) as ForecastMonth[];
+            setForecastData(data);
+          }
+        } catch (forecastErr) {
+          console.error("[DB Sync] Error mapping forecast:", forecastErr);
         }
 
         // Process Reports
-        if (dbData.reports) {
-          const data = dbData.reports.map((r: any) => ({
-            id: r.id,
-            title: r.title,
-            description: r.description,
-            generatedBy: r.generated_by,
-            generatedById: r.generated_by_id,
-            timestamp: r.timestamp,
-            period: r.period,
-            stats: r.stats,
-            filters: r.filters,
-            itemCount: r.item_count
-          } as SavedReport));
-          setReports(data);
+        try {
+          if (dbData?.reports && Array.isArray(dbData.reports)) {
+            const data = dbData.reports.map((r: any) => {
+              if (!r) return null;
+              return {
+                id: r?.id || "",
+                title: r?.title || "",
+                description: r?.description || "",
+                generatedBy: r?.generated_by || r?.generatedBy || "",
+                generatedById: r?.generated_by_id || r?.generatedById || "",
+                timestamp: r?.timestamp || "",
+                period: r?.period || "",
+                stats: r?.stats || null,
+                filters: r?.filters || null,
+                itemCount: Number(r?.item_count) || Number(r?.itemCount) || 0
+              } as SavedReport;
+            }).filter(Boolean) as SavedReport[];
+            setReports(data);
+          }
+        } catch (reportErr) {
+          console.error("[DB Sync] Error mapping reports:", reportErr);
         }
 
         // Process System Logs
-        if (dbData.audit_logs) {
-          const data = dbData.audit_logs.map((l: any) => ({
-            id: l.id?.toString() || `log-${Math.random()}`,
-            action: l.action,
-            details: l.details,
-            performedBy: l.performed_by,
-            timestamp: l.timestamp,
-            groupId: l.group_id,
-            metadata: l.metadata
-          } as SystemLog));
-          setSystemLogs(data);
+        try {
+          if (dbData?.audit_logs && Array.isArray(dbData.audit_logs)) {
+            const data = dbData.audit_logs.map((l: any) => {
+              if (!l) return null;
+              return {
+                id: l?.id?.toString() || `log-${Math.random()}`,
+                action: l?.action || "",
+                details: l?.details || "",
+                performedBy: l?.performed_by || l?.performedBy || "",
+                timestamp: l?.timestamp || "",
+                groupId: l?.group_id || l?.groupId || "",
+                metadata: l?.metadata || null
+              } as SystemLog;
+            }).filter(Boolean) as SystemLog[];
+            setSystemLogs(data);
+          }
+        } catch (logErr) {
+          console.error("[DB Sync] Error mapping system logs:", logErr);
         }
 
         // Process Users
-        if (dbData.users) {
-          const data = dbData.users.map((u: any) => normalizeUserProfile({
-            id: u.id,
-            name: u.name,
-            email: u.email,
-            role: u.role,
-            group: u.group,
-            groups: u.groups || [],
-            approverCode: u.approver_code,
-            isActive: u.is_active,
-            isApproved: u.is_approved,
-            isSuspended: u.is_suspended,
-            phone: u.phone,
-            department: u.department,
-            photoURL: u.photo_url,
-            tempPassword: u.temp_password,
-            isOnline: u.is_online,
-            lastSeen: u.last_seen,
-            idleTimeoutDuration: u.idle_timeout_duration
-          } as UserProfile));
-          setUsers(data);
+        try {
+          if (dbData?.users && Array.isArray(dbData.users)) {
+            const data = dbData.users.map((u: any) => {
+              if (!u) return null;
+              return normalizeUserProfile({
+                id: u?.id || "",
+                name: u?.name || "",
+                email: u?.email || "",
+                role: u?.role || "",
+                group: u?.group || "",
+                groups: u?.groups || [],
+                approverCode: u?.approver_code || u?.approverCode || "",
+                isActive: Boolean(u?.is_active !== undefined ? u?.is_active : u?.isActive),
+                isApproved: Boolean(u?.is_approved !== undefined ? u?.is_approved : u?.isApproved),
+                isSuspended: Boolean(u?.is_suspended !== undefined ? u?.is_suspended : u?.isSuspended),
+                phone: u?.phone || "",
+                department: u?.department || "",
+                photoURL: u?.photo_url || u?.photoURL || "",
+                tempPassword: u?.temp_password || u?.tempPassword || "",
+                isOnline: Boolean(u?.is_online || u?.isOnline),
+                lastSeen: u?.last_seen || u?.lastSeen || "",
+                idleTimeoutDuration: Number(u?.idle_timeout_duration) || Number(u?.idleTimeoutDuration) || 15
+              } as UserProfile);
+            }).filter(Boolean) as UserProfile[];
+            setUsers(data);
+          }
+        } catch (userErr) {
+          console.error("[DB Sync] Error mapping users:", userErr);
         }
 
         // Process Permissions
-        if (dbData.permissions) {
-          const data = dbData.permissions.map((p: any) => ({
-            id: p.id,
-            role: p.role,
-            access: p.access,
-            actions: p.actions
-          } as PermissionConfig));
-          setPermissionConfigs(data);
+        try {
+          if (dbData?.permissions && Array.isArray(dbData.permissions)) {
+            const data = dbData.permissions.map((p: any) => {
+              if (!p) return null;
+              return {
+                id: p?.id || "",
+                role: p?.role || "",
+                access: p?.access || null,
+                actions: p?.actions || []
+              } as PermissionConfig;
+            }).filter(Boolean) as PermissionConfig[];
+            setPermissionConfigs(data);
+          }
+        } catch (permErr) {
+          console.error("[DB Sync] Error mapping permissions:", permErr);
         }
 
         // Process Thresholds
-        if (dbData.thresholds) {
-          const data = dbData.thresholds.map((t: any) => ({
-            id: t.id,
-            type: t.type,
-            threshold: t.threshold,
-            isEnabled: t.is_enabled,
-            notifyEmail: t.notify_email
-          } as AlertThreshold));
-          setThresholds(data);
+        try {
+          if (dbData?.thresholds && Array.isArray(dbData.thresholds)) {
+            const data = dbData.thresholds.map((t: any) => {
+              if (!t) return null;
+              return {
+                id: t?.id || "",
+                type: t?.type || "",
+                threshold: Number(t?.threshold) || 0,
+                isEnabled: Boolean(t?.is_enabled !== undefined ? t?.is_enabled : t?.isEnabled),
+                notifyEmail: t?.notify_email || t?.notifyEmail || ""
+              } as AlertThreshold;
+            }).filter(Boolean) as AlertThreshold[];
+            setThresholds(data);
+          }
+        } catch (threshErr) {
+          console.error("[DB Sync] Error mapping thresholds:", threshErr);
         }
 
         // Process Church Groups
-        if (dbData.church_groups) {
-          const data = dbData.church_groups.map((cg: any) => ({
-            id: cg.id,
-            name: cg.name,
-            description: cg.description,
-            createdAt: cg.created_at
-          } as ChurchGroup));
-          setChurchGroups(data);
-          setLastGroupsSync(new Date());
+        try {
+          if (dbData?.church_groups && Array.isArray(dbData.church_groups)) {
+            const data = dbData.church_groups.map((cg: any) => {
+              if (!cg) return null;
+              return {
+                id: cg?.id || "",
+                name: cg?.name || "",
+                description: cg?.description || "",
+                createdAt: cg?.created_at || cg?.createdAt || ""
+              } as ChurchGroup;
+            }).filter(Boolean) as ChurchGroup[];
+            setChurchGroups(data);
+            setLastGroupsSync(new Date());
+          }
+        } catch (cgErr) {
+          console.error("[DB Sync] Error mapping church groups:", cgErr);
         }
 
         // Process Ledger Books
-        if (dbData.ledger_books) {
-          const data = dbData.ledger_books.map((lb: any) => ({
-            id: lb.id,
-            ministryId: lb.ministry_id,
-            ministryName: lb.ministry_name,
-            bookName: lb.book_name,
-            description: lb.description,
-            createdAt: lb.created_at,
-            createdBy: lb.created_by,
-            creatorName: lb.creator_name,
-            budgetLimit: Number(lb.budget_limit) || 0,
-            spentAmount: Number(lb.spent_amount) || 0,
-            notes: lb.notes,
-            status: lb.status
-          } as LedgerBook));
-          setLedgerBooks(data);
+        try {
+          if (dbData?.ledger_books && Array.isArray(dbData.ledger_books)) {
+            const data = dbData.ledger_books.map((lb: any) => {
+              if (!lb) return null;
+              return {
+                id: lb?.id || "",
+                ministryId: lb?.ministry_id || lb?.ministryId || "",
+                ministryName: lb?.ministry_name || lb?.ministryName || "",
+                bookName: lb?.book_name || lb?.bookName || "",
+                description: lb?.description || "",
+                createdAt: lb?.created_at || lb?.createdAt || "",
+                createdBy: lb?.created_by || lb?.createdBy || "",
+                creatorName: lb?.creator_name || lb?.creatorName || "",
+                budgetLimit: Number(lb?.budget_limit) || Number(lb?.budgetLimit) || 0,
+                spentAmount: Number(lb?.spent_amount) || Number(lb?.spentAmount) || 0,
+                notes: lb?.notes || "",
+                status: lb?.status || "ACTIVE"
+              } as LedgerBook;
+            }).filter(Boolean) as LedgerBook[];
+            setLedgerBooks(data);
+          }
+        } catch (lbErr) {
+          console.error("[DB Sync] Error mapping ledger books:", lbErr);
         }
 
         // Process Supplementary Budgets
-        if (dbData.supplementary_budgets) {
-          const data = dbData.supplementary_budgets.map((sb: any) => ({
-            id: sb.id,
-            requesterId: sb.requester_id,
-            requesterName: sb.requester_name,
-            requesterEmail: sb.requester_email,
-            role: sb.role,
-            projectId: sb.project_id,
-            projectName: sb.project_name,
-            amount: Number(sb.amount) || 0,
-            justification: sb.justification,
-            submittedAt: sb.submitted_at,
-            status: sb.status
-          } as SupplementaryBudgetRequest));
-          setSupplementaryRequests(data);
+        try {
+          if (dbData?.supplementary_budgets && Array.isArray(dbData.supplementary_budgets)) {
+            const data = dbData.supplementary_budgets.map((sb: any) => {
+              if (!sb) return null;
+              return {
+                id: sb?.id || "",
+                requesterId: sb?.requester_id || sb?.requesterId || "",
+                requesterName: sb?.requester_name || sb?.requesterName || "",
+                requesterEmail: sb?.requester_email || sb?.requesterEmail || "",
+                role: sb?.role || "",
+                projectId: sb?.project_id || sb?.projectId || "",
+                projectName: sb?.project_name || sb?.projectName || "",
+                amount: Number(sb?.amount) || 0,
+                justification: sb?.justification || "",
+                submittedAt: sb?.submitted_at || sb?.submittedAt || "",
+                status: sb?.status || "PENDING"
+              } as SupplementaryBudgetRequest;
+            }).filter(Boolean) as SupplementaryBudgetRequest[];
+            setSupplementaryRequests(data);
+          }
+        } catch (sbErr) {
+          console.error("[DB Sync] Error mapping supplementary budgets:", sbErr);
         }
 
         // Process Vendors
-        if (dbData.vendors) {
-          const data = dbData.vendors.map((v: any) => ({
-            id: v.id,
-            name: v.name,
-            contact: v.contact,
-            location: v.location,
-            offerings: v.offerings,
-            createdAt: v.created_at,
-            addedBy: v.added_by,
-            status: v.status
-          } as Vendor));
-          setVendors(data);
+        try {
+          if (dbData?.vendors && Array.isArray(dbData.vendors)) {
+            const data = dbData.vendors.map((v: any) => {
+              if (!v) return null;
+              return {
+                id: v?.id || "",
+                name: v?.name || "",
+                contact: v?.contact || "",
+                location: v?.location || "",
+                offerings: v?.offerings || [],
+                createdAt: v?.created_at || v?.createdAt || "",
+                addedBy: v?.added_by || v?.addedBy || "",
+                status: v?.status || "ACTIVE"
+              } as Vendor;
+            }).filter(Boolean) as Vendor[];
+            setVendors(data);
+          }
+        } catch (vendorErr) {
+          console.error("[DB Sync] Error mapping vendors:", vendorErr);
         }
 
       } catch (err) {
