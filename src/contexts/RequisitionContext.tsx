@@ -737,7 +737,17 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setActiveToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
+  const isFetchingDbRef = React.useRef(false);
+  const lastPresenceTimeRef = React.useRef(0);
+
   const triggerToast = useCallback((toast: Omit<BudgetAlert, "id" | "isRead"> & { isRead?: boolean }) => {
+    // Suppress error toast notifications per user preference
+    const isErrorToast = toast.severity === "HIGH" ||
+      toast.type === "SECURITY_UPDATE" ||
+      toast.message?.toLowerCase().includes("error") ||
+      toast.message?.toLowerCase().includes("failed");
+    if (isErrorToast) return;
+
     const id = `toast-${Math.random().toString(36).substr(2, 9)}`;
     const newToast: BudgetAlert = {
       ...toast,
@@ -1916,28 +1926,33 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (!currentUserId || !currentUserIsApproved || currentUserIsSuspended) return;
 
     const updatePresence = async (onlineStatus: boolean) => {
-      const nowStr = new Date().toISOString();
-      const headers = await getAuthHeaders();
+      const now = Date.now();
+      if (onlineStatus && now - lastPresenceTimeRef.current < 45000) return;
+      lastPresenceTimeRef.current = now;
 
-      fetch(`/api/db/users/${currentUserId}`, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify({
-          is_online: onlineStatus,
-          isOnline: onlineStatus,
-          last_seen: nowStr,
-          lastSeen: nowStr
-        })
-      }).catch(err => console.warn("Failed to update presence in MongoDB:", err));
+      const nowStr = new Date(now).toISOString();
+      try {
+        const headers = await getAuthHeaders();
+        fetch(`/api/db/users/${currentUserId}`, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({
+            is_online: onlineStatus,
+            isOnline: onlineStatus,
+            last_seen: nowStr,
+            lastSeen: nowStr
+          })
+        }).catch(() => {});
+      } catch (_e) {}
     };
 
     // Trigger immediately on mount/load
     updatePresence(true);
 
-    // Setup periodic heartbeat every 30 seconds
+    // Setup periodic heartbeat every 60 seconds
     const heartbeatInterval = setInterval(() => {
       updatePresence(true);
-    }, 30000);
+    }, 60000);
 
     const handleUnload = async () => {
       const headers = await getAuthHeaders();
@@ -2224,6 +2239,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     let pollInterval: any = null;
 
     const fetchAllFromMongoDB = async () => {
+      if (isFetchingDbRef.current) return;
+      isFetchingDbRef.current = true;
+
       const hidePrototype = true;
       const isGroupUser = currentUserRole === UserRole.CHURCH_GROUP || currentUserRole === UserRole.APPROVER_L1 || currentUserRole === UserRole.APPROVER_L2;
       let filterGroups: string[] = [];
@@ -2240,12 +2258,16 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         try {
           response = await fetch("/api/db-all", { headers });
         } catch (fetchErr) {
-          console.error("Network or 502 Error when fetching database:", fetchErr);
+          console.warn("Network Error when fetching database:", fetchErr);
           return;
         }
 
         if (!response || !response.ok) {
-          console.warn(`[DB Sync] Server returned status ${response?.status || "unknown"}`);
+          if (response?.status === 429) {
+            console.warn("[DB Sync] Rate limit hit on /api/db-all, skipping interval.");
+          } else {
+            console.warn(`[DB Sync] Server returned status ${response?.status || "unknown"}`);
+          }
           return;
         }
 
@@ -2646,13 +2668,14 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       } catch (err) {
         console.info("Critical issue pulling data from MongoDB:", err);
       } finally {
+        isFetchingDbRef.current = false;
         setLoading(false);
       }
     };
 
     fetchAllFromMongoDB();
     // Background polling interval to keep UI reactive even without websockets
-    pollInterval = setInterval(fetchAllFromMongoDB, 5000);
+    pollInterval = setInterval(fetchAllFromMongoDB, 20000);
 
     return () => {
       active = false;

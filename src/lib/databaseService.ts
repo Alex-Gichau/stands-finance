@@ -43,6 +43,10 @@ async function apiCall(endpoint: string, method: string = "GET", body?: any): Pr
   const response = await fetch(endpoint, options);
   if (!response.ok) {
     const text = await response.text();
+    if (response.status === 429) {
+      console.warn(`[DB API Rate Exceeded 429] ${method} ${endpoint}`);
+      throw new Error(`DB API Rate Exceeded (429)`);
+    }
     throw new Error(`DB API Error ${response.status}: ${text || response.statusText}`);
   }
   return response.json();

@@ -349,6 +349,12 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Security / COOP Policy middleware for OAuth & Firebase Auth popups
+  app.use((_req, res, next) => {
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+    next();
+  });
+
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 

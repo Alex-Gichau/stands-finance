@@ -80,78 +80,9 @@ export class GlobalErrorBoundary extends Component<Props, State> {
     return (
       <>
         {this.props.children}
-        <ApiErrorBanner />
       </>
     );
   }
 }
 
-interface ApiErrorItem {
-  id: string;
-  url: string;
-  method: string;
-  status: number;
-  errorText: string;
-  formattedError: string;
-  timestamp: string;
-}
-
-export const ApiErrorBanner: React.FC = () => {
-  const [apiErrors, setApiErrors] = useState<ApiErrorItem[]>([]);
-
-  useEffect(() => {
-    const handleApiError = (event: Event) => {
-      const customEv = event as CustomEvent;
-      if (customEv.detail) {
-        const newError: ApiErrorItem = {
-          id: `api-err-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-          ...customEv.detail,
-        };
-        setApiErrors((prev) => [newError, ...prev].slice(0, 4));
-      }
-    };
-
-    window.addEventListener('api-error-detected', handleApiError);
-    return () => {
-      window.removeEventListener('api-error-detected', handleApiError);
-    };
-  }, []);
-
-  if (apiErrors.length === 0) return null;
-
-  return (
-    <div className="fixed bottom-4 right-4 z-[9999] max-w-md w-full space-y-2 pointer-events-none">
-      {apiErrors.map((err) => (
-        <div
-          key={err.id}
-          className="pointer-events-auto bg-slate-900 border border-red-500/40 text-slate-100 rounded-lg p-3.5 shadow-2xl flex items-start justify-between gap-3 text-xs animate-in slide-in-from-bottom-2 duration-200"
-        >
-          <div className="flex gap-2.5 items-start">
-            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5 font-semibold text-red-300">
-                <span className="bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded text-[10px] font-mono">
-                  {err.status ? `HTTP ${err.status}` : 'NETWORK ERROR'}
-                </span>
-                <span>{err.method.toUpperCase()} {err.url}</span>
-              </div>
-              <p className="text-slate-300 line-clamp-3 font-mono text-[11px] bg-slate-950/60 p-1.5 rounded border border-slate-800">
-                {err.errorText || 'Internal Server Error'}
-              </p>
-              <span className="text-[10px] text-slate-500 block">
-                {new Date(err.timestamp).toLocaleTimeString()}
-              </span>
-            </div>
-          </div>
-          <button
-            onClick={() => setApiErrors((prev) => prev.filter((item) => item.id !== err.id))}
-            className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 shrink-0"
-            title="Dismiss"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-};
+export const ApiErrorBanner: React.FC = () => null;

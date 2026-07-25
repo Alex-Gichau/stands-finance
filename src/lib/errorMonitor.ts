@@ -80,25 +80,15 @@ export function initErrorMonitor() {
 
         const formattedError = `[API Failure ${response.status}] ${method.toUpperCase()} ${url} - ${errBody || response.statusText}`;
 
-        // Avoid logging or dispatching recursion for Slack notification or health checks
+        // Avoid logging or dispatching recursion for Slack notification, health checks, or rate limits
         if (!url.includes("/api/notify-slack") && !url.includes("favicon") && !url.includes("ws://") && !url.includes("wss://")) {
-          originalConsoleError(formattedError);
-          
-          window.dispatchEvent(
-            new CustomEvent("api-error-detected", {
-              detail: {
-                url,
-                method,
-                status: response.status,
-                errorText: errBody,
-                formattedError,
-                timestamp: new Date().toISOString()
-              }
-            })
-          );
-
-          if (response.status >= 500) {
-            sendErrorAlert(formattedError, true);
+          if (response.status === 429) {
+            console.warn(`[API Rate Limit 429] ${method.toUpperCase()} ${url}: backing off.`);
+          } else {
+            originalConsoleError(formattedError);
+            if (response.status >= 500) {
+              sendErrorAlert(formattedError, true);
+            }
           }
         }
       }
@@ -107,18 +97,6 @@ export function initErrorMonitor() {
       const formattedError = `[API Network Error] ${method.toUpperCase()} ${url} - ${err?.message || err}`;
       if (!url.includes("/api/notify-slack")) {
         originalConsoleError(formattedError);
-        window.dispatchEvent(
-          new CustomEvent("api-error-detected", {
-            detail: {
-              url,
-              method,
-              status: 0,
-              errorText: err?.message || String(err),
-              formattedError,
-              timestamp: new Date().toISOString()
-            }
-          })
-        );
       }
       throw err;
     }

@@ -631,9 +631,9 @@ export const UsersPanel: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               <AnimatePresence mode="popLayout">
-                {filteredUsers.map((user) => (
+                {filteredUsers.map((user, uIdx) => (
                   <motion.tr 
-                    key={user.id} 
+                    key={`user-row-${user.id || uIdx}-${uIdx}`} 
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
@@ -1927,8 +1927,8 @@ export const UsersPanel: React.FC = () => {
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-100 border border-slate-100 rounded-2xl overflow-hidden">
-                    {users.filter(u => u.group === selectedGroupForMembers.name).map((user) => (
-                      <div key={user.id} className="p-4 flex items-center justify-between gap-4 bg-white hover:bg-slate-50 transition-colors">
+                    {users.filter(u => u.group === selectedGroupForMembers.name).map((user, uIdx) => (
+                      <div key={`group-member-${user.id || uIdx}-${uIdx}`} className="p-4 flex items-center justify-between gap-4 bg-white hover:bg-slate-50 transition-colors">
                         <div className="flex items-center gap-3">
                           {user.photoURL ? (
                             <img

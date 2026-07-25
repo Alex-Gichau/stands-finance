@@ -331,7 +331,7 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ onSelectRequis
       <div className="grid grid-cols-1 gap-4">
         {filteredItems.length > 0 ? (
           <AnimatePresence mode="popLayout">
-            {filteredItems.map((item) => {
+            {filteredItems.map((item, nIdx) => {
               const style = getNoticeStyling(item.type);
               const IconComp = style.icon;
               const hasRequisition = !!item.requisition;
@@ -340,7 +340,7 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ onSelectRequis
 
               return (
                 <motion.div 
-                  key={item.id}
+                  key={`notice-hub-${item.id || nIdx}-${nIdx}`}
                   layoutId={item.id}
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}

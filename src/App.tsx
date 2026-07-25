@@ -1272,7 +1272,7 @@ function AppContent() {
           <AnimatePresence mode="popLayout">
             {activeToasts.map((toast, index) => (
               <ToastItem
-                key={`login-${toast.id}`}
+                key={`login-${toast.id || index}-${index}`}
                 toast={toast}
                 index={index}
                 removeToast={removeToast}
@@ -1354,7 +1354,7 @@ function AppContent() {
           <AnimatePresence mode="popLayout">
             {activeToasts.map((toast, index) => (
               <ToastItem
-                key={`waiting-${toast.id}`}
+                key={`waiting-${toast.id || index}-${index}`}
                 toast={toast}
                 index={index}
                 removeToast={removeToast}
@@ -2902,7 +2902,7 @@ function AppContent() {
         <AnimatePresence mode="popLayout">
           {activeToasts.map((toast, index) => (
             <ToastItem
-              key={`dashboard-${toast.id}`}
+              key={`dashboard-${toast.id || index}-${index}`}
               toast={toast}
               index={index}
               removeToast={removeToast}
