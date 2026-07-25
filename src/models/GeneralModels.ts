@@ -3,7 +3,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 // 1. AuditLog
 /** AuditLog interface definition */
 export interface IAuditLog extends Document {
-  id?: number;
+  id?: string;
   action: string;
   details: string;
   performedBy: string;
@@ -13,13 +13,14 @@ export interface IAuditLog extends Document {
 }
 /** AuditLog Schema definition for MongoDB */
 const AuditLogSchema = new Schema<IAuditLog>({
+  id: { type: String, required: true, index: true },
   action: { type: String, required: true, index: true },
   details: { type: String, required: true },
   performedBy: { type: String, required: true, index: true },
   timestamp: { type: Date, default: Date.now },
   groupId: { type: String },
   metadata: { type: Schema.Types.Mixed },
-});
+}, { strict: false });
 export const AuditLog = mongoose.models.AuditLog || mongoose.model<IAuditLog>('AuditLog', AuditLogSchema, 'system_logs');
 
 // 2. Alert
@@ -42,7 +43,7 @@ const AlertSchema = new Schema<IAlert>({
   timestamp: { type: Date, default: Date.now },
   isRead: { type: Boolean, default: false },
   targetRole: { type: String },
-});
+}, { strict: false });
 export const Alert = mongoose.models.Alert || mongoose.model<IAlert>('Alert', AlertSchema, 'alert');
 
 // 3. FiscalYear
@@ -63,7 +64,7 @@ const FiscalYearSchema = new Schema<IFiscalYear>({
   status: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
   notes: { type: String },
-});
+}, { strict: false });
 export const FiscalYear = mongoose.models.FiscalYear || mongoose.model<IFiscalYear>('FiscalYear', FiscalYearSchema, 'fiscal_years');
 
 // 4. Transaction
@@ -92,20 +93,22 @@ const TransactionSchema = new Schema<ITransaction>({
   timestamp: { type: Date, default: Date.now },
   performedBy: { type: String, required: true },
   metadata: { type: Schema.Types.Mixed },
-});
+}, { strict: false });
 export const Transaction = mongoose.models.Transaction || mongoose.model<ITransaction>('Transaction', TransactionSchema, 'transactions');
 
 // 5. Forecast
 export interface IForecast extends Document {
+  id?: string;
   month: string;
   projected: number;
   actual: number;
 }
 const ForecastSchema = new Schema<IForecast>({
+  id: { type: String, index: true },
   month: { type: String, required: true, unique: true, index: true },
   projected: { type: Number, required: true },
   actual: { type: Number, required: true },
-});
+}, { strict: false });
 export const Forecast = mongoose.models.Forecast || mongoose.model<IForecast>('Forecast', ForecastSchema, 'forecast');
 
 // 6. Report
@@ -122,7 +125,7 @@ export interface IReport extends Document {
   itemCount: number;
 }
 const ReportSchema = new Schema<IReport>({
-  id: { type: String, required: true, unique: true, index: true },
+  id: { type: String, index: true },
   title: { type: String, required: true },
   description: { type: String, required: true },
   generatedBy: { type: String, required: true },
@@ -132,7 +135,7 @@ const ReportSchema = new Schema<IReport>({
   stats: { type: Schema.Types.Mixed, required: true },
   filters: { type: Schema.Types.Mixed, required: true },
   itemCount: { type: Number, required: true },
-});
+}, { strict: false });
 export const Report = mongoose.models.Report || mongoose.model<IReport>('Report', ReportSchema, 'reports');
 
 // 7. Permission
@@ -143,11 +146,11 @@ export interface IPermission extends Document {
   actions: any;
 }
 const PermissionSchema = new Schema<IPermission>({
-  id: { type: String, required: true, unique: true, index: true },
+  id: { type: String, index: true },
   role: { type: String, required: true, unique: true, index: true },
   access: { type: Schema.Types.Mixed, required: true },
   actions: { type: Schema.Types.Mixed, required: true },
-});
+}, { strict: false });
 export const Permission = mongoose.models.Permission || mongoose.model<IPermission>('Permission', PermissionSchema, 'permissions');
 
 // 8. Threshold
@@ -159,12 +162,12 @@ export interface IThreshold extends Document {
   notifyEmail: boolean;
 }
 const ThresholdSchema = new Schema<IThreshold>({
-  id: { type: String, required: true, unique: true, index: true },
+  id: { type: String, index: true },
   type: { type: String, required: true },
   threshold: { type: Number, required: true },
   isEnabled: { type: Boolean, default: true },
   notifyEmail: { type: Boolean, default: false },
-});
+}, { strict: false });
 export const Threshold = mongoose.models.Threshold || mongoose.model<IThreshold>('Threshold', ThresholdSchema, 'thresholds');
 
 // 9. ChurchGroup
@@ -175,11 +178,11 @@ export interface IChurchGroup extends Document {
   createdAt: Date;
 }
 const ChurchGroupSchema = new Schema<IChurchGroup>({
-  id: { type: String, required: true, unique: true, index: true },
+  id: { type: String, index: true },
   name: { type: String, required: true },
   description: { type: String },
   createdAt: { type: Date, default: Date.now },
-});
+}, { strict: false });
 export const ChurchGroup = mongoose.models.ChurchGroup || mongoose.model<IChurchGroup>('ChurchGroup', ChurchGroupSchema, 'church_groups');
 
 // 10. LedgerBook
@@ -198,7 +201,7 @@ export interface ILedgerBook extends Document {
   status: string;
 }
 const LedgerBookSchema = new Schema<ILedgerBook>({
-  id: { type: String, required: true, unique: true, index: true },
+  id: { type: String, index: true },
   ministryId: { type: String },
   ministryName: { type: String, required: true },
   bookName: { type: String },
@@ -210,7 +213,7 @@ const LedgerBookSchema = new Schema<ILedgerBook>({
   spentAmount: { type: Number, default: 0 },
   notes: { type: String },
   status: { type: String, default: 'ACTIVE' },
-});
+}, { strict: false });
 export const LedgerBook = mongoose.models.LedgerBook || mongoose.model<ILedgerBook>('LedgerBook', LedgerBookSchema, 'ledger_books');
 
 // 11. SupplementaryBudget
@@ -228,7 +231,7 @@ export interface ISupplementaryBudget extends Document {
   status: string;
 }
 const SupplementaryBudgetSchema = new Schema<ISupplementaryBudget>({
-  id: { type: String, required: true, unique: true, index: true },
+  id: { type: String, index: true },
   requesterId: { type: String, required: true },
   requesterName: { type: String, required: true },
   requesterEmail: { type: String, required: true },
@@ -239,7 +242,7 @@ const SupplementaryBudgetSchema = new Schema<ISupplementaryBudget>({
   justification: { type: String, required: true },
   submittedAt: { type: Date, default: Date.now },
   status: { type: String, default: 'PENDING' },
-});
+}, { strict: false });
 export const SupplementaryBudget = mongoose.models.SupplementaryBudget || mongoose.model<ISupplementaryBudget>('SupplementaryBudget', SupplementaryBudgetSchema, 'supplementary_budgets');
 
 // 12. Vendor
@@ -254,7 +257,7 @@ export interface IVendor extends Document {
   status: string;
 }
 const VendorSchema = new Schema<IVendor>({
-  id: { type: String, required: true, unique: true, index: true },
+  id: { type: String, index: true },
   name: { type: String, required: true },
   contact: { type: String },
   location: { type: String },
@@ -262,7 +265,7 @@ const VendorSchema = new Schema<IVendor>({
   createdAt: { type: Date, default: Date.now },
   addedBy: { type: String, required: true },
   status: { type: String, default: 'PENDING' },
-});
+}, { strict: false });
 export const Vendor = mongoose.models.Vendor || mongoose.model<IVendor>('Vendor', VendorSchema, 'vendors');
 
 // 13. Settings

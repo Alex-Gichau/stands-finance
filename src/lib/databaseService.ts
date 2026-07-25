@@ -191,13 +191,13 @@ export const databaseService = {
   // --- SYSTEM LOGS OPERATIONS ---
   async saveAuditLog(log: SystemLog): Promise<void> {
     console.log(`[DatabaseService] Saving audit log to MongoDB`);
-    const id = log.id || `log-${Math.random().toString(36).substring(2, 11)}`;
+    const id = log.id || (log as any)._id || `log-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
     await apiCall(`/api/db/audit_logs/${id}`, "POST", {
       id,
       action: log.action,
       details: log.details,
       performed_by: log.performedBy,
-      timestamp: new Date(log.timestamp).toISOString(),
+      timestamp: log.timestamp ? new Date(log.timestamp).toISOString() : new Date().toISOString(),
       group_id: log.groupId || null,
       metadata: log.metadata || null
     });

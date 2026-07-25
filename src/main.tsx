@@ -3,13 +3,16 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import { initErrorMonitor } from './lib/errorMonitor';
+import { GlobalErrorBoundary } from './components/GlobalErrorBoundary';
 
 // Initialize global error monitoring to catch Slack notifications including Quota Limits
 initErrorMonitor();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <GlobalErrorBoundary>
+      <App />
+    </GlobalErrorBoundary>
   </StrictMode>,
 );
 

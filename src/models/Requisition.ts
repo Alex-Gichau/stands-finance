@@ -73,6 +73,7 @@ const RequisitionSchema = new Schema<IRequisition>({
   fiscalYear: { type: Number },
 }, {
   timestamps: true,
+  strict: false,
 });
 
 export const Requisition = mongoose.models.Requisition || mongoose.model<IRequisition>('Requisition', RequisitionSchema, 'requisitions');

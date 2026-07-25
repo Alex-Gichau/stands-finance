@@ -44,6 +44,7 @@ const UserSchema = new Schema<IUser>({
   idleTimeoutDuration: { type: Number, default: 15 },
 }, {
   timestamps: true,
+  strict: false,
 });
 
 export const User = mongoose.models.User || mongoose.model<IUser>('User', UserSchema, 'users');

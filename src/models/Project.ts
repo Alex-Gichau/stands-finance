@@ -31,6 +31,7 @@ const ProjectSchema = new Schema<IProject>({
   accountNumber: { type: String },
 }, {
   timestamps: { createdAt: 'createdAt', updatedAt: false },
+  strict: false,
 });
 
 export const Project = mongoose.models.Project || mongoose.model<IProject>('Project', ProjectSchema, 'projects');

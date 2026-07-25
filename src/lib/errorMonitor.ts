@@ -28,6 +28,7 @@ export function initErrorMonitor() {
   isMonitoring = true;
 
   const originalConsoleError = console.error;
+  const originalFetch = window.fetch;
 
   const sendErrorAlert = (errorMsg: string, isFromConsole: boolean) => {
     // Basic deduplication (throttle same error for 5 mins)
@@ -58,6 +59,84 @@ export function initErrorMonitor() {
       level
     }).catch(originalConsoleError);
   };
+
+  // Intercept window.fetch safely to capture 500/400 API errors directly
+  const customFetch = async function (this: any, ...args: Parameters<typeof originalFetch>) {
+    const input = args[0];
+    const init = args[1];
+    const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+    const method = init?.method || "GET";
+
+    try {
+      const response = await originalFetch.apply(this, args);
+      if (!response.ok) {
+        const cloned = response.clone();
+        let errBody = "";
+        try {
+          errBody = await cloned.text();
+        } catch {
+          errBody = response.statusText;
+        }
+
+        const formattedError = `[API Failure ${response.status}] ${method.toUpperCase()} ${url} - ${errBody || response.statusText}`;
+
+        // Avoid logging or dispatching recursion for Slack notification or health checks
+        if (!url.includes("/api/notify-slack") && !url.includes("favicon") && !url.includes("ws://") && !url.includes("wss://")) {
+          originalConsoleError(formattedError);
+          
+          window.dispatchEvent(
+            new CustomEvent("api-error-detected", {
+              detail: {
+                url,
+                method,
+                status: response.status,
+                errorText: errBody,
+                formattedError,
+                timestamp: new Date().toISOString()
+              }
+            })
+          );
+
+          if (response.status >= 500) {
+            sendErrorAlert(formattedError, true);
+          }
+        }
+      }
+      return response;
+    } catch (err: any) {
+      const formattedError = `[API Network Error] ${method.toUpperCase()} ${url} - ${err?.message || err}`;
+      if (!url.includes("/api/notify-slack")) {
+        originalConsoleError(formattedError);
+        window.dispatchEvent(
+          new CustomEvent("api-error-detected", {
+            detail: {
+              url,
+              method,
+              status: 0,
+              errorText: err?.message || String(err),
+              formattedError,
+              timestamp: new Date().toISOString()
+            }
+          })
+        );
+      }
+      throw err;
+    }
+  };
+
+  try {
+    Object.defineProperty(window, 'fetch', {
+      value: customFetch,
+      writable: true,
+      configurable: true,
+    });
+  } catch (_err) {
+    try {
+      (window as any).fetch = customFetch;
+    } catch (e) {
+      originalConsoleError("[ErrorMonitor] Unable to patch window.fetch:", e);
+    }
+  }
 
   console.error = (...args: any[]) => {
     const errorMsg = args.map(arg => {

@@ -556,6 +556,7 @@ async function startServer() {
     fiscalYear: { type: Number },
   }, {
     timestamps: true,
+    strict: false,
   });
 
   // Clean/Re-register Requisition model to ensure strict schema enforcement
@@ -778,33 +779,89 @@ async function startServer() {
     const { uid, email, profileId } = req.body;
     if (!uid || !email) return res.status(400).json({ error: "Missing uid or email parameter" });
 
+    const normalizedEmail = email.toLowerCase();
+
     try {
       if (mongoose.connection.readyState === 1) {
-        await (models.User as any).updateOne(
-          { email: email.toLowerCase() },
-          { $set: { id: uid, isApproved: true, isActive: true } }
-        );
+        // Clean up any stale or stub user record that might already have this UID under a different/placeholder email
+        try {
+          await (models.User as any).deleteMany({
+            id: uid,
+            email: { $ne: normalizedEmail }
+          });
+        } catch (cleanErr: any) {
+          console.warn("[Link Profile] Cleanup warning:", cleanErr.message);
+        }
+
+        try {
+          const updateRes = await (models.User as any).updateOne(
+            { email: normalizedEmail },
+            { $set: { id: uid, isApproved: true, isActive: true } }
+          );
+
+          if (updateRes.matchedCount === 0) {
+            await (models.User as any).updateOne(
+              { id: uid },
+              { $set: { email: normalizedEmail, isApproved: true, isActive: true } },
+              { upsert: true }
+            );
+          }
+        } catch (dupErr: any) {
+          if (dupErr.code === 11000 || dupErr.message?.includes("E11000")) {
+            console.warn("[Link Profile] E11000 collision handled during profile linking:", dupErr.message);
+            await (models.User as any).updateOne(
+              { id: uid },
+              { $set: { email: normalizedEmail, isApproved: true, isActive: true } }
+            ).catch(async () => {
+              await (models.User as any).updateOne(
+                { email: normalizedEmail },
+                { $set: { id: uid, isApproved: true, isActive: true } }
+              );
+            });
+          } else {
+            throw dupErr;
+          }
+        }
 
         if (profileId && profileId !== uid) {
-          await (models.Requisition as any).updateMany(
-            { requesterId: profileId },
-            { $set: { requesterId: uid } }
-          );
-          await (models.Report as any).updateMany(
-            { generatedById: profileId },
-            { $set: { generatedById: uid } }
-          );
+          try {
+            await (models.Requisition as any).updateMany(
+              { requesterId: profileId },
+              { $set: { requesterId: uid } }
+            );
+            await (models.Report as any).updateMany(
+              { generatedById: profileId },
+              { $set: { generatedById: uid } }
+            );
+            await (models.AuditLog as any).updateMany(
+              { performedBy: profileId },
+              { $set: { performedBy: uid } }
+            );
+          } catch (relErr: any) {
+            console.warn("[Link Profile] Relationship update warning:", relErr.message);
+          }
         }
       } else {
         // Fallback JSON update for users as well
-        const users = readJsonCollection("users");
-        const idx = users.findIndex((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+        let users = readJsonCollection("users");
+        // Remove duplicate stub users with same uid but different email
+        users = users.filter((u: any) => !(u.id === uid && u.email?.toLowerCase() !== normalizedEmail));
+
+        const idx = users.findIndex((u: any) => u.email?.toLowerCase() === normalizedEmail);
         if (idx !== -1) {
           users[idx].id = uid;
           users[idx].isApproved = true;
           users[idx].isActive = true;
-          writeJsonCollection("users", users);
+        } else {
+          users.push({
+            id: uid,
+            email: normalizedEmail,
+            role: "USER",
+            isApproved: true,
+            isActive: true
+          });
         }
+        writeJsonCollection("users", users);
 
         // Fallback JSON update for non-users relationships if fallback mode is active
         if (profileId && profileId !== uid) {
