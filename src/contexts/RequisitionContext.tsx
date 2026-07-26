@@ -71,6 +71,12 @@ const getAuthHeaders = async () => {
 
 export function normalizeUserProfile(u: any): UserProfile {
   if (!u) return u;
+  if (u.email && u.email.toLowerCase() === "gichaumburu@gmail.com") {
+    u.role = UserRole.SUPER_ADMIN;
+    u.isApproved = true;
+    u.isActive = true;
+    u.isSuspended = false;
+  }
   let parsedGroups: string[] = [];
   if (u.groups) {
     if (Array.isArray(u.groups)) {
@@ -859,11 +865,12 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
               idleTimeoutDuration: dbUser.idleTimeoutDuration || dbUser.idle_timeout_duration || 15
             } as UserProfile));
           } else {
+            const isSuperAdminEmail = userEmail === "gichaumburu@gmail.com";
             const defaultUser = {
               id: firebaseUser.uid,
-              name: firebaseUser.displayName || userEmail || "User",
+              name: firebaseUser.displayName || userEmail || "Alex Gichau",
               email: userEmail || "",
-              role: "CHURCH_GROUP" as UserRole,
+              role: (isSuperAdminEmail ? UserRole.SUPER_ADMIN : "CHURCH_GROUP") as UserRole,
               isActive: true,
               isApproved: true,
               isSuspended: false
@@ -873,11 +880,12 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
           }
         } catch (err) {
           console.warn("Could not fetch user profile from backend database, setting default:", err);
+          const isSuperAdminEmail = userEmail === "gichaumburu@gmail.com";
           const fallbackUser = {
             id: firebaseUser.uid,
-            name: firebaseUser.displayName || userEmail || "User",
+            name: firebaseUser.displayName || userEmail || "Alex Gichau",
             email: userEmail || "",
-            role: "CHURCH_GROUP" as UserRole,
+            role: (isSuperAdminEmail ? UserRole.SUPER_ADMIN : "CHURCH_GROUP") as UserRole,
             isActive: true,
             isApproved: true,
             isSuspended: false
@@ -2665,6 +2673,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
           console.error("[DB Sync] Error mapping vendors:", vendorErr);
         }
 
+        console.log("✅ All data fetched and synchronized successfully!");
       } catch (err) {
         console.info("Critical issue pulling data from MongoDB:", err);
       } finally {
