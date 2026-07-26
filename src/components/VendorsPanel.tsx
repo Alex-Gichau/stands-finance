@@ -57,6 +57,24 @@ import {
   Cell 
 } from "recharts";
 
+const parseOfferings = (raw: any): string[] => {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.map(item => String(item).trim()).filter(Boolean);
+  }
+  if (typeof raw === "string") {
+    return raw.split(",").map(item => item.trim()).filter(Boolean);
+  }
+  return [String(raw).trim()].filter(Boolean);
+};
+
+const getOfferingsString = (raw: any): string => {
+  if (!raw) return "";
+  if (Array.isArray(raw)) return raw.join(", ");
+  if (typeof raw === "string") return raw;
+  return String(raw);
+};
+
 export const VendorsPanel: React.FC = () => {
   const { requisitions, vendors, addVendor, updateVendor, deleteVendor, canAccess, currentUser, triggerToast, addSystemLog, syncingTargets } = useRequisitions();
   
@@ -80,7 +98,7 @@ export const VendorsPanel: React.FC = () => {
         pipeline: 0,
         total: 0,
         count: 0,
-        categories: new Set(v.offerings ? v.offerings.split(",").map(cat => cat.trim()) : [])
+        categories: new Set(parseOfferings(v.offerings))
       };
     });
 
@@ -381,16 +399,14 @@ export const VendorsPanel: React.FC = () => {
     
     // Supplement with existing ones from database
     vendors.forEach(v => {
-      if (v.offerings) {
-        v.offerings.split(",").forEach(item => {
-          const trimmed = item.trim();
-          if (trimmed) {
-            // Capitalize first letter for consistency
-            const normalized = trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
-            list.add(normalized);
-          }
-        });
-      }
+      parseOfferings(v.offerings).forEach(item => {
+        const trimmed = item.trim();
+        if (trimmed) {
+          // Capitalize first letter for consistency
+          const normalized = trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+          list.add(normalized);
+        }
+      });
     });
     return Array.from(list);
   }, [vendors]);
@@ -398,17 +414,19 @@ export const VendorsPanel: React.FC = () => {
   // Client-side search, filters, and sorting
   const filteredVendors = useMemo(() => {
     const list = vendors.filter(v => {
+      const offeringsStr = getOfferingsString(v.offerings).toLowerCase();
+
       // Search term filter
       const matchesSearch = 
         v.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (v.offerings || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        offeringsStr.includes(searchTerm.toLowerCase()) ||
         (v.location || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (v.contact || "").toLowerCase().includes(searchTerm.toLowerCase());
 
       // Offerings Category filter
       let matchesOfferings = true;
       if (selectedOfferingsFilter !== "ALL") {
-        matchesOfferings = (v.offerings || "").toLowerCase().includes(selectedOfferingsFilter.toLowerCase());
+        matchesOfferings = offeringsStr.includes(selectedOfferingsFilter.toLowerCase());
       }
 
       return matchesSearch && matchesOfferings;
@@ -442,15 +460,13 @@ export const VendorsPanel: React.FC = () => {
     // Most offered service
     const serviceCounts: Record<string, number> = {};
     filteredVendors.forEach(v => {
-      if (v.offerings) {
-        v.offerings.split(",").forEach(item => {
-          const trimmed = item.trim();
-          if (trimmed) {
-            const normalized = trimmed.toLowerCase();
-            serviceCounts[normalized] = (serviceCounts[normalized] || 0) + 1;
-          }
-        });
-      }
+      parseOfferings(v.offerings).forEach(item => {
+        const trimmed = item.trim();
+        if (trimmed) {
+          const normalized = trimmed.toLowerCase();
+          serviceCounts[normalized] = (serviceCounts[normalized] || 0) + 1;
+        }
+      });
     });
 
     let mostOffered = "N/A";
@@ -544,7 +560,7 @@ export const VendorsPanel: React.FC = () => {
     setName(vendor.name);
     setContact(vendor.contact || "");
     setLocation(vendor.location || "");
-    setOfferings(vendor.offerings || "");
+    setOfferings(getOfferingsString(vendor.offerings));
     setShowAddForm(true);
   };
 
@@ -582,7 +598,7 @@ export const VendorsPanel: React.FC = () => {
       headers.join(","),
       ...filteredVendors.map(v => [
         `"${v.name.replace(/"/g, '""')}"`,
-        `"${(v.offerings || "").replace(/"/g, '""')}"`,
+        `"${getOfferingsString(v.offerings).replace(/"/g, '""')}"`,
         `"${(v.contact || "").replace(/"/g, '""')}"`,
         `"${(v.location || "").replace(/"/g, '""')}"`,
         `"${v.createdAt}"`
@@ -782,15 +798,16 @@ export const VendorsPanel: React.FC = () => {
                       </label>
                       <div className="flex flex-wrap gap-2 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl min-h-[80px]">
                         {VENDOR_SERVICE_CATEGORIES.map((category) => {
-                          const isSelected = offerings.split(", ").includes(category);
+                          const currentCategories = parseOfferings(offerings);
+                          const isSelected = currentCategories.some(c => c.toLowerCase() === category.toLowerCase());
                           return (
                             <button
                               key={category}
                               type="button"
                               onClick={() => {
-                                const current = offerings.split(", ").filter(x => x);
+                                const current = parseOfferings(offerings);
                                 if (isSelected) {
-                                  setOfferings(current.filter(x => x !== category).join(", "));
+                                  setOfferings(current.filter(x => x.toLowerCase() !== category.toLowerCase()).join(", "));
                                 } else {
                                   setOfferings([...current, category].join(", "));
                                 }
@@ -987,9 +1004,9 @@ export const VendorsPanel: React.FC = () => {
                       </td>
                       <td className="px-6 py-5">
                         <div className="flex flex-wrap gap-1.5">
-                          {(vendor.offerings || "").split(",").map((o, idx) => (
+                          {parseOfferings(vendor.offerings).map((o, idx) => (
                             <span key={idx} className="px-3 py-1 bg-slate-50 border border-slate-100 text-slate-500 rounded-lg text-[8px] font-black uppercase tracking-widest group-hover:bg-primary/5 group-hover:border-primary/10 group-hover:text-primary transition-colors">
-                              {o.trim()}
+                              {o}
                             </span>
                           ))}
                         </div>
@@ -1645,11 +1662,15 @@ export const VendorsPanel: React.FC = () => {
                         Core Offerings
                       </h4>
                       <div className="flex flex-wrap gap-2">
-                        {(viewingVendor.offerings || "No categories listed").split(",").map((o, idx) => (
-                           <span key={idx} className="px-3 py-1.5 bg-slate-50 border border-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest">
-                             {o.trim()}
-                           </span>
-                        ))}
+                        {parseOfferings(viewingVendor.offerings).length > 0 ? (
+                          parseOfferings(viewingVendor.offerings).map((o, idx) => (
+                            <span key={idx} className="px-3 py-1.5 bg-slate-50 border border-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest">
+                              {o}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[10px] text-slate-400 font-medium">No categories listed</span>
+                        )}
                       </div>
                     </div>
 

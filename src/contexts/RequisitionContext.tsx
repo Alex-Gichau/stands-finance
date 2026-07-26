@@ -2679,7 +2679,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 name: v?.name || "",
                 contact: v?.contact || "",
                 location: v?.location || "",
-                offerings: v?.offerings || [],
+                offerings: Array.isArray(v?.offerings) ? v.offerings.join(", ") : (typeof v?.offerings === "string" ? v.offerings : ""),
                 createdAt: v?.created_at || v?.createdAt || "",
                 addedBy: v?.added_by || v?.addedBy || "",
                 status: v?.status || "ACTIVE"

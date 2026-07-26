@@ -733,7 +733,7 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
                     <div className="text-[10px] text-slate-600 dark:text-slate-400 mt-1 space-y-0.5">
                       <p>📍 <span className="font-semibold">Location:</span> {v.location || "Not specified"}</p>
                       <p>📞 <span className="font-semibold">Contact:</span> {v.contact || "Not specified"}</p>
-                      <p>🛍️ <span className="font-semibold">Offers:</span> {v.offerings || "Not specified"}</p>
+                      <p>🛍️ <span className="font-semibold">Offers:</span> {Array.isArray(v.offerings) ? (v.offerings as any).join(", ") : (v.offerings || "Not specified")}</p>
                     </div>
                   </div>
                 </div>
