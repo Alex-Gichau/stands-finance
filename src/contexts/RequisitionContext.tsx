@@ -3347,12 +3347,11 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       fiscalYear: systemSettings.currentFiscalYear || 2026,
     };
 
+    // OPTIMISTIC UPDATE: Instantly reflect new requisition in React state for zero UI delay
+    setRequisitions(prev => [newReq, ...prev.filter(r => r.id !== id)]);
+
     if (isFirestoreQuotaExceeded()) {
       console.log("[Quota Fallback] Firestore Daily limits exceeded. Adding requisition local state + Sheets Sync.");
-      setRequisitions(prev => {
-        if (prev.find(r => r.id === id)) return prev;
-        return [newReq, ...prev];
-      });
       addSystemLog("QUOTA_FALLBACK_ACTIVE", `Firestore daily write quota exceeded. Synchronized requisition '${newReq.title}' directly to Google Sheets for isolation target.`, {
         requisitionId: id,
         title: newReq.title,
@@ -3361,30 +3360,34 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }).catch(() => {});
 
       if (newReq.status === RequisitionStatus.SUBMITTED) {
-        sendEmailNotification(newReq, "SUBMITTED");
+        sendEmailNotification(newReq, "SUBMITTED").catch(() => {});
       }
       await syncRequisitionToGoogleSheets(newReq);
       return;
     }
 
     try {
+      // Async database persistence
       await databaseService.saveRequisition(cleanFirestoreData(newReq));
-      await addSystemLog("REQUISITION_CREATED", `Requisition '${newReq.title}' created (amount KES ${newReq.amount.toLocaleString()})`, {
+      
+      // Fire-and-forget non-blocking background tasks
+      addSystemLog("REQUISITION_CREATED", `Requisition '${newReq.title}' created (amount KES ${newReq.amount.toLocaleString()})`, {
         requisitionId: id,
         title: newReq.title,
         amount: newReq.amount,
         group: newReq.groupName
-      });
+      }).catch(() => {});
       
-      // Trigger Email for new submission
       if (newReq.status === RequisitionStatus.SUBMITTED) {
-        sendEmailNotification(newReq, "SUBMITTED");
+        sendEmailNotification(newReq, "SUBMITTED").catch(() => {});
       }
       
       if (newReq.projectId) {
-        await syncProjectAmounts(newReq.projectId);
+        syncProjectAmounts(newReq.projectId).catch(() => {});
       }
     } catch (err) {
+      // Rollback optimistic state if persistence fails
+      setRequisitions(prev => prev.filter(r => r.id !== id));
       handleFirestoreError(err, OperationType.CREATE, `requisitions/${id}`);
     }
     });
@@ -3527,70 +3530,72 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         };
         try {
           await setDoc(doc(db, "alerts", alertId), newAlert);
-          await addSystemLog("FINANCE_ALERT_TRIGGERED", `Automated alert dispatched to FINANCE team for L2 Approved requisition: '${req.title}'`, { requisitionId: id, alertId });
+          addSystemLog("FINANCE_ALERT_TRIGGERED", `Automated alert dispatched to FINANCE team for L2 Approved requisition: '${req.title}'`, { requisitionId: id, alertId }).catch(() => {});
         } catch (e) {
           handleFirestoreError(e, OperationType.CREATE, `alerts/${alertId}`);
         }
       }
       if (status === RequisitionStatus.DISBURSED) updates.disbursedAt = new Date().toISOString();
 
-      await updateDoc(reqRef, cleanFirestoreData(updates));
-      
       const updatedReq = { ...req, ...updates, id };
-      await databaseService.saveRequisition(cleanFirestoreData(updatedReq));
+
+      // OPTIMISTIC UPDATE: Update React state immediately so UI updates instantly (0ms latency feel)
       setRequisitions(prev => prev.map(r => r.id === id ? updatedReq : r));
+
+      // Asynchronous database write
+      await updateDoc(reqRef, cleanFirestoreData(updates));
+      await databaseService.saveRequisition(cleanFirestoreData(updatedReq));
       
+      // Fire-and-forget background operations
       if (status === RequisitionStatus.APPROVED_L1 || status === RequisitionStatus.APPROVED_L2 || status === RequisitionStatus.DISBURSED) {
-        const syncedRecord = {
-          ...req,
-          ...updates,
-          id
-        };
-        syncRequisitionToGoogleSheets(syncedRecord).catch(e => console.log("Background Google Sheets sync failed:", e));
+        syncRequisitionToGoogleSheets(updatedReq).catch(() => {});
       }
       
-      // Trigger Email Notification for status update
       if (status === RequisitionStatus.APPROVED_L1 || status === RequisitionStatus.APPROVED_L2 || status === RequisitionStatus.DISBURSED || status === RequisitionStatus.REJECTED) {
-         sendEmailNotification(req, status, decision === "REJECT" ? (rejectionReason || note) : note);
+         sendEmailNotification(req, status, decision === "REJECT" ? (rejectionReason || note) : note).catch(() => {});
       }
 
-      await addSystemLog("STATUS_CHANGE", `Requisition '${req.title}' decision: ${decision} -> New Status: ${status}`, {
+      addSystemLog("STATUS_CHANGE", `Requisition '${req.title}' decision: ${decision} -> New Status: ${status}`, {
         requisitionId: id,
         title: req.title,
         previousStatus: req.status,
         newStatus: status,
         decision,
         note
-      });
+      }).catch(() => {});
 
-      // Auto-sync project spent and committed amounts in the database on any status transition
       if (req.projectId) {
-        await syncProjectAmounts(req.projectId);
+        syncProjectAmounts(req.projectId).catch(() => {});
       }
 
-      // Update Ledger Book spentAmount if newly approved L2 or disbursed
       if (status === RequisitionStatus.APPROVED_L2 || (req.status !== RequisitionStatus.APPROVED_L2 && status === RequisitionStatus.DISBURSED)) {
-         const ledgerQuerySnap = await getDocs(query(collection(db, "ledger_books"), where("ministryName", "==", req.groupName)));
-         if (!ledgerQuerySnap.empty) {
-           const ledgerDoc = ledgerQuerySnap.docs[0];
-           await updateDoc(ledgerDoc.ref, {
-             spentAmount: (ledgerDoc.data().spentAmount || 0) + req.amount
-           });
-         }
+         getDocs(query(collection(db, "ledger_books"), where("ministryName", "==", req.groupName))).then(ledgerQuerySnap => {
+           if (!ledgerQuerySnap.empty) {
+             const ledgerDoc = ledgerQuerySnap.docs[0];
+             updateDoc(ledgerDoc.ref, {
+               spentAmount: (ledgerDoc.data().spentAmount || 0) + req.amount
+             }).catch(() => {});
+           }
+         }).catch(() => {});
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `requisitions/${id}`);
     }
     });
-  }, [currentUser, addSystemLog, systemSettings, syncProjectAmounts, requisitions, setRequisitions, syncRequisitionToGoogleSheets, withDbLoading]);
+  }, [currentUser, addSystemLog, systemSettings, syncProjectAmounts, setRequisitions, syncRequisitionToGoogleSheets, withDbLoading]);
 
   const enrollBiometric = useCallback((enabled: boolean = true) => {
     setBiometricEnrolled(enabled);
   }, []);
 
   const deleteRequisition = useCallback(async (id: string) => {
+    const targetReq = requisitions.find(r => r.id === id);
+    // OPTIMISTIC DELETE: Immediately remove from UI
+    setRequisitions(prev => prev.filter(r => r.id !== id));
+
     return withDbLoading("Deleting requisition from database...", async () => {
       if (!navigator.onLine) {
+        if (targetReq) setRequisitions(prev => [targetReq, ...prev]);
         throw new Error("Offline Mode: You are offline. Deleting requisitions is locked.");
       }
 
@@ -3600,16 +3605,17 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         const projectId = reqSnap.exists() ? (reqSnap.data() as Requisition).projectId : null;
 
         await databaseService.deleteRequisition(id);
-        await addSystemLog("REQUISITION_DELETED", `Requisition ID '${id}' deleted`, { requisitionId: id });
+        addSystemLog("REQUISITION_DELETED", `Requisition ID '${id}' deleted`, { requisitionId: id }).catch(() => {});
 
         if (projectId) {
-          await syncProjectAmounts(projectId);
+          syncProjectAmounts(projectId).catch(() => {});
         }
       } catch (err) {
+        if (targetReq) setRequisitions(prev => [targetReq, ...prev]);
         handleFirestoreError(err, OperationType.DELETE, `requisitions/${id}`);
       }
     });
-  }, [addSystemLog, syncProjectAmounts, withDbLoading]);
+  }, [requisitions, setRequisitions, addSystemLog, syncProjectAmounts, withDbLoading]);
 
   const updateRequisition = useCallback(async (id: string, updates: Partial<Requisition>) => {
     return withDbLoading("Saving requisition changes...", async () => {
