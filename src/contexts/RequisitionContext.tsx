@@ -2727,6 +2727,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       const { GoogleAuthProvider, signInWithPopup } = await import("firebase/auth");
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
       const result = await signInWithPopup(auth, provider);
       if (result.user) {
         addSystemLog("USER_LOGIN", `User logged in via Google Auth: ${result.user.email}`, { authProvider: "google", email: result.user.email });
