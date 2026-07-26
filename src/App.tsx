@@ -335,6 +335,8 @@ function AppContent() {
     updateSystemSettings,
     loading,
     authLoading,
+    isDbSaving,
+    dbSavingMessage,
     users,
     requisitions,
     approveUser,
@@ -1117,6 +1119,25 @@ function AppContent() {
         <div className="absolute -top-24 -right-24 w-64 h-64 bg-primary/20 rounded-full blur-[100px]" />
         <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-indigo-500/10 rounded-full blur-[100px]" />
 
+        {/* Global Database Saving / Updating Indicator */}
+        <AnimatePresence>
+          {isDbSaving && (
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.95 }}
+              transition={{ duration: 0.2 }}
+              className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-5 py-2.5 bg-slate-900/95 text-white border border-sky-500/50 shadow-2xl rounded-full backdrop-blur-md text-xs font-semibold ring-1 ring-sky-500/20 pointer-events-none"
+            >
+              <Loader2 className="w-4 h-4 text-sky-400 animate-spin shrink-0" />
+              <span className="text-slate-100 font-medium">{dbSavingMessage || "Updating database..."}</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                Syncing
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Top Right Corner Google Sign-In One-Tap Widget */}
         <AnimatePresence>
           {showGoogleOneTap && (
@@ -1152,44 +1173,66 @@ function AppContent() {
 
               {/* Account Selection Items */}
               <div className="divide-y divide-slate-100 max-h-[280px] overflow-y-auto">
-                {/* Account 1 */}
+                {/* Account 1: Primary Real User */}
                 <button
                   type="button"
-                  onClick={handleGoogleLogin}
+                  onClick={() => {
+                    setEmail("gichaumburu@gmail.com");
+                    handleGoogleLogin();
+                  }}
                   disabled={isSubmitting}
                   className="w-full text-left px-4 py-3.5 flex items-center gap-3.5 hover:bg-slate-50/90 active:bg-slate-100 transition-colors cursor-pointer group"
                 >
-                  <div className="w-9 h-9 rounded-full bg-purple-700 text-white font-bold flex items-center justify-center text-sm shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-                    M
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-sky-600 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                    A
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-semibold text-slate-900 group-hover:text-sky-600 transition-colors truncate">
-                      Mariam Saadeh
+                    <div className="text-[13px] font-semibold text-slate-900 group-hover:text-sky-600 transition-colors truncate flex items-center gap-1.5">
+                      <span>Alex Gichau</span>
+                      {isSubmitting && <Loader2 className="w-3 h-3 text-sky-500 animate-spin" />}
                     </div>
                     <div className="text-[12px] text-slate-500 font-normal truncate">
-                      m.saadeh1095@gmail.com
+                      gichaumburu@gmail.com
                     </div>
                   </div>
                 </button>
 
-                {/* Account 2 */}
+                {/* Account 2: Secondary / Input Email if specified */}
+                {email && email.includes("@") && email.trim().toLowerCase() !== "gichaumburu@gmail.com" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleGoogleLogin();
+                    }}
+                    disabled={isSubmitting}
+                    className="w-full text-left px-4 py-3.5 flex items-center gap-3.5 hover:bg-slate-50/90 active:bg-slate-100 transition-colors cursor-pointer group"
+                  >
+                    <div className="w-9 h-9 rounded-full bg-slate-700 text-white font-bold flex items-center justify-center text-sm shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                      {email.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-semibold text-slate-900 group-hover:text-sky-600 transition-colors truncate flex items-center gap-1.5">
+                        <span>{email.split("@")[0]}</span>
+                        {isSubmitting && <Loader2 className="w-3 h-3 text-sky-500 animate-spin" />}
+                      </div>
+                      <div className="text-[12px] text-slate-500 font-normal truncate">
+                        {email}
+                      </div>
+                    </div>
+                  </button>
+                )}
+
+                {/* Option: Use another Google Account */}
                 <button
                   type="button"
-                  onClick={handleGoogleLogin}
+                  onClick={() => {
+                    handleGoogleLogin();
+                  }}
                   disabled={isSubmitting}
-                  className="w-full text-left px-4 py-3.5 flex items-center gap-3.5 hover:bg-slate-50/90 active:bg-slate-100 transition-colors cursor-pointer group"
+                  className="w-full text-left px-4 py-3 flex items-center gap-3 text-xs font-semibold text-sky-600 hover:bg-sky-50/60 transition-colors cursor-pointer"
                 >
-                  <div className="w-9 h-9 rounded-full bg-slate-600 text-white font-bold flex items-center justify-center text-sm shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-                    M
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-semibold text-slate-900 group-hover:text-sky-600 transition-colors truncate">
-                      Mariam Saadeh
-                    </div>
-                    <div className="text-[12px] text-slate-500 font-normal truncate">
-                      m.saadeh1095@gmail.com
-                    </div>
-                  </div>
+                  <UserCircle size={18} className="text-sky-500" />
+                  <span>Use another Google account</span>
                 </button>
               </div>
             </motion.div>

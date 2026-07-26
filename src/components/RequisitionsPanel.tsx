@@ -135,12 +135,45 @@ const RichDocumentViewer = ({
           setCsvRows(rows);
         } else if (docProps.isWord) {
           try {
-            const mammoth = await import("mammoth");
-            const result = await mammoth.convertToHtml({ arrayBuffer });
-            setWordHtml(result.value || "<p class='text-slate-450 italic'>This document is empty.</p>");
-          } catch (mErr: any) {
-            console.error("Mammoth DOCX parsing failed:", mErr);
-            throw new Error("Word document conversion failed. The file format or content might be corrupted.");
+            // Check if arrayBuffer is a valid ZIP archive (PK header: 0x50, 0x4B)
+            const header = new Uint8Array(arrayBuffer.slice(0, 4));
+            const isZipHeader = header.length >= 2 && header[0] === 0x50 && header[1] === 0x4B;
+
+            if (isZipHeader) {
+              const mammoth = await import("mammoth");
+              const result = await mammoth.convertToHtml({ arrayBuffer });
+              setWordHtml(result.value || "<p class='text-slate-450 italic'>This document is empty.</p>");
+            } else {
+              // Attempt to decode as plain text/HTML if not a zip file
+              const decoder = new TextDecoder("utf-8");
+              const decodedText = decoder.decode(arrayBuffer);
+              const trimmed = decodedText.trim();
+
+              if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html") || trimmed.startsWith("<div") || trimmed.startsWith("<p")) {
+                setWordHtml(trimmed);
+              } else {
+                const printableText = decodedText.replace(/[^\x20-\x7E\n\r\t]/g, " ").replace(/\s+/g, " ").trim();
+                if (printableText.length > 20) {
+                  setWordHtml(`<div class='p-4 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-sans whitespace-pre-wrap'>${printableText}</div>`);
+                } else {
+                  throw new Error("This file is not a valid DOCX zip archive.");
+                }
+              }
+            }
+          } catch {
+            // Fallback: try decoding raw text
+            try {
+              const decoder = new TextDecoder("utf-8");
+              const decodedText = decoder.decode(arrayBuffer);
+              const printableText = decodedText.replace(/[^\x20-\x7E\n\r\t]/g, " ").replace(/\s+/g, " ").trim();
+              if (printableText.length > 20) {
+                setWordHtml(`<div class='p-4 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-sans whitespace-pre-wrap'>${printableText}</div>`);
+              } else {
+                throw new Error("Word document conversion failed. The file format is corrupted or not a valid .docx document.");
+              }
+            } catch {
+              throw new Error("Word document conversion failed. The file format or content might be corrupted.");
+            }
           }
         } else if (docProps.isExcel) {
           try {

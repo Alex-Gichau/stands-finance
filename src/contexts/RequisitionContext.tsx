@@ -457,6 +457,8 @@ interface RequisitionContextType {
   users: UserProfile[];
   loading: boolean;
   authLoading: boolean;
+  isDbSaving: boolean;
+  dbSavingMessage: string;
   syncingTargets: Set<string>;
   biometricEnrolled: boolean;
   enrollBiometric: (enabled?: boolean) => void;
@@ -531,6 +533,8 @@ interface RequisitionContextType {
   canPerform: (actionId: keyof PermissionConfig["actions"]) => boolean;
   updateRolePermissions: (roleId: string, updates: any) => Promise<void>;
   transactions: Transaction[];
+  clearWebTransactions: () => Promise<void>;
+  syncRealDisbursedTransactions: () => Promise<number>;
   fiscalYears: FiscalYear[];
   createFiscalYear: (year: number, label: string, status: "OPEN" | "CLOSED" | "ARCHIVED", notes?: string) => Promise<void>;
   toggleFiscalYearStatus: (id: string, status: "OPEN" | "CLOSED" | "ARCHIVED") => Promise<void>;
@@ -572,6 +576,18 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [permissionConfigs, setPermissionConfigs] = useState<PermissionConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isDbSaving, setIsDbSaving] = useState(false);
+  const [dbSavingMessage, setDbSavingMessage] = useState("Updating database...");
+
+  const withDbLoading = useCallback(async <T,>(msg: string, fn: () => Promise<T>): Promise<T> => {
+    setIsDbSaving(true);
+    setDbSavingMessage(msg || "Updating database...");
+    try {
+      return await fn();
+    } finally {
+      setIsDbSaving(false);
+    }
+  }, []);
   const [firestoreQuotaExceeded, setFirestoreQuotaExceeded] = useState(() => {
     return isFirestoreQuotaExceeded();
   });
@@ -977,21 +993,23 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, []);
 
   const updateSystemSettings = useCallback(async (updates: Partial<SystemSettings>) => {
-    try {
-      if (skipFirestore) {
-        setSystemSettings(prev => {
-          const nextSettings = { ...prev, ...updates };
-          localStorage.setItem("stands_cache_system_settings", JSON.stringify(nextSettings));
-          return nextSettings;
-        });
-      } else {
-        await setDoc(doc(db, "settings", "system"), updates, { merge: true });
+    return withDbLoading("Saving system settings to database...", async () => {
+      try {
+        if (skipFirestore) {
+          setSystemSettings(prev => {
+            const nextSettings = { ...prev, ...updates };
+            localStorage.setItem("stands_cache_system_settings", JSON.stringify(nextSettings));
+            return nextSettings;
+          });
+        } else {
+          await setDoc(doc(db, "settings", "system"), updates, { merge: true });
+        }
+        await addSystemLog("SYSTEM_SETTINGS_UPDATE", `System settings updated: ${JSON.stringify(updates)}`, { updates });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, "settings/system");
       }
-      await addSystemLog("SYSTEM_SETTINGS_UPDATE", `System settings updated: ${JSON.stringify(updates)}`, { updates });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, "settings/system");
-    }
-  }, [addSystemLog, triggerToast, skipFirestore]);
+    });
+  }, [addSystemLog, triggerToast, skipFirestore, withDbLoading]);
 
   const allocateBudgetForGroup = useCallback(async (groupId: string, amount: number, fiscalYear: number, accountNumber?: string) => {
     if (!currentUser) throw new Error("Authentication required");
@@ -3014,16 +3032,18 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [users]);
 
   const updateUserProfile = useCallback(async (id: string, updates: Partial<UserProfile>) => {
-    try {
-      const existingUser = users.find(u => u.id === id);
-      if (existingUser) {
-        await databaseService.saveUserProfile({ ...existingUser, ...updates });
-        await addSystemLog("USER_PROFILE_UPDATE", `Profile updated for user ID: ${id}`, { userId: id, updates });
+    return withDbLoading("Updating user profile...", async () => {
+      try {
+        const existingUser = users.find(u => u.id === id);
+        if (existingUser) {
+          await databaseService.saveUserProfile({ ...existingUser, ...updates });
+          await addSystemLog("USER_PROFILE_UPDATE", `Profile updated for user ID: ${id}`, { userId: id, updates });
+        }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${id}`);
       }
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${id}`);
-    }
-  }, [users, addSystemLog]);
+    });
+  }, [users, addSystemLog, withDbLoading]);
 
   const updateCurrentUserPassword = useCallback(async (newPassword: string) => {
     try {
@@ -3290,13 +3310,14 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [addSystemLog]);
 
   const addRequisition = useCallback(async (reqData: any) => {
-    if (!navigator.onLine) {
-      throw new Error("Offline Mode: You are offline. All financial data is in read-only mode, and modifications/creations are currently locked.");
-    }
+    return withDbLoading("Submitting requisition to database...", async () => {
+      if (!navigator.onLine) {
+        throw new Error("Offline Mode: You are offline. All financial data is in read-only mode, and modifications/creations are currently locked.");
+      }
 
-    if (systemSettings?.fiscalYearStatus === "ARCHIVED") {
-      throw new Error("This fiscal year is ARCHIVED. Creation or submission of new requisitions is blocked.");
-    }
+      if (systemSettings?.fiscalYearStatus === "ARCHIVED") {
+        throw new Error("This fiscal year is ARCHIVED. Creation or submission of new requisitions is blocked.");
+      }
 
     const id = `req-${Math.random().toString(36).substr(2, 9)}`;
     const now = new Date();
@@ -3366,7 +3387,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `requisitions/${id}`);
     }
-  }, [addSystemLog, systemSettings, projects, syncProjectAmounts, setRequisitions, syncRequisitionToGoogleSheets]);
+    });
+  }, [addSystemLog, systemSettings, projects, syncProjectAmounts, setRequisitions, syncRequisitionToGoogleSheets, withDbLoading]);
 
   const updateRequisitionStatus = useCallback(async (
     id: string, 
@@ -3377,13 +3399,14 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     rejectionReason?: string,
     approvalCode?: string
   ) => {
-    if (!navigator.onLine) {
-      throw new Error("Offline Mode: You are offline. All financial data is in read-only mode, and status updates are currently locked.");
-    }
+    return withDbLoading("Updating requisition approval status...", async () => {
+      if (!navigator.onLine) {
+        throw new Error("Offline Mode: You are offline. All financial data is in read-only mode, and status updates are currently locked.");
+      }
 
-    if (systemSettings?.fiscalYearStatus === "ARCHIVED") {
-      throw new Error("This fiscal year is ARCHIVED. Approving or rejecting requisitions is blocked.");
-    }
+      if (systemSettings?.fiscalYearStatus === "ARCHIVED") {
+        throw new Error("This fiscal year is ARCHIVED. Approving or rejecting requisitions is blocked.");
+      }
 
     const historyAction: ApprovalNote = cleanFirestoreData({
       id: `an-${Math.random().toString(36).substr(2, 9)}`,
@@ -3558,41 +3581,45 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `requisitions/${id}`);
     }
-  }, [currentUser, addSystemLog, systemSettings, syncProjectAmounts, requisitions, setRequisitions, syncRequisitionToGoogleSheets]);
+    });
+  }, [currentUser, addSystemLog, systemSettings, syncProjectAmounts, requisitions, setRequisitions, syncRequisitionToGoogleSheets, withDbLoading]);
 
   const enrollBiometric = useCallback((enabled: boolean = true) => {
     setBiometricEnrolled(enabled);
   }, []);
 
   const deleteRequisition = useCallback(async (id: string) => {
-    if (!navigator.onLine) {
-      throw new Error("Offline Mode: You are offline. Deleting requisitions is locked.");
-    }
-
-    try {
-      const reqRef = doc(db, "requisitions", id);
-      const reqSnap = await getDoc(reqRef);
-      const projectId = reqSnap.exists() ? (reqSnap.data() as Requisition).projectId : null;
-
-      await databaseService.deleteRequisition(id);
-      await addSystemLog("REQUISITION_DELETED", `Requisition ID '${id}' deleted`, { requisitionId: id });
-
-      if (projectId) {
-        await syncProjectAmounts(projectId);
+    return withDbLoading("Deleting requisition from database...", async () => {
+      if (!navigator.onLine) {
+        throw new Error("Offline Mode: You are offline. Deleting requisitions is locked.");
       }
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `requisitions/${id}`);
-    }
-  }, [addSystemLog, syncProjectAmounts]);
+
+      try {
+        const reqRef = doc(db, "requisitions", id);
+        const reqSnap = await getDoc(reqRef);
+        const projectId = reqSnap.exists() ? (reqSnap.data() as Requisition).projectId : null;
+
+        await databaseService.deleteRequisition(id);
+        await addSystemLog("REQUISITION_DELETED", `Requisition ID '${id}' deleted`, { requisitionId: id });
+
+        if (projectId) {
+          await syncProjectAmounts(projectId);
+        }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `requisitions/${id}`);
+      }
+    });
+  }, [addSystemLog, syncProjectAmounts, withDbLoading]);
 
   const updateRequisition = useCallback(async (id: string, updates: Partial<Requisition>) => {
-    if (!navigator.onLine) {
-      throw new Error("Offline Mode: You are offline. All financial data is in read-only mode, and modifications are currently locked.");
-    }
+    return withDbLoading("Saving requisition changes...", async () => {
+      if (!navigator.onLine) {
+        throw new Error("Offline Mode: You are offline. All financial data is in read-only mode, and modifications are currently locked.");
+      }
 
-    if (systemSettings?.fiscalYearStatus === "ARCHIVED") {
-      throw new Error("This fiscal year is ARCHIVED. Editing requisitions is blocked.");
-    }
+      if (systemSettings?.fiscalYearStatus === "ARCHIVED") {
+        throw new Error("This fiscal year is ARCHIVED. Editing requisitions is blocked.");
+      }
 
     if (isFirestoreQuotaExceeded()) {
       console.log("[Quota Fallback] Firestore limits exceeded. Executing updateRequisition offline fallback.");
@@ -3659,7 +3686,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `requisitions/${id}`);
     }
-  }, [addSystemLog, db, systemSettings, syncProjectAmounts, requisitions, setRequisitions, syncRequisitionToGoogleSheets]);
+    });
+  }, [addSystemLog, db, systemSettings, syncProjectAmounts, requisitions, setRequisitions, syncRequisitionToGoogleSheets, withDbLoading]);
 
   const uploadReceipts = useCallback(async (id: string, newReceipts: string[]) => {
     try {
@@ -3682,6 +3710,81 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       handleFirestoreError(err, OperationType.UPDATE, `requisitions/${id}`);
     }
   }, [addSystemLog, setRequisitions]);
+
+  const clearWebTransactions = useCallback(async () => {
+    return withDbLoading("Clearing web transactions from database...", async () => {
+      try {
+        if (!skipFirestore && db) {
+          const snap = await getDocs(collection(db, "transactions"));
+          const deletePromises = snap.docs.map(d => deleteDoc(d.ref));
+          await Promise.all(deletePromises);
+        }
+        setTransactions([]);
+        await addSystemLog("WEB_TRANSACTIONS_CLEARED", "Cleared web transaction records from the database.");
+        triggerToast({
+          type: "SYSTEM_INFO",
+          severity: "LOW",
+          message: "All web transactions have been cleared successfully.",
+          timestamp: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error("Error clearing web transactions:", err);
+      }
+    });
+  }, [db, skipFirestore, addSystemLog, triggerToast, withDbLoading]);
+
+  const syncRealDisbursedTransactions = useCallback(async (): Promise<number> => {
+    return withDbLoading("Storing real disbursed funds transactions on website...", async () => {
+      try {
+        const disbursedReqs = requisitions.filter(r => r.status === RequisitionStatus.DISBURSED);
+        const realTxs: Transaction[] = disbursedReqs.map(req => {
+          const txId = `tx-disb-${req.id}`;
+          return {
+            id: txId,
+            externalRef: `MPESA-DISB-${req.id.toUpperCase().replace(/^REQ-/, '')}`,
+            sourceSystem: "PCE St. Andrews Disbursed Treasury",
+            amount: req.amount,
+            type: TransactionType.DEBIT,
+            status: TransactionStatus.COMPLETED,
+            description: `Disbursement: ${req.title}${req.payableTo ? ` (Payable to: ${req.payableTo})` : ''}`,
+            category: req.groupName || "General Disbursed Fund",
+            timestamp: req.disbursedAt || req.updatedAt || req.submittedAt || new Date().toISOString(),
+            performedBy: req.requesterName || "Finance Treasury",
+            metadata: {
+              requisitionId: req.id,
+              payableTo: req.payableTo,
+              groupId: req.groupId,
+              groupName: req.groupName,
+              amountWords: req.amountWords,
+              isRealDisbursed: true
+            }
+          };
+        });
+
+        if (!skipFirestore && db && realTxs.length > 0) {
+          for (const tx of realTxs) {
+            await setDoc(doc(db, "transactions", tx.id), tx, { merge: true });
+          }
+        }
+
+        setTransactions(realTxs);
+
+        await addSystemLog("REAL_TRANSACTIONS_STORED", `Stored ${realTxs.length} real disbursed funds transaction details on the website.`, { count: realTxs.length });
+
+        triggerToast({
+          type: "FINANCE_DISBURSEMENT",
+          severity: "LOW",
+          message: `Successfully synchronized and stored ${realTxs.length} real disbursed funds transaction detail(s).`,
+          timestamp: new Date().toISOString()
+        });
+
+        return realTxs.length;
+      } catch (err) {
+        console.error("Error syncing real disbursed transactions:", err);
+        return 0;
+      }
+    });
+  }, [requisitions, db, skipFirestore, addSystemLog, triggerToast, withDbLoading]);
 
   const markAlertAsRead = useCallback(async (id: string) => {
     try {
@@ -3889,6 +3992,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       users: uniqueUsers,
       loading,
       authLoading,
+      isDbSaving,
+      dbSavingMessage,
       churchGroups: uniqueChurchGroups,
       lastGroupsSync,
       addChurchGroup,
@@ -3964,6 +4069,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       updateRolePermissions,
       deleteAlert,
       transactions: uniqueTransactions,
+      clearWebTransactions,
+      syncRealDisbursedTransactions,
       fiscalYears: uniqueFiscalYears,
       createFiscalYear,
       toggleFiscalYearStatus,
