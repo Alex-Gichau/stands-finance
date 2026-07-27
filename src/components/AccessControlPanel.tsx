@@ -80,15 +80,19 @@ export const AccessControlPanel: React.FC = () => {
     };
   };
 
-  const saveConfig = async (config: any) => {
+  const saveConfig = (config: any) => {
     setIsSaving(true);
-    try {
-      await updateRolePermissions(selectedRole, config);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
-    } finally {
-      setIsSaving(false);
-    }
+    updateRolePermissions(selectedRole, config)
+      .then(() => {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2500);
+      })
+      .catch((err) => {
+        console.error("Failed to save role permissions:", err);
+      })
+      .finally(() => {
+        setIsSaving(false);
+      });
   };
 
   const viewPermissions = [
@@ -215,6 +219,7 @@ export const AccessControlPanel: React.FC = () => {
                         <p className="text-[10px] text-slate-500 font-medium">{view.description}</p>
                       </div>
                       <button
+                        type="button"
                         onClick={() => {
                           const updated = {
                             ...currentConfig,
@@ -226,12 +231,13 @@ export const AccessControlPanel: React.FC = () => {
                           saveConfig(updated);
                         }}
                         className={cn(
-                          "w-12 h-6 rounded-full relative transition-all duration-300",
-                          isEnabled ? "bg-emerald-500" : "bg-slate-200"
+                          "w-12 h-6 rounded-full relative transition-colors duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500/40 shrink-0",
+                          isEnabled ? "bg-emerald-500" : "bg-slate-300"
                         )}
+                        aria-label={`Toggle ${view.label}`}
                       >
                         <div className={cn(
-                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm",
+                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all duration-200 shadow-sm",
                           isEnabled ? "left-7" : "left-1"
                         )} />
                       </button>
@@ -255,18 +261,20 @@ export const AccessControlPanel: React.FC = () => {
                         <p className="text-[10px] text-slate-500 font-medium">Hide the supplementary budget request button across all user dashboards</p>
                       </div>
                       <button
-                        onClick={async () => {
-                          await updateSystemSettings({ 
+                        type="button"
+                        onClick={() => {
+                          updateSystemSettings({ 
                             hideSupplementaryBudgetBtn: !systemSettings.hideSupplementaryBudgetBtn 
                           });
                         }}
                         className={cn(
-                          "w-12 h-6 rounded-full relative transition-all duration-300",
-                          systemSettings.hideSupplementaryBudgetBtn ? "bg-emerald-500" : "bg-slate-200"
+                          "w-12 h-6 rounded-full relative transition-colors duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500/40 shrink-0",
+                          systemSettings.hideSupplementaryBudgetBtn ? "bg-emerald-500" : "bg-slate-300"
                         )}
+                        aria-label="Toggle Hide Supplementary Budget Button"
                       >
                         <div className={cn(
-                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm",
+                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all duration-200 shadow-sm",
                           systemSettings.hideSupplementaryBudgetBtn ? "left-7" : "left-1"
                         )} />
                       </button>
@@ -281,8 +289,8 @@ export const AccessControlPanel: React.FC = () => {
                       <div className="relative shrink-0">
                         <select 
                           value={systemSettings.vendorListViewLevel || "ALL_USERS"}
-                          onChange={async (e) => {
-                            await updateSystemSettings({ vendorListViewLevel: e.target.value as any });
+                          onChange={(e) => {
+                            updateSystemSettings({ vendorListViewLevel: e.target.value as any });
                           }}
                           className="bg-slate-100 hover:bg-slate-200 border border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-800 pl-4 pr-10 py-2.5 rounded-xl appearance-none focus:outline-none cursor-pointer focus:ring-2 focus:ring-primary/40 block min-w-[200px]"
                         >
@@ -309,13 +317,13 @@ export const AccessControlPanel: React.FC = () => {
                         <div className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded-xl p-1 shadow-sm">
                           <button
                             type="button"
-                            onClick={async () => {
+                            onClick={() => {
                               const current = systemSettings?.requisitionExpiryDays ?? 7;
                               if (current > 1) {
-                                await updateSystemSettings({ requisitionExpiryDays: current - 1 });
+                                updateSystemSettings({ requisitionExpiryDays: current - 1 });
                               }
                             }}
-                            className="w-8 h-8 flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-black transition-colors"
+                            className="w-8 h-8 flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-black transition-colors cursor-pointer"
                             title="Reduce expiry by 1 day"
                           >
                             -
@@ -325,11 +333,11 @@ export const AccessControlPanel: React.FC = () => {
                           </span>
                           <button
                             type="button"
-                            onClick={async () => {
+                            onClick={() => {
                               const current = systemSettings?.requisitionExpiryDays ?? 7;
-                              await updateSystemSettings({ requisitionExpiryDays: current + 1 });
+                              updateSystemSettings({ requisitionExpiryDays: current + 1 });
                             }}
-                            className="w-8 h-8 flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-black transition-colors"
+                            className="w-8 h-8 flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-black transition-colors cursor-pointer"
                             title="Increase expiry by 1 day"
                           >
                             +
@@ -342,10 +350,10 @@ export const AccessControlPanel: React.FC = () => {
                           placeholder="7"
                           className="w-20 px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold focus:border-primary/50 outline-none text-center"
                           value={systemSettings?.requisitionExpiryDays ?? 7}
-                          onChange={async (e) => {
+                          onChange={(e) => {
                             const val = parseInt(e.target.value, 10);
                             if (!isNaN(val) && val > 0) {
-                              await updateSystemSettings({ requisitionExpiryDays: val });
+                              updateSystemSettings({ requisitionExpiryDays: val });
                             }
                           }}
                         />
@@ -363,9 +371,10 @@ export const AccessControlPanel: React.FC = () => {
                           <p className="text-[10px] text-emerald-700/85 font-medium">The system is currently OFFLINE to standard users. You are browsing the environment using an administrator's bypass.</p>
                         </div>
                         <button
-                          onClick={async () => {
+                          type="button"
+                          onClick={() => {
                             if (confirm("🚨 Are you sure you want to RESTORE system access? This will bring the portal back online for all logged-in and new sessions immediately.")) {
-                              await updateSystemSettings({ isSystemOffline: false });
+                              updateSystemSettings({ isSystemOffline: false });
                             }
                           }}
                           className="py-2.5 px-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/10 shrink-0 cursor-pointer"
@@ -384,9 +393,10 @@ export const AccessControlPanel: React.FC = () => {
                           <p className="text-[10px] text-rose-600/80 font-medium">Instantly take the entire system offline. This renders the application unreachable with an offline screen for all users.</p>
                         </div>
                         <button
-                          onClick={async () => {
+                          type="button"
+                          onClick={() => {
                             if (confirm("🚨 WARNING: Are you sure you want to SHUT DOWN the system? This will immediately take the system offline for all active sessions.")) {
-                              await updateSystemSettings({ isSystemOffline: true });
+                              updateSystemSettings({ isSystemOffline: true });
                             }
                           }}
                           className="py-2.5 px-5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-600/10 shrink-0 cursor-pointer"
@@ -423,6 +433,7 @@ export const AccessControlPanel: React.FC = () => {
                         <p className="text-[10px] text-slate-500 font-medium">{action.description}</p>
                       </div>
                       <button
+                        type="button"
                         onClick={() => {
                           const updated = {
                             ...currentConfig,
@@ -434,12 +445,13 @@ export const AccessControlPanel: React.FC = () => {
                           saveConfig(updated);
                         }}
                         className={cn(
-                          "w-12 h-6 rounded-full relative transition-all duration-300",
-                          isEnabled ? "bg-primary" : "bg-slate-200"
+                          "w-12 h-6 rounded-full relative transition-colors duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500/40 shrink-0",
+                          isEnabled ? "bg-primary" : "bg-slate-300"
                         )}
+                        aria-label={`Toggle ${action.label}`}
                       >
                         <div className={cn(
-                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm",
+                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all duration-200 shadow-sm",
                           isEnabled ? "left-7" : "left-1"
                         )} />
                       </button>

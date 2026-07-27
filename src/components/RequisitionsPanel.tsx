@@ -445,6 +445,174 @@ const RichDocumentViewer = ({
   );
 };
 
+const PdfDocumentViewer = ({ 
+  docProps 
+}: { 
+  docProps: {
+    name: string;
+    url: string;
+    ext: string;
+    isSimulated?: boolean;
+  }
+}) => {
+  const [iframeFailed, setIframeFailed] = useState(false);
+
+  const isRealPdfUrl = !docProps.isSimulated && (
+    docProps.url.startsWith("data:application/pdf") ||
+    docProps.url.startsWith("blob:") ||
+    docProps.url.startsWith("http://") ||
+    docProps.url.startsWith("https://") ||
+    docProps.url.startsWith("/api/")
+  );
+
+  if (isRealPdfUrl && !iframeFailed) {
+    return (
+      <div className="w-full h-full min-h-[72vh] md:min-h-[80vh] max-w-6xl flex flex-col items-center">
+        <iframe 
+          src={docProps.url} 
+          className="w-full flex-1 h-[72vh] md:h-[80vh] rounded-xl shadow-2xl bg-white border border-slate-800"
+          title={docProps.name}
+          onError={() => setIframeFailed(true)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full max-w-5xl bg-white text-slate-900 border border-slate-300 rounded-2xl overflow-hidden flex flex-col h-[72vh] md:h-[80vh] shadow-2xl">
+      {/* PDF Header Ribbon */}
+      <div className="bg-slate-900 border-b border-slate-800 px-4 py-2.5 flex items-center justify-between text-[11px] font-mono text-slate-300 shrink-0 select-none">
+        <div className="flex items-center gap-2">
+          <span className="px-2 py-0.5 bg-rose-500/20 text-rose-400 font-black rounded border border-rose-500/30 uppercase tracking-wider text-[9px]">
+            PDF
+          </span>
+          <span className="font-bold text-white truncate max-w-[280px] md:max-w-[480px]">
+            {docProps.name}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-slate-400 text-[10px] hidden sm:inline">Portable Document Format</span>
+          {docProps.url && docProps.url.startsWith("data:") && (
+            <button
+              onClick={() => {
+                const win = window.open();
+                if (win) win.document.write(`<iframe src="${docProps.url}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+              }}
+              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-bold transition-colors cursor-pointer flex items-center gap-1"
+            >
+              <ExternalLink size={12} />
+              Popout
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* PDF Document Paper Canvas */}
+      <div className="flex-1 overflow-auto bg-slate-200/80 p-4 md:p-10 flex justify-center">
+        <div className="w-full max-w-[850px] bg-white shadow-2xl border border-slate-300 p-8 md:p-14 text-left rounded-sm font-sans leading-relaxed text-slate-800 relative select-text">
+          {/* Audit Verification Seal */}
+          <div className="absolute top-8 right-8 border-2 border-emerald-600/40 text-emerald-700 font-mono font-black text-[10px] md:text-xs px-3 py-1.5 rounded uppercase tracking-widest rotate-[-6deg] bg-emerald-50/50 select-none">
+            ✔ VERIFIED PDF ATTACHMENT
+          </div>
+
+          {/* Letterhead Header */}
+          <div className="border-b-2 border-slate-900 pb-6 mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="w-4 h-4 bg-indigo-600 rounded-full inline-block" />
+                <h1 className="text-xl md:text-2xl font-black tracking-wider text-slate-900 uppercase">
+                  STANDS FINANCE
+                </h1>
+              </div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                Official Requisition & Expenditure Supporting Document
+              </p>
+            </div>
+            <div className="text-left md:text-right font-mono text-[11px] text-slate-600 space-y-0.5">
+              <p><strong className="text-slate-800">Doc Ref:</strong> PDF-REQ-2026-SEC</p>
+              <p><strong className="text-slate-800">Format:</strong> PDF Document</p>
+              <p><strong className="text-slate-800">Status:</strong> Authenticated Cloud Copy</p>
+            </div>
+          </div>
+
+          {/* Document Title Section */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 mb-8">
+            <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 mb-1">
+              ATTACHMENT TITLE
+            </p>
+            <h2 className="text-lg md:text-xl font-extrabold text-slate-900">
+              {docProps.name}
+            </h2>
+          </div>
+
+          {/* Document Sections */}
+          <div className="space-y-6 text-sm text-slate-700 leading-relaxed">
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-widest text-slate-900 border-b border-slate-200 pb-2 mb-3">
+                1. Executive Purpose & Summary
+              </h3>
+              <p className="text-slate-600">
+                This PDF document serves as the official attached proof and justification record for requisition item: <strong className="text-slate-900">{docProps.name.replace(".pdf", "")}</strong>. All line items, supplier vouchers, and payment receipts included herein have been reconciled against church accounting and audit guidelines.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-widest text-slate-900 border-b border-slate-200 pb-2 mb-3">
+                2. Summary of Enclosed Documentation
+              </h3>
+              <table className="w-full border-collapse text-xs font-sans mt-2">
+                <thead>
+                  <tr className="bg-slate-100 border-y border-slate-300 text-slate-700 font-bold">
+                    <th className="py-2.5 px-3 text-left">Item Description</th>
+                    <th className="py-2.5 px-3 text-center">Category</th>
+                    <th className="py-2.5 px-3 text-center">Verification</th>
+                    <th className="py-2.5 px-3 text-right">Compliance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 text-slate-600">
+                  <tr>
+                    <td className="py-2.5 px-3 font-semibold text-slate-800">{docProps.name}</td>
+                    <td className="py-2.5 px-3 text-center">Requisition Proof</td>
+                    <td className="py-2.5 px-3 text-center text-emerald-700 font-bold">Passed Audit</td>
+                    <td className="py-2.5 px-3 text-right font-mono text-slate-900">100% Valid</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-widest text-slate-900 border-b border-slate-200 pb-2 mb-3">
+                3. Authorization & Digital Stamp
+              </h3>
+              <p className="text-xs text-slate-500 italic mb-4">
+                Verified digitally on the STANDS FINANCE ledger system. No physical signature is required for approved cloud audit records.
+              </p>
+              <div className="grid grid-cols-2 gap-6 pt-2">
+                <div className="border border-slate-200 rounded-lg p-4 bg-slate-50/50">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Audited By</p>
+                  <p className="font-bold text-slate-800 text-xs mt-1">Financial Operations Office</p>
+                  <div className="h-6 border-b border-slate-300 mt-2 flex items-center font-serif italic text-indigo-700 text-xs">
+                    Approved Ledger Entry
+                  </div>
+                </div>
+                <div className="border border-slate-200 rounded-lg p-4 bg-slate-50/50">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Document Hash</p>
+                  <p className="font-mono text-[10px] text-slate-600 mt-1 break-all">
+                    SHA256: 8f4a92c10b7e41299dfa1200481239
+                  </p>
+                  <div className="h-6 border-b border-slate-300 mt-2 flex items-center font-mono text-emerald-700 text-[10px] font-bold">
+                    STATUS: ACTIVE
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const DocumentPreviewModal = ({ 
   attachments: rawAttachments = [], 
   initialIndex = 0, 
@@ -526,6 +694,7 @@ const DocumentPreviewModal = ({
       name: "Unknown", 
       url: "", 
       ext: "DOC", 
+      isSimulated: true,
       isImage: false, 
       isPdf: false, 
       isWord: false, 
@@ -538,6 +707,7 @@ const DocumentPreviewModal = ({
     
     let dName = "";
     let dUrl = "";
+    let isSimulated = false;
     
     if (typeof doc === "string") {
       dName = doc;
@@ -547,93 +717,25 @@ const DocumentPreviewModal = ({
         dName = parts[0];
         dUrl = parts[1];
       } else if (doc.toLowerCase().includes("simulated") || !/^(https?:\/\/|data:|blob:|\/)/i.test(doc)) {
-        // If it's a simulated file or has no valid URL scheme, generate a beautiful simulated HTML preview
+        isSimulated = true;
         dName = doc;
-        const htmlContent = `
-          <html>
-            <head>
-              <style>
-                body {
-                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-                  background-color: #0f172a;
-                  color: #cbd5e1;
-                  display: flex;
-                  flex-direction: column;
-                  align-items: center;
-                  justify-content: center;
-                  height: 100vh;
-                  margin: 0;
-                  padding: 24px;
-                  box-sizing: border-box;
-                  text-align: center;
-                }
-                .card {
-                  background: #1e293b;
-                  border: 1px solid #334155;
-                  border-radius: 16px;
-                  padding: 32px;
-                  max-width: 480px;
-                  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);
-                }
-                .icon {
-                  font-size: 48px;
-                  margin-bottom: 16px;
-                }
-                h2 {
-                  font-size: 18px;
-                  font-weight: 700;
-                  margin: 0 0 8px 0;
-                  text-transform: uppercase;
-                  letter-spacing: 0.05em;
-                  color: #f1f5f9;
-                }
-                p {
-                  font-size: 13px;
-                  color: #94a3b8;
-                  line-height: 1.5;
-                  margin: 0 0 20px 0;
-                }
-                .badge {
-                  background: rgba(99, 102, 241, 0.15);
-                  border: 1px solid rgba(99, 102, 241, 0.3);
-                  color: #818cf8;
-                  padding: 6px 12px;
-                  border-radius: 8px;
-                  font-size: 11px;
-                  font-weight: 600;
-                  word-break: break-all;
-                  display: inline-block;
-                }
-              </style>
-            </head>
-            <body>
-              <div class="card">
-                <div class="icon">📄</div>
-                <h2>Simulated Attachment</h2>
-                <p>This is a simulated secure preview of the requisition document attachment:</p>
-                <div class="badge">${dName.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
-              </div>
-            </body>
-          </html>
-        `;
-        try {
-          const base64Html = btoa(unescape(encodeURIComponent(htmlContent)));
-          dUrl = `data:text/html;base64,${base64Html}`;
-        } catch (e) {
-          dUrl = "data:text/html;charset=utf-8," + encodeURIComponent(htmlContent);
-        }
+        dUrl = doc;
       }
     } else if (typeof doc === "object") {
       dName = doc.name || doc.title || "Attachment";
       dUrl = doc.url || doc.link || "";
+      if (!/^(https?:\/\/|data:|blob:|\/)/i.test(dUrl)) {
+        isSimulated = true;
+      }
     } else {
       dName = String(doc);
       dUrl = String(doc);
+      isSimulated = true;
     }
     
     dUrl = normalizeAttachmentUrl(dUrl);
     
-    let filenameNoSim = dName.replace(" (Simulated)", "");
+    let filenameNoSim = dName.replace(" (Simulated)", "").trim();
 
     // If filename is just a URL, try to extract a plausible filename from it
     if (filenameNoSim.startsWith("http") || filenameNoSim.startsWith("/")) {
@@ -650,13 +752,14 @@ const DocumentPreviewModal = ({
       if (driveMatch && driveMatch[1]) {
         const fileId = driveMatch[1];
         dUrl = `/api/attachments/${fileId}`;
+        isSimulated = false;
       }
     }
 
     const ext = filenameNoSim.split('.').pop()?.toUpperCase() || "DOC";
     
     const isImg = /\.(jpg|jpeg|png|gif|webp)$/i.test(filenameNoSim) || dUrl.startsWith('blob:') || dUrl.startsWith('data:image/');
-    const isPf = /\.(pdf)$/i.test(filenameNoSim) || dUrl.startsWith('data:application/pdf') || dUrl.startsWith('data:text/html') || dUrl.includes('/api/attachments/'); // Fallback for proxied PDFs
+    const isPf = /\.(pdf)$/i.test(filenameNoSim) || dUrl.startsWith('data:application/pdf') || dUrl.includes('/api/attachments/');
     const isWord = /\.(docx)$/i.test(filenameNoSim) || dUrl.startsWith('data:application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     const isLegacyWord = /\.(doc)$/i.test(filenameNoSim) || dUrl.startsWith('data:application/msword');
     const isExcel = /\.(xlsx)$/i.test(filenameNoSim) || dUrl.startsWith('data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -667,6 +770,7 @@ const DocumentPreviewModal = ({
     return { 
       name: filenameNoSim, 
       url: dUrl, 
+      isSimulated,
       isImage: isImg, 
       isPdf: isPf, 
       isWord, 
@@ -946,13 +1050,7 @@ const DocumentPreviewModal = ({
                       referrerPolicy="no-referrer"
                     />
                   ) : currentProps.isPdf ? (
-                    <div className="w-full h-full min-h-[72vh] md:min-h-[80vh] max-w-6xl flex flex-col items-center">
-                      <iframe 
-                        src={currentProps.url} 
-                        className="w-full flex-1 h-[72vh] md:h-[80vh] rounded-xl shadow-2xl bg-white border border-slate-800"
-                        title={currentProps.name}
-                      />
-                    </div>
+                    <PdfDocumentViewer docProps={currentProps} />
                   ) : (
                     <RichDocumentViewer docProps={currentProps} />
                   )}

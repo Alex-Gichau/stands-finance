@@ -781,15 +781,6 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return config.actions[actionId] ?? false;
   }, [currentUser, permissionConfigs]);
 
-  const updateRolePermissions = useCallback(async (roleId: string, updates: any) => {
-    try {
-      await setDoc(doc(db, "permissions", roleId), updates, { merge: true });
-      await addSystemLog("PERMISSIONS_UPDATED", `Access rights modified for role: ${roleId}`, { roleId, updates });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `permissions/${roleId}`);
-    }
-  }, [db]);
-
   const removeToast = useCallback((id: string) => {
     setActiveToasts(prev => prev.filter(t => t.id !== id));
   }, []);
@@ -1028,23 +1019,50 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, []);
 
   const updateSystemSettings = useCallback(async (updates: Partial<SystemSettings>) => {
-    return withDbLoading("Saving system settings to database...", async () => {
+    setSystemSettings(prev => {
+      const nextSettings = { ...prev, ...updates };
       try {
-        if (skipFirestore) {
-          setSystemSettings(prev => {
-            const nextSettings = { ...prev, ...updates };
-            localStorage.setItem("stands_cache_system_settings", JSON.stringify(nextSettings));
-            return nextSettings;
-          });
-        } else {
-          await setDoc(doc(db, "settings", "system"), updates, { merge: true });
-        }
-        await addSystemLog("SYSTEM_SETTINGS_UPDATE", `System settings updated: ${JSON.stringify(updates)}`, { updates });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, "settings/system");
-      }
+        localStorage.setItem("stands_cache_system_settings", JSON.stringify(nextSettings));
+      } catch (e) {}
+      return nextSettings;
     });
-  }, [addSystemLog, triggerToast, skipFirestore, withDbLoading]);
+
+    try {
+      if (!skipFirestore) {
+        await setDoc(doc(db, "settings", "system"), updates, { merge: true });
+      }
+      await addSystemLog("SYSTEM_SETTINGS_UPDATE", `System settings updated: ${JSON.stringify(updates)}`, { updates });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, "settings/system");
+    }
+  }, [addSystemLog, skipFirestore]);
+
+  const updateRolePermissions = useCallback(async (roleId: string, updates: any) => {
+    // Optimistic state update: update local state synchronously so UI toggles flip instantly
+    setPermissionConfigs(prev => {
+      const idx = prev.findIndex(p => p.role === roleId);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = {
+          ...next[idx],
+          ...updates,
+          access: { ...(next[idx].access || {}), ...(updates.access || {}) },
+          actions: { ...(next[idx].actions || {}), ...(updates.actions || {}) }
+        };
+        return next;
+      }
+      return [...prev, { role: roleId as any, ...updates }];
+    });
+
+    try {
+      if (!skipFirestore) {
+        await setDoc(doc(db, "permissions", roleId), updates, { merge: true });
+      }
+      await addSystemLog("PERMISSIONS_UPDATED", `Access rights modified for role: ${roleId}`, { roleId, updates });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `permissions/${roleId}`);
+    }
+  }, [db, addSystemLog, skipFirestore]);
 
   const allocateBudgetForGroup = useCallback(async (groupId: string, amount: number, fiscalYear: number, accountNumber?: string) => {
     if (!currentUser) throw new Error("Authentication required");
