@@ -1087,8 +1087,8 @@ function AppContent() {
            className="text-center"
         >
           <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-6" />
-          <h2 className="text-xl font-black uppercase tracking-widest text-primary/80">St Andrew's</h2>
-          <p className="text-slate-400 text-[10px] mt-2 font-mono tracking-tighter uppercase">Securing Workspace Session...</p>
+          <h2 className="text-xl font-black uppercase tracking-widest text-primary/80">STANDS FINANCE</h2>
+          <p className="text-slate-400 text-[10px] mt-2 font-mono tracking-tighter uppercase">Logging in.</p>
         </motion.div>
       </div>
     );

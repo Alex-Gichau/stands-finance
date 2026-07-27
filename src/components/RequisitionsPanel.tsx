@@ -47,7 +47,10 @@ import {
   ZoomOut,
   Copy,
   Share2,
-  Store
+  Store,
+  ExternalLink,
+  Maximize2,
+  Minimize2
 } from "lucide-react";
 import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
@@ -259,7 +262,7 @@ const RichDocumentViewer = ({
   // Text / MD Documents
   if (docProps.isText) {
     return (
-      <div className="w-[80vw] max-w-4xl bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden flex flex-col h-[50vh] md:h-[58vh] shadow-2xl">
+      <div className="w-full max-w-5xl bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden flex flex-col h-[70vh] md:h-[78vh] shadow-2xl">
         <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 flex items-center justify-between text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider shrink-0 select-none">
           <span>Plain Text Reader ({docProps.ext})</span>
           <span>{textVal.split(/\r?\n/).length} lines parsed</span>
@@ -274,7 +277,7 @@ const RichDocumentViewer = ({
   // CSV Documents
   if (docProps.isCsv) {
     return (
-      <div className="w-[80vw] max-w-4xl bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden flex flex-col h-[50vh] md:h-[58vh] shadow-2xl">
+      <div className="w-full max-w-5xl bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden flex flex-col h-[70vh] md:h-[78vh] shadow-2xl">
         <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 flex items-center justify-between text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider shrink-0 select-none">
           <span>Responsive CSV table reader</span>
           <span>{csvRows.length} rows x {csvRows[0]?.length || 0} columns</span>
@@ -319,7 +322,7 @@ const RichDocumentViewer = ({
   if (docProps.isExcel) {
     const currentSheetData = excelSheets[activeTab] || [];
     return (
-      <div className="w-[80vw] max-w-4xl bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden flex flex-col h-[50vh] md:h-[58vh] shadow-2xl">
+      <div className="w-full max-w-5xl bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden flex flex-col h-[70vh] md:h-[78vh] shadow-2xl">
         <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 flex items-center justify-between text-[10px] font-mono font-bold text-emerald-400 tracking-wider shrink-0 select-none">
           <span>Excel Workbook ({docProps.ext})</span>
           <span>{currentSheetData.length} active rows shown</span>
@@ -389,13 +392,13 @@ const RichDocumentViewer = ({
   // Word Documents (.docx)
   if (docProps.isWord) {
     return (
-      <div className="w-[80vw] max-w-3xl bg-white text-slate-800 border border-slate-300 rounded-2xl overflow-hidden flex flex-col h-[50vh] md:h-[58vh] shadow-2xl">
+      <div className="w-full max-w-5xl bg-white text-slate-800 border border-slate-300 rounded-2xl overflow-hidden flex flex-col h-[70vh] md:h-[78vh] shadow-2xl">
         <div className="bg-slate-900 border-b border-slate-800 px-4 py-2.5 flex items-center justify-between text-[10px] font-mono font-bold text-indigo-400 uppercase tracking-wider shrink-0 select-none">
           <span>Microsoft Word Preview (DOCX Document)</span>
           <span>Formatted Page layout</span>
         </div>
-        <div className="flex-1 overflow-auto bg-slate-100 p-8 flex justify-center">
-          <div className="w-full max-w-[800px] bg-white shadow-lg border border-slate-200 p-10 md:p-14 text-left rounded-lg text-sm font-serif leading-relaxed text-slate-800 break-words select-text selection:bg-indigo-500/20 antialiased overflow-wrap-break-word">
+        <div className="flex-1 overflow-auto bg-slate-100 p-6 md:p-10 flex justify-center">
+          <div className="w-full max-w-[900px] bg-white shadow-lg border border-slate-200 p-8 md:p-14 text-left rounded-lg text-sm font-serif leading-relaxed text-slate-800 break-words select-text selection:bg-indigo-500/20 antialiased overflow-wrap-break-word">
             <style dangerouslySetInnerHTML={{ __html: `
               .word-doc-content h1 { font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif; font-size: 1.8em; font-weight: bold; margin-top: 1em; margin-bottom: 0.5em; color: #111827; line-height: 1.25; }
               .word-doc-content h2 { font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif; font-size: 1.4em; font-weight: bold; margin-top: 0.8em; margin-bottom: 0.4em; color: #1f2937; line-height: 1.3; }
@@ -458,6 +461,7 @@ const DocumentPreviewModal = ({
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [viewMode, setViewMode] = useState<"detail" | "grid">("detail");
   const [zoomScale, setZoomScale] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Swipe support states
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -678,12 +682,17 @@ const DocumentPreviewModal = ({
   const currentProps = getDocProps(attachments[currentIndex]);
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-0 md:p-6 bg-slate-950/90 backdrop-blur-md">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-0 md:p-4 bg-slate-950/90 backdrop-blur-md">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-slate-905 w-full h-full max-w-6xl shadow-2xl overflow-hidden border border-slate-800 flex flex-col relative text-slate-100 md:rounded-3xl bg-slate-900"
+        className={cn(
+          "bg-slate-900 w-full h-full shadow-2xl overflow-hidden border border-slate-800 flex flex-col relative text-slate-100 transition-all duration-300",
+          isFullscreen 
+            ? "fixed inset-0 z-[200] rounded-none max-w-none max-h-none p-0" 
+            : "max-w-[96vw] max-h-[92vh] md:rounded-3xl"
+        )}
       >
         {/* Top Header */}
         <div className="px-6 py-4 border-b border-slate-850 flex items-center justify-between bg-slate-950/50 sticky top-0 z-10 select-none">
@@ -771,6 +780,28 @@ const DocumentPreviewModal = ({
                 </button>
               </div>
             )}
+
+            {/* Open in New Tab */}
+            {currentProps.url && (
+              <button
+                onClick={() => {
+                  window.open(currentProps.url, '_blank');
+                }}
+                className="p-2.5 bg-slate-850 border border-slate-700 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors cursor-pointer"
+                title="Open Document in New Tab"
+              >
+                <ExternalLink size={18} />
+              </button>
+            )}
+
+            {/* Fullscreen Toggle */}
+            <button
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className="p-2.5 bg-slate-850 border border-slate-700 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors cursor-pointer hidden sm:flex"
+              title={isFullscreen ? "Exit Fullscreen" : "Maximize Viewer Window"}
+            >
+              {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+            </button>
 
             {/* Download Button */}
             <button
@@ -911,15 +942,17 @@ const DocumentPreviewModal = ({
                     <img 
                       src={currentProps.url} 
                       alt={currentProps.name} 
-                      className="max-w-[85vw] max-h-[50vh] md:max-h-[58vh] object-contain rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-slate-800"
+                      className="max-w-[92vw] max-h-[72vh] md:max-h-[80vh] object-contain rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-slate-800"
                       referrerPolicy="no-referrer"
                     />
                   ) : currentProps.isPdf ? (
-                    <iframe 
-                      src={currentProps.url} 
-                      className="w-[80vw] h-[50vh] md:h-[58vh] max-w-4xl rounded-xl shadow-2xl bg-white border border-slate-800"
-                      title={currentProps.name}
-                    />
+                    <div className="w-full h-full min-h-[72vh] md:min-h-[80vh] max-w-6xl flex flex-col items-center">
+                      <iframe 
+                        src={currentProps.url} 
+                        className="w-full flex-1 h-[72vh] md:h-[80vh] rounded-xl shadow-2xl bg-white border border-slate-800"
+                        title={currentProps.name}
+                      />
+                    </div>
                   ) : (
                     <RichDocumentViewer docProps={currentProps} />
                   )}
