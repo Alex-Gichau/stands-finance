@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useMemo } from "react";
 import { Requisition } from "../types";
 import { formatCurrency, formatDate, cn } from "../lib/utils";
-import { Printer, Download, X, FileText, CheckCircle, Shield, Paperclip, Loader2 } from "lucide-react";
+import { Printer, Download, X, FileText, CheckCircle, Shield, Paperclip, Loader2, QrCode } from "lucide-react";
 import { motion } from "motion/react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { printRequisitionReceipt, downloadRequisitionsCsv, generateReceiptHtml } from "../utils/exportUtils";
+import { QRCodeSVG } from "qrcode.react";
 
 interface ReceiptTemplateGeneratorProps {
   req: Requisition;
@@ -21,6 +22,21 @@ export const ReceiptTemplateGenerator: React.FC<ReceiptTemplateGeneratorProps> =
   const [isAttaching, setIsAttaching] = useState(false);
   const [attached, setAttached] = useState(false);
   const receiptRef = useRef<HTMLDivElement>(null);
+
+  const qrPayload = useMemo(() => {
+    return JSON.stringify({
+      protocol: "ST_ANDREWS_REQUISITION_RECEIPT",
+      requisitionId: req.id,
+      title: req.title,
+      amount: req.amount,
+      status: req.status,
+      requester: req.requesterName,
+      group: req.groupName,
+      date: req.submittedAt,
+      disbursedAt: req.disbursedAt || "N/A",
+      verifyUrl: `${window.location.origin}?requisitionId=${req.id}`
+    }, null, 2);
+  }, [req]);
 
   const printReceipt = () => {
     printRequisitionReceipt(req);
@@ -180,7 +196,7 @@ export const ReceiptTemplateGenerator: React.FC<ReceiptTemplateGeneratorProps> =
               </div>
 
               <div className="pt-8 border-t-2 border-dashed border-slate-300 mt-auto">
-                <div className="flex justify-between items-end">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 text-emerald-600">
                       <CheckCircle size={16} />
@@ -190,6 +206,27 @@ export const ReceiptTemplateGenerator: React.FC<ReceiptTemplateGeneratorProps> =
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ministry Stamp</p>
                     </div>
                   </div>
+
+                  {/* Unique QR Code Verification Block */}
+                  <div className="flex items-center gap-3 bg-slate-50 border-2 border-slate-200 p-2.5 rounded-2xl shadow-sm">
+                    <div className="bg-white p-1.5 rounded-xl border border-slate-200 shrink-0">
+                      <QRCodeSVG 
+                        value={qrPayload}
+                        size={72}
+                        level="M"
+                        bgColor="#ffffff"
+                        fgColor="#0f172a"
+                      />
+                    </div>
+                    <div className="text-left space-y-0.5 max-w-[120px]">
+                      <span className="inline-block text-[8px] font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                        Scannable QR
+                      </span>
+                      <p className="text-[9px] font-bold text-slate-900 uppercase tracking-tight leading-tight">Quick Mobile Verification</p>
+                      <p className="text-[8px] font-mono text-slate-400">#{(req.id || "").toUpperCase()}</p>
+                    </div>
+                  </div>
+
                   <div className="text-right">
                     <div className="text-2xl font-black text-slate-900 font-mono leading-none mb-1">{formatCurrency(req.amount)}</div>
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Value Paid</div>

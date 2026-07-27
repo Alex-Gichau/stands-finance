@@ -123,7 +123,39 @@ const Dashboard: React.FC<{
   darkMode?: boolean; 
   setDarkMode?: (dark: boolean) => void; 
 }> = ({ onViewChange, darkMode, setDarkMode }) => {
-  const { requisitions, projects, alerts, currentUser, seedAllEcosystemData, deleteRequisition, systemLogs, canAccess, systemSettings, loading, supplementaryRequests, applySupplementaryBudget } = useRequisitions();
+  const { 
+    requisitions, 
+    projects, 
+    alerts, 
+    currentUser, 
+    seedAllEcosystemData, 
+    deleteRequisition, 
+    systemLogs, 
+    canAccess, 
+    systemSettings, 
+    loading, 
+    supplementaryRequests, 
+    applySupplementaryBudget,
+    customCalendarEvents,
+    addCustomCalendarEvent,
+    updateCustomCalendarEvent,
+    deleteCustomCalendarEvent
+  } = useRequisitions();
+
+  const canEditCalendar = useMemo(() => {
+    return currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN;
+  }, [currentUser]);
+
+  // Calendar Event Editor states
+  const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
+  const [editingCalendarEvent, setEditingCalendarEvent] = useState<any | null>(null);
+  const [calTitle, setCalTitle] = useState("");
+  const [calDescription, setCalDescription] = useState("");
+  const [calDate, setCalDate] = useState("");
+  const [calTime, setCalTime] = useState("");
+  const [calCategory, setCalCategory] = useState<"MEETING" | "DEADLINE" | "AUDIT" | "EVENT" | "MAINTENANCE" | "OTHER">("MEETING");
+  const [calBadge, setCalBadge] = useState("");
+  const [calSaving, setCalSaving] = useState(false);
 
   const hasAuditTrail = useMemo(() => {
     return canAccess("auditTrail");
@@ -582,19 +614,10 @@ const Dashboard: React.FC<{
 
   const getEventsForDate = useCallback((cellYear: number, cellMonth: number, cellDay: number) => {
     const cellDate = new Date(cellYear, cellMonth, cellDay);
+    const cellDateStr = `${cellYear}-${String(cellMonth + 1).padStart(2, '0')}-${String(cellDay).padStart(2, '0')}`;
     const events: any[] = [];
     
     // 1. System deadlines
-    if (cellDate.getDay() === 5) { // Friday
-      events.push({
-        id: `sys-weekly-${cellYear}-${cellMonth}-${cellDay}`,
-        title: "Weekly Review Cut-off",
-        description: "All weekly requisitions must be submitted by Friday 5:00 PM for weekend processing.",
-        type: "SYSTEM_WEEKLY",
-        badge: "Weekly Cycle"
-      });
-    }
-    
     if (cellDay === 25) {
       events.push({
         id: `sys-monthly-${cellYear}-${cellMonth}-${cellDay}`,
@@ -618,48 +641,91 @@ const Dashboard: React.FC<{
         badge: "Quarterly Review"
       });
     }
-    
-    // 2. Requisition expiry/submission deadlines
-    requisitions.forEach(r => {
-      if (r.expiresAt) {
-        const expDate = new Date(r.expiresAt);
-        if (expDate.getFullYear() === cellYear && expDate.getMonth() === cellMonth && expDate.getDate() === cellDay) {
-          events.push({
-            id: `req-expiry-${r.id}`,
-            title: r.title,
-            description: `Requisition expiring/submission recommended deadline.`,
-            type: "REQ_DEADLINE",
-            requisition: r,
-            amount: r.amount,
-            badge: r.status,
-            groupName: r.groupName
-          });
-        }
+
+    const matchDate = (dateString?: string) => {
+      if (!dateString) return false;
+      const d = new Date(dateString);
+      return d.getFullYear() === cellYear && d.getMonth() === cellMonth && d.getDate() === cellDay;
+    };
+
+    // 2. Custom Admin Events
+    (customCalendarEvents || []).forEach(evt => {
+      if (evt.date === cellDateStr) {
+        events.push({
+          id: evt.id,
+          title: evt.title,
+          description: evt.description,
+          type: "CUSTOM_ADMIN",
+          badge: evt.badge || evt.category,
+          time: evt.time,
+          category: evt.category,
+          createdBy: evt.createdBy,
+          customEvent: evt
+        });
       }
     });
 
-    // 3. Requisition added/submitted date
+    // 3. Auto-updated Requisitions (Created, Approved, Disbursed, Expiring)
     requisitions.forEach(r => {
-      const addedDateStr = r.submittedAt || r.createdAt;
-      if (addedDateStr) {
-        const subDate = new Date(addedDateStr);
-        if (subDate.getFullYear() === cellYear && subDate.getMonth() === cellMonth && subDate.getDate() === cellDay) {
-          events.push({
-            id: `req-added-${r.id}`,
-            title: `Added: ${r.title}`,
-            description: `Requisition was added to the system by ${r.requesterName || "requester"} for Ksh ${r.amount.toLocaleString()}.`,
-            type: "REQ_ADDED",
-            requisition: r,
-            amount: r.amount,
-            badge: "Requisition Added",
-            groupName: r.groupName
-          });
-        }
+      // Created / Submitted
+      if (matchDate(r.submittedAt || r.updatedAt)) {
+        events.push({
+          id: `req-created-${r.id}`,
+          title: `Created: ${r.title}`,
+          description: `Requisition created by ${r.requesterName || "Requester"} (${r.groupName})`,
+          type: "REQ_ADDED",
+          requisition: r,
+          amount: r.amount,
+          badge: "Req Created",
+          groupName: r.groupName
+        });
+      }
+
+      // Approved (L1 or L2)
+      if ((r.status === RequisitionStatus.APPROVED_L1 || r.status === RequisitionStatus.APPROVED_L2) && matchDate(r.approvedAtL2 || r.approvedAtL1 || r.updatedAt)) {
+        events.push({
+          id: `req-approved-${r.id}`,
+          title: `Approved: ${r.title}`,
+          description: `Requisition approved for ${r.groupName} - Ksh ${r.amount.toLocaleString()}`,
+          type: "REQ_APPROVED",
+          requisition: r,
+          amount: r.amount,
+          badge: "Req Approved",
+          groupName: r.groupName
+        });
+      }
+
+      // Disbursed
+      if (r.status === RequisitionStatus.DISBURSED && matchDate(r.disbursedAt || r.updatedAt)) {
+        events.push({
+          id: `req-disbursed-${r.id}`,
+          title: `Disbursed: ${r.title}`,
+          description: `Funds disbursed to ${r.requesterName} (${r.groupName})`,
+          type: "REQ_DISBURSED",
+          requisition: r,
+          amount: r.amount,
+          badge: "Req Disbursed",
+          groupName: r.groupName
+        });
+      }
+
+      // Expiring
+      if (r.expiresAt && matchDate(r.expiresAt)) {
+        events.push({
+          id: `req-expiry-${r.id}`,
+          title: `Expiring: ${r.title}`,
+          description: `Requisition submission deadline window expiring.`,
+          type: "REQ_DEADLINE",
+          requisition: r,
+          amount: r.amount,
+          badge: "Req Expiring",
+          groupName: r.groupName
+        });
       }
     });
     
     return events;
-  }, [requisitions]);
+  }, [requisitions, customCalendarEvents]);
 
   const upcomingDeadlines = useMemo(() => {
     const year = calendarDate.getFullYear();
@@ -922,24 +988,46 @@ const Dashboard: React.FC<{
                 <p className="text-[10px] text-slate-400 uppercase font-mono tracking-tight mt-0.5">Upcoming Requisition Deadlines & Cut-off Dates</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 self-end sm:self-auto bg-slate-50 border border-slate-200/60 p-1 rounded-xl">
-              <button
-                onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
-                className="p-1.5 hover:bg-white hover:text-primary hover:shadow-sm rounded-lg text-slate-500 transition-all cursor-pointer"
-                title="Previous Month"
-              >
-                <ChevronLeft size={14} />
-              </button>
-              <span className="text-xs font-black text-slate-800 uppercase tracking-widest px-3 min-w-[100px] text-center font-sans">
-                {calendarDate.toLocaleString("default", { month: "long", year: "numeric" })}
-              </span>
-              <button
-                onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
-                className="p-1.5 hover:bg-white hover:text-primary hover:shadow-sm rounded-lg text-slate-500 transition-all cursor-pointer"
-                title="Next Month"
-              >
-                <ChevronRight size={14} />
-              </button>
+            <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto">
+              {canEditCalendar && (
+                <button
+                  onClick={() => {
+                    setEditingCalendarEvent(null);
+                    setCalTitle("");
+                    setCalDescription("");
+                    const monthStr = String(selectedDay.month + 1).padStart(2, '0');
+                    const dayStr = String(selectedDay.day).padStart(2, '0');
+                    setCalDate(`${selectedDay.year}-${monthStr}-${dayStr}`);
+                    setCalTime("09:00 AM");
+                    setCalCategory("MEETING");
+                    setCalBadge("Admin Event");
+                    setIsCalendarModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 bg-primary hover:bg-primary/95 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                >
+                  <Plus size={13} strokeWidth={2.5} />
+                  <span>Add Event</span>
+                </button>
+              )}
+              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/60 p-1 rounded-xl">
+                <button
+                  onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
+                  className="p-1.5 hover:bg-white hover:text-primary hover:shadow-sm rounded-lg text-slate-500 transition-all cursor-pointer"
+                  title="Previous Month"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <span className="text-xs font-black text-slate-800 uppercase tracking-widest px-3 min-w-[100px] text-center font-sans">
+                  {calendarDate.toLocaleString("default", { month: "long", year: "numeric" })}
+                </span>
+                <button
+                  onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
+                  className="p-1.5 hover:bg-white hover:text-primary hover:shadow-sm rounded-lg text-slate-500 transition-all cursor-pointer"
+                  title="Next Month"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -964,6 +1052,9 @@ const Dashboard: React.FC<{
                   const hasQuarterly = dayEvents.some(e => e.type === "SYSTEM_QUARTERLY");
                   const hasReqs = dayEvents.some(e => e.type === "REQ_DEADLINE");
                   const hasAdded = dayEvents.some(e => e.type === "REQ_ADDED");
+                  const hasApproved = dayEvents.some(e => e.type === "REQ_APPROVED");
+                  const hasDisbursed = dayEvents.some(e => e.type === "REQ_DISBURSED");
+                  const hasCustomAdmin = dayEvents.some(e => e.type === "CUSTOM_ADMIN");
                   
                   const isSelected = selectedDay.day === cell.day && selectedDay.month === cell.month && selectedDay.year === cell.year;
                   const isToday = (() => {
@@ -993,6 +1084,12 @@ const Dashboard: React.FC<{
 
                       {/* Indicators container */}
                       <div className="flex flex-wrap gap-0.5 mt-auto">
+                        {hasCustomAdmin && (
+                          <span 
+                            title="Custom Admin Scheduled Event"
+                            className={cn("w-1.5 h-1.5 rounded-full shrink-0", isSelected ? "bg-white" : "bg-purple-600")} 
+                          />
+                        )}
                         {hasWeekly && (
                           <span 
                             title="Weekly Cut-off Cycle"
@@ -1009,6 +1106,18 @@ const Dashboard: React.FC<{
                           <span 
                             title="Quarterly Alignment"
                             className={cn("w-1.5 h-1.5 rounded-full shrink-0", isSelected ? "bg-white" : "bg-amber-500")} 
+                          />
+                        )}
+                        {hasDisbursed && (
+                          <span 
+                            title="Requisition Disbursed"
+                            className={cn("w-1.5 h-1.5 rounded-full shrink-0", isSelected ? "bg-white" : "bg-teal-500")} 
+                          />
+                        )}
+                        {hasApproved && (
+                          <span 
+                            title="Requisition Approved"
+                            className={cn("w-1.5 h-1.5 rounded-full shrink-0", isSelected ? "bg-white" : "bg-sky-500")} 
                           />
                         )}
                         {hasReqs && (
@@ -1030,21 +1139,18 @@ const Dashboard: React.FC<{
               </div>
               
               {/* Legend indicators descriptive panel */}
-              <div className="flex flex-wrap gap-4 pt-2 text-[9px] text-slate-400 border-t border-slate-100 uppercase font-mono">
+              <div className="flex flex-wrap gap-3 pt-2 text-[9px] text-slate-400 border-t border-slate-100 uppercase font-mono">
                 <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Weekly cut-offs (Fridays)
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-600" /> Scheduled Events
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Monthly cut-offs (25th)
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Monthly Cut-offs
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Quarterly audits
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal-500" /> Disbursed
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Expiring Requisitions
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" /> Requisitions Added
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" /> Created
                 </span>
               </div>
             </div>
@@ -1052,24 +1158,44 @@ const Dashboard: React.FC<{
             {/* Right Side: selected day details / Month deadlines Overview panel */}
             <div className="bg-slate-50/50 border border-slate-200/50 rounded-2xl p-4 flex flex-col justify-between space-y-4">
               <div className="space-y-3">
-                <div className="border-b border-slate-200/60 pb-2 flex justify-between items-center">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                    Deadlines for {new Date(selectedDay.year, selectedDay.month, selectedDay.day).toLocaleDateString("default", { month: "short", day: "numeric", year: "numeric" })}
+                <div className="border-b border-slate-200/60 pb-2 flex justify-between items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 truncate">
+                    Events for {new Date(selectedDay.year, selectedDay.month, selectedDay.day).toLocaleDateString("default", { month: "short", day: "numeric" })}
                   </span>
-                  <span className="text-[8px] font-mono bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-md uppercase font-bold">
-                    {getEventsForDate(selectedDay.year, selectedDay.month, selectedDay.day).length} Found
-                  </span>
+                  {canEditCalendar ? (
+                    <button
+                      onClick={() => {
+                        setEditingCalendarEvent(null);
+                        setCalTitle("");
+                        setCalDescription("");
+                        const monthStr = String(selectedDay.month + 1).padStart(2, '0');
+                        const dayStr = String(selectedDay.day).padStart(2, '0');
+                        setCalDate(`${selectedDay.year}-${monthStr}-${dayStr}`);
+                        setCalTime("09:00 AM");
+                        setCalCategory("MEETING");
+                        setCalBadge("Admin Event");
+                        setIsCalendarModalOpen(true);
+                      }}
+                      className="text-[8px] font-black bg-primary/10 hover:bg-primary/20 text-primary px-2 py-0.5 rounded-md uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer shrink-0"
+                    >
+                      <Plus size={10} /> + Add
+                    </button>
+                  ) : (
+                    <span className="text-[8px] font-mono bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-md uppercase font-bold shrink-0">
+                      Auto-Synced
+                    </span>
+                  )}
                 </div>
 
                 {/* Day events render */}
-                <div className="space-y-2.5 max-h-[190px] overflow-y-auto pr-1">
+                <div className="space-y-2.5 max-h-[200px] overflow-y-auto pr-1">
                   {(() => {
                     const dayEvents = getEventsForDate(selectedDay.year, selectedDay.month, selectedDay.day);
                     if (dayEvents.length === 0) {
                       return (
                         <div className="py-8 text-center text-slate-400 space-y-1">
                           <Clock size={16} className="mx-auto text-slate-300" />
-                          <p className="text-[10px] font-bold uppercase tracking-wider">No specific deadlines</p>
+                          <p className="text-[10px] font-bold uppercase tracking-wider">No scheduled events</p>
                           <p className="text-[9px] lowercase font-normal italic text-slate-400">Regular ledger rules apply</p>
                         </div>
                       );
@@ -1078,17 +1204,53 @@ const Dashboard: React.FC<{
                     return dayEvents.map((e, index) => (
                       <div 
                         key={`${e.id}-${index}`}
-                        className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm space-y-1.5 transition-all hover:shadow hover:border-slate-300"
+                        className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm space-y-1.5 transition-all hover:shadow hover:border-slate-300 relative group/card"
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className={cn(
                             "text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-widest text-white shrink-0",
+                            e.type === "CUSTOM_ADMIN" ? "bg-purple-600" :
+                            e.type === "REQ_DISBURSED" ? "bg-teal-600" :
+                            e.type === "REQ_APPROVED" ? "bg-sky-600" :
                             e.type.startsWith("SYSTEM") 
                               ? (e.type === "SYSTEM_WEEKLY" ? "bg-emerald-500" : e.type === "SYSTEM_MONTHLY" ? "bg-blue-500" : "bg-amber-500") 
                               : e.type === "REQ_ADDED" ? "bg-indigo-600" : "bg-rose-500"
                           )}>
                             {e.badge}
                           </span>
+                          
+                          {e.type === "CUSTOM_ADMIN" && canEditCalendar && e.customEvent && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => {
+                                  setEditingCalendarEvent(e.customEvent);
+                                  setCalTitle(e.customEvent.title || "");
+                                  setCalDescription(e.customEvent.description || "");
+                                  setCalDate(e.customEvent.date || "");
+                                  setCalTime(e.customEvent.time || "");
+                                  setCalCategory(e.customEvent.category || "MEETING");
+                                  setCalBadge(e.customEvent.badge || "");
+                                  setIsCalendarModalOpen(true);
+                                }}
+                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded transition-all cursor-pointer"
+                                title="Edit Event"
+                              >
+                                <FileText size={12} />
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (window.confirm(`Delete calendar event '${e.customEvent.title}'?`)) {
+                                    await deleteCustomCalendarEvent(e.customEvent.id);
+                                  }
+                                }}
+                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all cursor-pointer"
+                                title="Delete Event"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          )}
+
                           {e.amount && (
                             <span className="font-mono text-[10px] font-black text-slate-900 shrink-0">
                               Ksh {e.amount.toLocaleString()}
@@ -1102,6 +1264,12 @@ const Dashboard: React.FC<{
                         <p className="text-[10px] text-slate-500 leading-snug">
                           {e.description}
                         </p>
+
+                        {e.time && (
+                          <div className="text-[8.5px] font-mono text-purple-700 font-bold bg-purple-50 px-1.5 py-0.5 rounded w-max">
+                            🕒 {e.time}
+                          </div>
+                        )}
 
                         {e.requisition && (
                           <button
@@ -2000,6 +2168,174 @@ const Dashboard: React.FC<{
             </motion.div>
           </div>
         )}
+        {/* Admin/Super Admin Calendar Event Modal */}
+        {isCalendarModalOpen && canEditCalendar && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl max-w-lg w-full border border-slate-100 shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-white/10 rounded-2xl backdrop-blur-md">
+                    <CalendarRange size={20} className="text-purple-300" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-wider text-white">
+                      {editingCalendarEvent ? "Edit Calendar Event" : "Schedule Calendar Event"}
+                    </h3>
+                    <p className="text-[10px] text-slate-400 uppercase font-mono tracking-tight">
+                      Admin & Super Admin Privilege
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsCalendarModalOpen(false)} 
+                  className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-all cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form 
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!calTitle.trim() || !calDate || !calDescription.trim()) {
+                    alert("Please fill in Title, Date, and Description.");
+                    return;
+                  }
+
+                  setCalSaving(true);
+                  try {
+                    if (editingCalendarEvent) {
+                      await updateCustomCalendarEvent(editingCalendarEvent.id, {
+                        title: calTitle.trim(),
+                        description: calDescription.trim(),
+                        date: calDate,
+                        time: calTime.trim() || undefined,
+                        category: calCategory,
+                        badge: calBadge.trim() || undefined
+                      });
+                    } else {
+                      await addCustomCalendarEvent({
+                        title: calTitle.trim(),
+                        description: calDescription.trim(),
+                        date: calDate,
+                        time: calTime.trim() || undefined,
+                        category: calCategory,
+                        badge: calBadge.trim() || undefined
+                      });
+                    }
+                    setIsCalendarModalOpen(false);
+                    setEditingCalendarEvent(null);
+                  } catch (err: any) {
+                    alert(err?.message || "Failed to save calendar event.");
+                  } finally {
+                    setCalSaving(false);
+                  }
+                }}
+                className="p-6 space-y-4"
+              >
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Event Title *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Finance Board Quarterly Sync"
+                    value={calTitle}
+                    onChange={(e) => setCalTitle(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs md:text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-purple-500/10 focus:border-purple-500 transition-all"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Event Date *</label>
+                    <input
+                      type="date"
+                      required
+                      value={calDate}
+                      onChange={(e) => setCalDate(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs md:text-sm font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-purple-500/10 focus:border-purple-500 transition-all cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Time (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 10:30 AM"
+                      value={calTime}
+                      onChange={(e) => setCalTime(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs md:text-sm font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-purple-500/10 focus:border-purple-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Category</label>
+                    <select
+                      value={calCategory}
+                      onChange={(e: any) => setCalCategory(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-800 outline-none focus:ring-4 focus:ring-purple-500/10 focus:border-purple-500 transition-all cursor-pointer"
+                    >
+                      <option value="MEETING">Meeting</option>
+                      <option value="DEADLINE">Deadline</option>
+                      <option value="AUDIT">Audit</option>
+                      <option value="EVENT">Event</option>
+                      <option value="MAINTENANCE">Maintenance</option>
+                      <option value="OTHER">Other</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Badge Tag</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Board Cut-off"
+                      value={calBadge}
+                      onChange={(e) => setCalBadge(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-purple-500/10 focus:border-purple-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Description & Agenda *</label>
+                  <textarea
+                    required
+                    rows={3}
+                    placeholder="Provide event overview, instructions, or meeting agenda notes..."
+                    value={calDescription}
+                    onChange={(e) => setCalDescription(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs md:text-sm text-slate-800 outline-none focus:ring-4 focus:ring-purple-500/10 focus:border-purple-500 transition-all resize-none"
+                  />
+                </div>
+
+                <div className="pt-2 flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsCalendarModalOpen(false)}
+                    className="px-5 py-3 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={calSaving}
+                    className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center gap-2"
+                  >
+                    {calSaving ? "Saving..." : editingCalendarEvent ? "Update Event" : "Save Event"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
         {isNewRequisitionModalOpen && <NewRequisitionForm onClose={() => setIsNewRequisitionModalOpen(false)} />}
       </AnimatePresence>
     </div>

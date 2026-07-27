@@ -1716,20 +1716,16 @@ export const RequisitionsPanel: React.FC = () => {
                 <th className="hidden lg:table-cell px-4 md:px-6 py-3 md:py-4">Requisition Ownership</th>
                 <th className="px-4 md:px-6 py-3 md:py-4 text-right">Amount</th>
                 <th className="px-4 md:px-6 py-3 md:py-4 text-center">Status</th>
-                <th className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4">Expiry</th>
+                <th className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4">Days Old</th>
                 <th className="px-4 md:px-6 py-3 md:py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               <AnimatePresence mode="popLayout">
                 {activeItems.map((req, i) => {
-                  const isExpired = req.expiresAt && new Date(req.expiresAt) < new Date();
-                  const hoursRemaining = req.expiresAt ? (new Date(req.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60) : null;
-                  const daysRemaining = req.expiresAt ? (new Date(req.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24) : null;
-                  const isNearingExpiry = !isExpired && hoursRemaining !== null && hoursRemaining <= 24 && hoursRemaining > 0;
-                  
                   const updateAge = now - new Date(req.updatedAt).getTime();
                   const isRecentlyApprovedOrDisbursed = (req.status === RequisitionStatus.APPROVED_L2 || req.status === RequisitionStatus.DISBURSED) && updateAge < 8000;
+                  const daysOld = getDaysSinceSubmission(req.submittedAt || req.createdAt);
 
                   return (
                     <motion.tr 
@@ -1753,9 +1749,7 @@ export const RequisitionsPanel: React.FC = () => {
                         selectedIds.has(req.id) ? "bg-primary/5 border-l-primary" :
                         isRecentlyApprovedOrDisbursed
                           ? "border-l-emerald-500 shadow-[inset_4px_0_0_0_#10b981]" 
-                          : isNearingExpiry 
-                            ? "bg-amber-50/60 hover:bg-amber-100/60 border-l-amber-500" 
-                            : "hover:bg-slate-50/80 border-l-transparent"
+                          : "hover:bg-slate-50/80 border-l-transparent"
                       )}
                     >
                       <td className="px-4 md:px-6 py-2.5 md:py-4" onClick={(e) => e.stopPropagation()}>
@@ -1767,28 +1761,26 @@ export const RequisitionsPanel: React.FC = () => {
                         />
                       </td>
                       <td className="px-3 md:px-6 py-2.5 md:py-4">
-                        <div className="flex flex-col min-w-0 max-w-[120px] md:max-w-none">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-900 text-[11px] md:text-sm truncate">
+                        <div className="flex flex-col min-w-0 max-w-full md:max-w-none space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
+                            <span className="font-bold text-slate-900 text-xs md:text-sm break-words leading-snug">
                               <HighlightText text={req.title} highlight={globalSearchTerm} />
                             </span>
-                            {req.status !== RequisitionStatus.DISBURSED && (
-                              <span className="ml-2 text-[8px] md:text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded uppercase tracking-tight">
-                                {getDaysSinceSubmission(req.submittedAt)}d
-                              </span>
-                            )}
+                            <span className="text-[8px] md:text-[9px] font-mono font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded uppercase tracking-tight shrink-0">
+                              {daysOld}d old
+                            </span>
                             {req.flaggedForAudit && (
                               <span title="Flagged for Audit" className="inline-flex shrink-0">
                                 <Flag size={11} className="text-rose-500 fill-rose-500" />
                               </span>
                             )}
                             {req.inProcurement && (
-                              <span className="text-[8px] md:text-[9px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded uppercase tracking-tight">
+                              <span className="text-[8px] md:text-[9px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded uppercase tracking-tight shrink-0">
                                 PROCUREMENT
                               </span>
                             )}
                             {req.requiresMoreInfo && (
-                              <span className="text-[8px] md:text-[9px] font-bold text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded uppercase tracking-tight">
+                              <span className="text-[8px] md:text-[9px] font-bold text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded uppercase tracking-tight shrink-0">
                                 INFO REQ
                               </span>
                             )}
@@ -1802,10 +1794,13 @@ export const RequisitionsPanel: React.FC = () => {
                               </span>
                             )}
                           </div>
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mt-1">
-                            <span className="text-[7.5px] md:text-[10px] font-mono text-slate-400 uppercase tracking-wider truncate shrink-0">{req.id}</span>
-                            <span className="inline-flex items-center px-1.5 py-0.5 bg-indigo-50/80 border border-indigo-200/50 text-indigo-700 rounded-md text-[7.5px] md:text-[9px] font-extrabold uppercase tracking-wider leading-none w-fit">
+                          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[8px] md:text-[10px]">
+                            <span className="font-mono text-slate-400 uppercase tracking-wider shrink-0">{req.id}</span>
+                            <span className="inline-flex items-center px-1.5 py-0.5 bg-indigo-50/80 border border-indigo-200/50 text-indigo-700 rounded-md font-extrabold uppercase tracking-wider leading-none shrink-0">
                               💒 <HighlightText text={req.groupName} highlight={globalSearchTerm} />
+                            </span>
+                            <span className="inline-block lg:hidden text-slate-500 font-semibold truncate max-w-[140px]">
+                              • {req.requesterName}
                             </span>
                           </div>
                         </div>
@@ -1834,23 +1829,12 @@ export const RequisitionsPanel: React.FC = () => {
                         </div>
                       </td>
                       <td className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4">
-                        {req.expiresAt ? (
-                          <div className="flex items-center gap-1.5">
-                            <Clock size={10} className={isExpired ? "text-rose-500" : isNearingExpiry ? "text-amber-600 animate-pulse" : "text-slate-400"} />
-                            <span className={cn(
-                              "text-[9px] md:text-[10px] font-mono font-bold uppercase tracking-tighter truncate",
-                              isExpired ? "text-rose-500" : isNearingExpiry ? "text-amber-650 font-extrabold" : "text-slate-500"
-                            )}>
-                              {isExpired 
-                                ? "EXPIRED" 
-                                : daysRemaining !== null && daysRemaining >= 1 
-                                  ? `${Math.ceil(daysRemaining)} DAYS LEFT` 
-                                  : `${Math.ceil(hoursRemaining || 0)} HOURS LEFT`}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-[10px] text-slate-300">N/A</span>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                          <Clock size={11} className="text-slate-400" />
+                          <span className="text-[10px] md:text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
+                            {daysOld} {daysOld === 1 ? "day" : "days"} old
+                          </span>
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -2714,12 +2698,12 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
             ];
 
             return (
-              <div className="bg-slate-50 border-b border-slate-100 p-6 md:p-8 shrink-0">
+              <div className="bg-slate-50 border-b border-slate-100 p-4 sm:p-6 md:p-8 shrink-0">
                 <div className="max-w-4xl mx-auto">
-                  <div className="relative flex flex-col md:flex-row justify-between items-start md:items-center gap-6 md:gap-0">
+                  <div className="relative grid grid-cols-4 gap-1 sm:gap-2 md:gap-0 items-start">
                     
-                    {/* Horizontal connection line for desktop */}
-                    <div className="hidden md:block absolute left-4 right-4 top-1/2 -translate-y-6 h-1 bg-slate-200 z-0 w-[calc(100%-2rem)] rounded-full">
+                    {/* Horizontal connection line */}
+                    <div className="absolute left-6 right-6 top-4 sm:top-5 md:top-6 -translate-y-1/2 h-1 bg-slate-200 z-0 rounded-full">
                       <motion.div 
                         initial={{ width: 0 }}
                         animate={{ 
@@ -2744,13 +2728,13 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                       const isWarning = step.status === "escalated";
 
                       return (
-                        <div key={idx} className="flex md:flex-col items-center gap-4 md:gap-3 z-10 w-full md:w-auto relative">
+                        <div key={idx} className="flex flex-col items-center gap-1.5 sm:gap-3 z-10 w-full relative text-center">
                           <motion.div 
                             initial={{ scale: 0.8, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             transition={{ delay: idx * 0.1 }}
                             className={cn(
-                              "w-12 h-12 rounded-2xl flex items-center justify-center border-2 transition-all duration-500 shadow-sm",
+                              "w-8 h-8 sm:w-11 sm:h-11 md:w-12 md:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center border-2 transition-all duration-500 shadow-sm shrink-0",
                               isCompleted ? "bg-emerald-500 border-emerald-600 text-white shadow-emerald-200" :
                               isActive ? "bg-white border-primary text-primary shadow-primary/20 ring-4 ring-primary/10" :
                               isError ? "bg-rose-500 border-rose-600 text-white shadow-rose-200" :
@@ -2759,15 +2743,15 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                             )}
                           >
                             {isCompleted ? (
-                              <Check size={20} className="stroke-[3]" />
+                              <Check size={16} className="stroke-[3] md:w-5 md:h-5" />
                             ) : (
-                              <StepIcon size={20} className={cn(isActive && "animate-pulse")} />
+                              <StepIcon size={16} className={cn("md:w-5 md:h-5", isActive && "animate-pulse")} />
                             )}
                           </motion.div>
                           
-                          <div className="text-left md:text-center space-y-0.5">
+                          <div className="text-center space-y-0.5">
                             <h4 className={cn(
-                              "text-[10px] md:text-[11px] font-black uppercase tracking-widest",
+                              "text-[8px] sm:text-[10px] md:text-[11px] font-black uppercase tracking-wider leading-tight",
                               isCompleted ? "text-emerald-700" :
                               isActive ? "text-primary" :
                               isError ? "text-rose-700" :
@@ -2776,7 +2760,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                             )}>
                               {step.title}
                             </h4>
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
+                            <p className="text-[7px] sm:text-[8px] md:text-[9px] font-bold text-slate-400 uppercase tracking-tighter hidden xs:block sm:block">
                               {step.desc}
                             </p>
                           </div>
@@ -3188,8 +3172,8 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                       <span className="font-bold text-slate-700">{formatDate(req.submittedAt)}</span>
                     </div>
                     <div className="flex items-center justify-between text-[10px] md:text-xs">
-                      <span className="text-slate-500 flex items-center gap-1.5"><Clock size={13} /> Expiry</span>
-                      <span className="font-bold text-rose-500">{req.expiresAt ? formatDate(req.expiresAt) : "N/A"}</span>
+                      <span className="text-slate-500 flex items-center gap-1.5"><Clock size={13} /> Days Old</span>
+                      <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md font-mono">{getDaysSinceSubmission(req.submittedAt || req.createdAt)} {getDaysSinceSubmission(req.submittedAt || req.createdAt) === 1 ? "day" : "days"} old</span>
                     </div>
                     {req.recurrence && req.recurrence !== "NONE" && (
                       <div className="flex items-center justify-between text-[10px] md:text-xs">

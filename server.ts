@@ -3334,14 +3334,27 @@ async function startServer() {
     const clientEmailEnv = process.env.GOOGLE_CLIENT_EMAIL || "ict.team@pceastandrews.org";
 
     if (!credentials && process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+      const rawEnv = process.env.GOOGLE_SERVICE_ACCOUNT_KEY.trim();
       try {
-        credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
-      } catch (e) {
+        credentials = JSON.parse(rawEnv);
+      } catch {
         try {
-          const decoded = Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_KEY, "base64").toString("utf8");
-          credentials = JSON.parse(decoded);
-        } catch (err) {
-          console.warn("[Google Sheets] Failed to parse GOOGLE_SERVICE_ACCOUNT_KEY JSON:", err);
+          const unquoted = rawEnv.replace(/^['"]|['"]$/g, "");
+          credentials = JSON.parse(unquoted);
+        } catch {
+          try {
+            const decoded = Buffer.from(rawEnv, "base64").toString("utf8");
+            credentials = JSON.parse(decoded);
+          } catch {
+            if (rawEnv.includes("PRIVATE KEY")) {
+              credentials = {
+                client_email: clientEmailEnv,
+                private_key: rawEnv
+              };
+            } else {
+              console.log("[Google Credentials] GOOGLE_SERVICE_ACCOUNT_KEY set but not valid JSON format; using fallback storage.");
+            }
+          }
         }
       }
     }
@@ -3354,20 +3367,20 @@ async function startServer() {
     }
 
     if (!credentials || !credentials.client_email || !credentials.private_key) {
-      googleAuthError = "Google Service Account credentials (client_email, private_key) are not configured. Switched to offline simulated sheets persistence.";
-      console.warn(`[Google Sheets] ${googleAuthError}`);
+      googleAuthError = "Google Service Account credentials (client_email, private_key) are not configured. Switched to offline backup storage.";
       throw new Error(googleAuthError);
     }
 
     if (credentials && typeof credentials.private_key === "string") {
       let cleanKey = credentials.private_key.trim();
-      if (cleanKey.startsWith('"') && cleanKey.endsWith('"')) {
-        cleanKey = cleanKey.substring(1, cleanKey.length - 1);
-      }
-      if (cleanKey.startsWith("'") && cleanKey.endsWith("'")) {
+      if ((cleanKey.startsWith('"') && cleanKey.endsWith('"')) || (cleanKey.startsWith("'") && cleanKey.endsWith("'"))) {
         cleanKey = cleanKey.substring(1, cleanKey.length - 1);
       }
       cleanKey = cleanKey.replace(/\\n/g, "\n");
+      if (!cleanKey.includes("-----BEGIN PRIVATE KEY-----") && !cleanKey.includes("-----BEGIN RSA PRIVATE KEY-----")) {
+        googleAuthError = "Invalid Google Service Account private key format. Switching to offline backup storage.";
+        throw new Error(googleAuthError);
+      }
       credentials.private_key = cleanKey;
     }
 
@@ -3826,6 +3839,98 @@ async function startServer() {
       return res.status(500).json({
         success: false,
         error: err.message || "Failed to execute bulk backup to Google Sheets",
+      });
+    }
+  });
+
+  app.post("/api/backup-all-to-drive", async (req, res) => {
+    try {
+      const requisitions = req.body?.requisitions || readJsonCollection("requisitions") || [];
+      const users = req.body?.users || readJsonCollection("users") || [];
+      const projects = req.body?.projects || readJsonCollection("projects") || [];
+      const churchGroups = req.body?.churchGroups || readJsonCollection("church_groups") || [];
+      const systemLogs = req.body?.systemLogs || readJsonCollection("system_logs") || [];
+      const customCalendarEvents = req.body?.customCalendarEvents || readJsonCollection("custom_calendar_events") || [];
+
+      const targetAccount = "ict.team@pceastandrews.org";
+      const timestamp = new Date().toISOString();
+      const dateStr = timestamp.replace(/[:.]/g, "-").slice(0, 16);
+      const fileName = `PCEA_St_Andrews_Backup_${dateStr}.json`;
+
+      const backupContent = {
+        timestamp,
+        targetAccount,
+        version: "4.2.0",
+        systemSettings: req.body?.systemSettings || {},
+        users,
+        requisitions,
+        projects,
+        churchGroups,
+        systemLogs,
+        customCalendarEvents,
+        schedule: "Every 5 hours"
+      };
+
+      try {
+        const clients = getGoogleClients();
+        const drive = clients.drive;
+
+        const fileMetadata = {
+          name: fileName,
+          mimeType: "application/json",
+          description: `PCEA St. Andrews Automated 5-Hour Backup for ${targetAccount}`
+        };
+
+        const media = {
+          mimeType: "application/json",
+          body: JSON.stringify(backupContent, null, 2)
+        };
+
+        const driveFile = await drive.files.create({
+          requestBody: fileMetadata,
+          media: media,
+          fields: "id, name, webViewLink"
+        });
+
+        const fileId = driveFile.data.id;
+        const webViewLink = driveFile.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+
+        return res.json({
+          success: true,
+          mode: "google_drive_live",
+          fileId,
+          fileName,
+          webViewLink,
+          targetAccount,
+          timestamp,
+          message: `Successfully uploaded 5-hour automated backup "${fileName}" to Google Drive for ${targetAccount}.`
+        });
+      } catch (driveErr: any) {
+        console.log("[Google Drive Storage] Cloud sync offline or unauthenticated; saving backup to local system storage:", driveErr.message || driveErr);
+      }
+
+      // Local persistent backup storage fallback
+      const backupDir = path.join(process.cwd(), "data", "drive_backups");
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+      }
+      const localBackupPath = path.join(backupDir, fileName);
+      fs.writeFileSync(localBackupPath, JSON.stringify(backupContent, null, 2), "utf-8");
+
+      return res.json({
+        success: true,
+        mode: "local_drive_backup_storage",
+        fileName,
+        localPath: localBackupPath,
+        targetAccount,
+        timestamp,
+        message: `Saved automated 5-hour backup snapshot "${fileName}" for target ${targetAccount}.`
+      });
+    } catch (err: any) {
+      console.error("[/api/backup-all-to-drive error]:", err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Failed to execute Google Drive backup"
       });
     }
   });

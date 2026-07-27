@@ -1716,9 +1716,52 @@ export const UsersPanel: React.FC = () => {
 
                 {!isModalOpen && editingUser && (
                   <div className="bg-slate-50 rounded-2xl p-6 space-y-4 border border-slate-100 text-left">
-                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Administrative Actions</h4>
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Administrative Actions & Status</h4>
                     
-                    <div className="flex flex-wrap gap-2">
+                    {/* Active / Suspended Toggle Switch */}
+                    <div className="bg-white p-4 rounded-xl border border-slate-200/80 flex items-center justify-between shadow-sm">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-800">Account Status</span>
+                          <span className={cn(
+                            "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider",
+                            editingUser.isSuspended ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"
+                          )}>
+                            {editingUser.isSuspended ? "Suspended" : "Active"}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500">
+                          {editingUser.isSuspended 
+                            ? "Account is currently blocked from performing system transactions."
+                            : "Account is active and permitted to access assigned modules."}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={!editingUser.isSuspended}
+                        onClick={async () => {
+                          const newSuspendedState = !editingUser.isSuspended;
+                          await suspendUser(editingUser.id, newSuspendedState);
+                          setEditingUser({ ...editingUser, isSuspended: newSuspendedState });
+                        }}
+                        className={cn(
+                          "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
+                          !editingUser.isSuspended ? "bg-emerald-500" : "bg-slate-300"
+                        )}
+                      >
+                        <span className="sr-only">Toggle active or suspended status</span>
+                        <span
+                          className={cn(
+                            "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                            !editingUser.isSuspended ? "translate-x-5" : "translate-x-0"
+                          )}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200/60">
                       <button
                         type="button"
                         onClick={() => handleResetPassword(editingUser.email)}
@@ -1729,7 +1772,7 @@ export const UsersPanel: React.FC = () => {
                         {isResettingPassword ? "TRANSMITTING_RESET..." : "Send Password Reset Email"}
                       </button>
 
-                      {!editingUser.isApproved ? (
+                      {!editingUser.isApproved && (
                         <button
                           type="button"
                           onClick={async () => {
@@ -1740,28 +1783,30 @@ export const UsersPanel: React.FC = () => {
                         >
                           Approve Account
                         </button>
-                      ) : (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await suspendUser(editingUser.id, !editingUser.isSuspended);
-                              setEditingUser({ ...editingUser, isSuspended: !editingUser.isSuspended });
-                            }}
-                            className={cn(
-                              "px-4 py-2 rounded-xl text-xs font-bold border transition-colors uppercase tracking-widest flex items-center justify-center gap-2",
-                              editingUser.isSuspended 
-                                ? "bg-slate-800 text-white hover:bg-slate-900 border-slate-700" 
-                                : "bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-100"
-                            )}
-                          >
-                            {editingUser.isSuspended ? (
-                              <><ShieldCheck size={14} /> Restore Connectivity</>
-                            ) : (
-                              <><UserX size={14} /> Suspend Transaction</>
-                            )}
-                          </button>
-                        )}
-                      </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (currentUser?.id === editingUser.id) {
+                            alert("You cannot delete your own administrative account.");
+                            return;
+                          }
+                          if (window.confirm(`Are you sure you want to permanently delete user account "${editingUser.name}" (${editingUser.email})? This action cannot be undone.`)) {
+                            try {
+                              await deleteUser(editingUser.id);
+                              setEditingUser(null);
+                            } catch (err: any) {
+                              alert(err?.message || "Failed to delete user.");
+                            }
+                          }
+                        }}
+                        className="px-4 py-2 bg-rose-50 text-rose-600 rounded-xl text-xs font-bold border border-rose-100 hover:bg-rose-100 hover:text-rose-700 transition-colors uppercase tracking-widest flex items-center justify-center gap-1.5 cursor-pointer ml-auto"
+                      >
+                        <Trash2 size={14} />
+                        <span>Delete User</span>
+                      </button>
+                    </div>
                   </div>
                 )}
 

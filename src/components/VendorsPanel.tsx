@@ -21,6 +21,7 @@ import {
   ExternalLink,
   ShieldCheck,
   CheckCircle2,
+  Check,
   Trash2,
   Download,
   ArrowUpDown,
@@ -389,6 +390,7 @@ export const VendorsPanel: React.FC = () => {
   const [location, setLocation] = useState<string>("");
   const [offerings, setOfferings] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState<boolean>(false);
 
   // Filter unique offerings for the dropdown filter
   const uniqueOfferings = useMemo(() => {
@@ -787,52 +789,103 @@ export const VendorsPanel: React.FC = () => {
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder="e.g. Acme Stationery Supply Ltd"
-                        className="input-field h-12 bg-slate-50 border-slate-200 focus:bg-white text-xs md:text-sm font-semibold text-foreground px-4 rounded-xl"
+                        className="input-field h-12 bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 text-xs md:text-sm font-semibold px-4 rounded-xl focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
                       />
                     </div>
 
-                    {/* Offerings Category */}
+                    {/* Offerings Category Multi-Select Dropdown */}
                     <div className="space-y-2 md:col-span-2">
                       <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest ml-1 block">
                         🛍️ Select Products / Services Offered (Standardized Categories)
                       </label>
-                      <div className="flex flex-wrap gap-2 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl min-h-[80px]">
-                        {VENDOR_SERVICE_CATEGORIES.map((category) => {
-                          const currentCategories = parseOfferings(offerings);
-                          const isSelected = currentCategories.some(c => c.toLowerCase() === category.toLowerCase());
-                          return (
-                            <button
-                              key={category}
-                              type="button"
-                              onClick={() => {
-                                const current = parseOfferings(offerings);
-                                if (isSelected) {
-                                  setOfferings(current.filter(x => x.toLowerCase() !== category.toLowerCase()).join(", "));
-                                } else {
-                                  setOfferings([...current, category].join(", "));
-                                }
-                              }}
-                              className={cn(
-                                "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
-                                isSelected 
-                                  ? "bg-primary text-white border-primary shadow-sm" 
-                                  : "bg-white text-slate-500 border-slate-200 hover:border-primary/30"
-                              )}
-                            >
-                              {category}
-                            </button>
-                          );
-                        })}
+                      
+                      <div className="relative">
+                        {/* Dropdown Selector Header Trigger */}
+                        <button
+                          type="button"
+                          onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
+                          className="w-full bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-2xl p-3 text-left flex items-center justify-between hover:border-primary/50 transition-all shadow-sm focus:outline-none focus:ring-4 focus:ring-primary/10 cursor-pointer"
+                        >
+                          <div className="flex flex-wrap gap-1.5 items-center flex-1 pr-2 min-h-[32px]">
+                            {parseOfferings(offerings).length > 0 ? (
+                              parseOfferings(offerings).map((cat, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center gap-1.5 bg-primary/10 border border-primary/20 text-primary px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider"
+                                >
+                                  {cat}
+                                  <X
+                                    size={12}
+                                    className="cursor-pointer hover:text-rose-600 transition-colors"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const current = parseOfferings(offerings);
+                                      setOfferings(current.filter(x => x.toLowerCase() !== cat.toLowerCase()).join(", "));
+                                    }}
+                                  />
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-slate-400 text-xs font-semibold">Click to open categories multiselect dropdown...</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 border-l border-slate-200 dark:border-slate-700 pl-3">
+                            <span className="text-[9px] font-black uppercase text-primary tracking-wider bg-primary/10 px-2.5 py-1 rounded-lg">
+                              {parseOfferings(offerings).length} Selected
+                            </span>
+                            <ChevronDown size={18} className={cn("text-slate-400 transition-transform duration-200", isCategoryDropdownOpen && "rotate-180")} />
+                          </div>
+                        </button>
+
+                        {/* Dropdown Menu */}
+                        {isCategoryDropdownOpen && (
+                          <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl z-50 p-4 max-h-64 overflow-y-auto space-y-2">
+                            <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 pb-2 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                              <span>Standardized Product & Service Categories</span>
+                              <span className="text-primary font-mono">{VENDOR_SERVICE_CATEGORIES.length} Categories</span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 pt-1">
+                              {VENDOR_SERVICE_CATEGORIES.map((category) => {
+                                const currentCategories = parseOfferings(offerings);
+                                const isSelected = currentCategories.some(c => c.toLowerCase() === category.toLowerCase());
+                                return (
+                                  <button
+                                    key={category}
+                                    type="button"
+                                    onClick={() => {
+                                      const current = parseOfferings(offerings);
+                                      if (isSelected) {
+                                        setOfferings(current.filter(x => x.toLowerCase() !== category.toLowerCase()).join(", "));
+                                      } else {
+                                        setOfferings([...current, category].join(", "));
+                                      }
+                                    }}
+                                    className={cn(
+                                      "flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all text-left border cursor-pointer",
+                                      isSelected
+                                        ? "bg-primary text-white border-primary shadow-sm"
+                                        : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-100 dark:border-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700"
+                                    )}
+                                  >
+                                    <span className="truncate pr-1">{category}</span>
+                                    {isSelected && <Check size={14} className="stroke-[3] shrink-0" />}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex flex-col gap-1">
+
+                      <div className="flex flex-col gap-1 pt-1">
                         <input
                           type="text"
                           value={offerings}
                           onChange={(e) => setOfferings(e.target.value)}
-                          placeholder="Or type custom services separated by commas..."
-                          className="input-field h-10 bg-white border-slate-200 text-xs font-semibold px-4 rounded-xl mt-2"
+                          placeholder="Or type custom products/services separated by commas..."
+                          className="input-field h-11 bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 text-xs font-semibold px-4 rounded-xl focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
                         />
-                        <p className="text-[9px] text-muted ml-1">Selected: {offerings || "No categories selected yet"}</p>
+                        <p className="text-[9px] text-slate-500 font-medium ml-1">Current offerings string: {offerings || "No categories selected"}</p>
                       </div>
                     </div>
 
@@ -846,7 +899,7 @@ export const VendorsPanel: React.FC = () => {
                         value={contact}
                         onChange={(e) => setContact(e.target.value)}
                         placeholder="e.g. +254 712 345678 or sales@firm.com"
-                        className="input-field h-12 bg-slate-50 border-slate-200 focus:bg-white text-xs md:text-sm font-semibold text-foreground px-4 rounded-xl"
+                        className="input-field h-12 bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 text-xs md:text-sm font-semibold px-4 rounded-xl focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
                       />
                     </div>
 
@@ -860,7 +913,7 @@ export const VendorsPanel: React.FC = () => {
                         value={location}
                         onChange={(e) => setLocation(e.target.value)}
                         placeholder="e.g. Bishop Road, Nairobi"
-                        className="input-field h-12 bg-slate-50 border-slate-200 focus:bg-white text-xs md:text-sm font-semibold text-foreground px-4 rounded-xl"
+                        className="input-field h-12 bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 text-xs md:text-sm font-semibold px-4 rounded-xl focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
                       />
                     </div>
                   </div>
@@ -901,7 +954,7 @@ export const VendorsPanel: React.FC = () => {
                   placeholder="Filter by name, offerings or contact details..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-14 pr-6 py-4 bg-white border-2 border-slate-100 rounded-2xl text-[11px] font-bold tracking-wider focus:outline-none focus:border-primary/30 focus:bg-white shadow-sm transition-all"
+                  className="w-full pl-14 pr-6 py-4 bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-800 rounded-2xl text-[11px] md:text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 tracking-wider focus:outline-none focus:border-primary/30 focus:bg-white shadow-sm transition-all"
                 />
               </div>
 

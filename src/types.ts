@@ -391,4 +391,17 @@ export const VENDOR_SERVICE_CATEGORIES = [
   "Welfare & Social Services"
 ];
 
+export interface CustomCalendarEvent {
+  id: string;
+  title: string;
+  description: string;
+  date: string; // YYYY-MM-DD format e.g. "2026-07-28"
+  time?: string;
+  category: "MEETING" | "DEADLINE" | "AUDIT" | "EVENT" | "MAINTENANCE" | "OTHER";
+  badge: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+
 

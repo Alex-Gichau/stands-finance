@@ -1312,6 +1312,14 @@ export function generateReceiptHtml(req: Requisition): string {
           <div style="color: #10b981; font-size: 7px; font-weight: 900; margin-bottom: 3px; display: flex; align-items: center; gap: 4px;">✓ AUTHORIZED DIGITALLY</div>
           <div class="signature-area">Ministry Stamp</div>
         </div>
+        <div style="display: flex; align-items: center; gap: 8px; border: 1px solid #cbd5e1; padding: 6px 10px; border-radius: 8px; background: #f8fafc;">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`VERIFY REQUISITION #${req.id} | ${req.title} | ${formatCurrency(req.amount)} | Status: ${req.status} | Requester: ${req.requesterName}`)}" alt="QR Code" style="width: 50px; height: 50px; border-radius: 4px;" />
+          <div style="text-align: left;">
+            <div style="font-size: 7px; font-weight: 900; color: #059669; text-transform: uppercase;">Scannable QR</div>
+            <div style="font-size: 7px; font-weight: 700; color: #334155;">Mobile Verification</div>
+            <div style="font-size: 7px; font-family: monospace; color: #64748b;">#${req.id}</div>
+          </div>
+        </div>
         <div class="grand-total">
           <div class="val">${formatCurrency(req.amount)}</div>
           <div class="lab">Total Value Paid</div>

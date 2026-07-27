@@ -40,7 +40,8 @@ import {
   LogOut,
   Check,
   KeyRound,
-  HelpCircle
+  HelpCircle,
+  Cloud
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { cn, sendSlackNotification } from "../lib/utils";
@@ -48,6 +49,7 @@ import { UserRole } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { SystemHealth } from "./SystemHealth";
 import { databaseService } from "../lib/databaseService";
+import { DriveBackupModal } from "./DriveBackupModal";
 
 export const SettingsPanel: React.FC = () => {
   const { 
@@ -73,6 +75,7 @@ export const SettingsPanel: React.FC = () => {
 
   const [isBackingUp, setIsBackingUp] = React.useState(false);
   const [backupResult, setBackupResult] = React.useState<any | null>(null);
+  const [isDriveBackupModalOpen, setIsDriveBackupModalOpen] = React.useState(false);
 
   const [mongoTab, setMongoTab] = React.useState<number>(0);
   const [localActiveDevices, setLocalActiveDevices] = React.useState<any[]>([]);
@@ -1340,6 +1343,37 @@ sudo systemctl enable mongod`}
               </div>
             </section>
 
+            {/* Google Drive 5-Hour Automated System Backup Section */}
+            <section className="bg-card rounded-[2rem] border border-border p-8 shadow-sm transition-all space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-bold text-lg">
+                    ☁️
+                  </span>
+                  <div>
+                    <h3 className="text-xs font-black text-foreground uppercase tracking-[0.2em]">Google Drive 5-Hour Auto-Backup</h3>
+                    <p className="text-[9px] text-muted uppercase tracking-widest mt-1 font-mono">ict.team@pceastandrews.org</p>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase tracking-widest rounded-full">
+                  5H CYCLE ACTIVE
+                </span>
+              </div>
+
+              <p className="text-[10px] text-muted leading-relaxed font-semibold">
+                Automatically archives full system data (requisitions, ledger books, user accounts, custom calendar events, audit logs) to Google Drive every 5 hours targeting <strong>ict.team@pceastandrews.org</strong>.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setIsDriveBackupModalOpen(true)}
+                className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm hover:shadow-lg hover:shadow-blue-200/50"
+              >
+                <Cloud size={14} />
+                <span>Manage Drive Backup & View Logs</span>
+              </button>
+            </section>
+
             {/* Google Sheets Data Backup Section */}
             <section className="bg-card rounded-[2rem] border border-border p-8 shadow-sm transition-all space-y-6">
               <div className="flex items-center gap-3">
@@ -1927,6 +1961,11 @@ sudo systemctl enable mongod`}
           </motion.div>
         )}
       </AnimatePresence>
+
+      <DriveBackupModal 
+        isOpen={isDriveBackupModalOpen} 
+        onClose={() => setIsDriveBackupModalOpen(false)} 
+      />
     </div>
   );
 };

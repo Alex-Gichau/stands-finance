@@ -27,7 +27,8 @@ import {
   Transaction,
   TransactionType,
   TransactionStatus,
-  FiscalYear
+  FiscalYear,
+  CustomCalendarEvent
 } from "../types";
 import { getProjectRequisitions } from "../utils/budgetUtils";
 import { databaseService } from "../lib/databaseService";
@@ -552,6 +553,10 @@ interface RequisitionContextType {
   systemLogLimit: number;
   setSystemLogLimit: (limit: number) => void;
   sendBulkEmail: (subject: string, content: string, recipients?: string[]) => Promise<{ success: boolean; total: number; successful: string[]; failed: any[]; simulated?: boolean; message?: string }>;
+  customCalendarEvents: CustomCalendarEvent[];
+  addCustomCalendarEvent: (event: Omit<CustomCalendarEvent, "id" | "createdAt" | "createdBy">) => Promise<void>;
+  updateCustomCalendarEvent: (id: string, updates: Partial<CustomCalendarEvent>) => Promise<void>;
+  deleteCustomCalendarEvent: (id: string) => Promise<void>;
 }
 
 const RequisitionContext = createContext<RequisitionContextType | undefined>(undefined);
@@ -573,6 +578,36 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [reports, setReports] = useState<SavedReport[]>([]);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+
+  const [customCalendarEvents, setCustomCalendarEvents] = useState<CustomCalendarEvent[]>(() => {
+    try {
+      const saved = localStorage.getItem("st_andrews_custom_calendar_events");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Failed to load custom calendar events:", e);
+    }
+    return [
+      {
+        id: "evt-init-1",
+        title: "Annual Fiscal Budget Meeting",
+        description: "Mandatory annual meeting for all ministry leaders and treasurer.",
+        date: "2026-07-28",
+        time: "10:00 AM",
+        category: "MEETING",
+        badge: "Admin Meeting",
+        createdBy: "Super Admin",
+        createdAt: new Date().toISOString()
+      }
+    ];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("st_andrews_custom_calendar_events", JSON.stringify(customCalendarEvents));
+    } catch (e) {
+      console.error("Failed to save custom calendar events:", e);
+    }
+  }, [customCalendarEvents]);
   const [permissionConfigs, setPermissionConfigs] = useState<PermissionConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(true);
@@ -2719,7 +2754,51 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     systemLogLimit
   ]);
 
-  // Removed automatic data migration to Supabase
+  // 5-hour Automated Google Drive System Backup Runner
+  useEffect(() => {
+    const runAutoBackup = async () => {
+      const LAST_BACKUP_TIME_KEY = "st_andrews_last_drive_backup_timestamp";
+      const BACKUP_INTERVAL_MS = 5 * 60 * 60 * 1000;
+      const lastTs = localStorage.getItem(LAST_BACKUP_TIME_KEY);
+      const now = Date.now();
+
+      if (!lastTs || now - new Date(lastTs).getTime() >= BACKUP_INTERVAL_MS) {
+        try {
+          const payload = {
+            timestamp: new Date().toISOString(),
+            version: "4.2.0",
+            targetAccount: "ict.team@pceastandrews.org",
+            systemSettings,
+            users,
+            requisitions,
+            projects,
+            churchGroups,
+            ledgerBooks,
+            systemLogs,
+            customCalendarEvents,
+            supplementaryRequests
+          };
+
+          const res = await fetch("/api/backup-all-to-drive", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+
+          if (res.ok) {
+            localStorage.setItem(LAST_BACKUP_TIME_KEY, new Date().toISOString());
+            console.log("[Google Drive Auto-Backup] 5-hour backup completed successfully for ict.team@pceastandrews.org.");
+          }
+        } catch (e) {
+          console.warn("[Google Drive Auto-Backup] Scheduled backup check failed:", e);
+        }
+      }
+    };
+
+    runAutoBackup();
+    const driveBackupInterval = setInterval(runAutoBackup, 30 * 60 * 1000); // Check every 30m if 5h elapsed
+    return () => clearInterval(driveBackupInterval);
+  }, [requisitions.length, users.length, projects.length]);
 
 
 
@@ -3969,6 +4048,39 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, []);
 
+  const addCustomCalendarEvent = useCallback(async (event: Omit<CustomCalendarEvent, "id" | "createdAt" | "createdBy">) => {
+    if (!currentUser || (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.SUPER_ADMIN)) {
+      alert("Unauthorized: Only Admin or Super Admin can create calendar events.");
+      return;
+    }
+    const newEvent: CustomCalendarEvent = {
+      ...event,
+      id: `evt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      createdBy: currentUser.name || currentUser.email || "Admin",
+      createdAt: new Date().toISOString()
+    };
+    setCustomCalendarEvents(prev => [newEvent, ...prev]);
+    await addSystemLog("CALENDAR_EVENT_CREATED", `Custom calendar event '${event.title}' scheduled for ${event.date}`, { eventId: newEvent.id });
+  }, [currentUser, addSystemLog]);
+
+  const updateCustomCalendarEvent = useCallback(async (id: string, updates: Partial<CustomCalendarEvent>) => {
+    if (!currentUser || (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.SUPER_ADMIN)) {
+      alert("Unauthorized: Only Admin or Super Admin can update calendar events.");
+      return;
+    }
+    setCustomCalendarEvents(prev => prev.map(evt => evt.id === id ? { ...evt, ...updates } : evt));
+    await addSystemLog("CALENDAR_EVENT_UPDATED", `Updated calendar event ID: ${id}`, { updates });
+  }, [currentUser, addSystemLog]);
+
+  const deleteCustomCalendarEvent = useCallback(async (id: string) => {
+    if (!currentUser || (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.SUPER_ADMIN)) {
+      alert("Unauthorized: Only Admin or Super Admin can delete calendar events.");
+      return;
+    }
+    setCustomCalendarEvents(prev => prev.filter(evt => evt.id !== id));
+    await addSystemLog("CALENDAR_EVENT_DELETED", `Deleted calendar event ID: ${id}`);
+  }, [currentUser, addSystemLog]);
+
   const uniqueUsers = React.useMemo(() => {
     const seen = new Set<string>();
     return users.filter(u => {
@@ -4150,7 +4262,11 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setFirestoreQuotaExceeded,
       setSyncTargets,
       syncingTargets,
-      sendBulkEmail
+      sendBulkEmail,
+      customCalendarEvents,
+      addCustomCalendarEvent,
+      updateCustomCalendarEvent,
+      deleteCustomCalendarEvent
     }}>
       {children}
     </RequisitionContext.Provider>
