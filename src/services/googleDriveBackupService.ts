@@ -38,7 +38,8 @@ export const BACKUP_INTERVAL_MS = BACKUP_INTERVAL_HOURS * 60 * 60 * 1000;
 export const getBackupLogs = (): BackupLogEntry[] => {
   try {
     const raw = localStorage.getItem(BACKUP_LOG_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }

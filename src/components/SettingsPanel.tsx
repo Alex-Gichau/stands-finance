@@ -1405,7 +1405,7 @@ sudo systemctl enable mongod`}
                   </div>
                   <div className="space-y-1.5">
                     <div>{backupResult.message}</div>
-                    {backupResult.backupSummary && backupResult.backupSummary.map((summary: any, sIdx: number) => (
+                    {Array.isArray(backupResult?.backupSummary) && backupResult.backupSummary.map((summary: any, sIdx: number) => (
                       <div key={sIdx} className="pt-2 border-t border-slate-200/30 dark:border-slate-800/50">
                         <div className="font-bold text-foreground">Fiscal Year: {summary.fiscalYear}</div>
                         <div>Sheet Title: {summary.sheetTitle}</div>
