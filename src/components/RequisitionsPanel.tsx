@@ -2964,31 +2964,21 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                   )}
                 >
                   <h4 className="text-[10px] md:text-xs font-black text-slate-900 uppercase tracking-widest mb-4">
-                    {showDecisionForm === "APPROVE" ? "Authorize Ledger Transaction" : showDecisionForm === "REJECT" ? "Reject Transaction" : "Escalate Transaction"}
+                    {showDecisionForm === "APPROVE" ? "Approve Transaction" : showDecisionForm === "REJECT" ? "Reject Transaction" : "Escalate Transaction"}
                   </h4>
                   <div className="space-y-4">
                     <div className="space-y-1.5">
-                      <label className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Reason For Approval</label>
+                      <label className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">
+                        {showDecisionForm === "REJECT" ? "Reason For Rejection (Optional)" : showDecisionForm === "APPROVE" ? "Reason For Approval (Optional)" : "Reason For Escalation (Optional)"}
+                      </label>
                       <textarea 
                         value={decisionNote}
                         onChange={(e) => setDecisionNote(e.target.value)}
                         className="input-field bg-white text-xs"
-                        placeholder="Provide reasoning..."
+                        placeholder={showDecisionForm === "REJECT" ? "Enter reason for rejection if any..." : "Provide reasoning if any..."}
                         rows={3}
                       />
                     </div>
-                    {showDecisionForm === "APPROVE" && (
-                      <div className="space-y-1.5">
-                        <label className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Security Code</label>
-                        <input 
-                          type="password"
-                          value={approvalCode}
-                          onChange={(e) => setApprovalCode(e.target.value)}
-                          className="input-field bg-white font-mono text-xs"
-                          placeholder="••••••"
-                        />
-                      </div>
-                    )}
                     <div className="flex justify-end gap-3 pt-2">
                        <button 
                         onClick={() => setShowDecisionForm(null)}
@@ -2997,7 +2987,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                         CANCEL
                       </button>
                       <button 
-                        disabled={loading || (showDecisionForm === "APPROVE" && !approvalCode) || (showDecisionForm === "REJECT" && !decisionNote.trim())}
+                        disabled={loading}
                         onClick={() => handleDecision(showDecisionForm)}
                         className={cn(
                           "btn-primary px-5 md:px-8 flex items-center gap-2",
@@ -3285,8 +3275,9 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                       ESCALATE
                     </button>
                     <button 
-                      onClick={() => setShowDecisionForm("APPROVE")}
-                      className="flex-1 md:flex-none px-3 md:px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-[9px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100"
+                      disabled={loading}
+                      onClick={() => handleDecision("APPROVE")}
+                      className="flex-1 md:flex-none px-3 md:px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-[9px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100 disabled:opacity-50"
                     >
                       APPROVE
                     </button>
@@ -3294,8 +3285,9 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                 )}
                 {(req.status === RequisitionStatus.APPROVED_L1 || req.status === RequisitionStatus.ESCALATED) && (
                    <button 
-                     onClick={() => setShowDecisionForm("APPROVE")}
-                     className="flex-1 md:flex-none px-3 md:px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-[9px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100"
+                     disabled={loading}
+                     onClick={() => handleDecision("APPROVE")}
+                     className="flex-1 md:flex-none px-3 md:px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-[9px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100 disabled:opacity-50"
                    >
                      APPROVE L2
                    </button>

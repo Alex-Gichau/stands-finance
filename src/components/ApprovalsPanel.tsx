@@ -330,12 +330,12 @@ export const ApprovalsPanel: React.FC = () => {
                 <button
                   onClick={() => {
                     setIsBulkMode(true);
-                    setApprovalStep("CODE");
-                    setAuthCode("");
+                    handleApprove();
                   }}
-                  className="px-8 py-3 bg-primary text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-primary/90 transition-all shadow-xl shadow-primary/20"
+                  disabled={loading}
+                  className="px-8 py-3 bg-primary text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-primary/90 transition-all shadow-xl shadow-primary/20 disabled:opacity-50"
                 >
-                  Bulk Authorize
+                  {loading ? "Authorizing..." : "Bulk Authorize"}
                 </button>
               </div>
             </div>
@@ -381,12 +381,12 @@ export const ApprovalsPanel: React.FC = () => {
 
                     <div className="space-y-3 md:space-y-4">
                       <div className="space-y-1.5">
-                        <label className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Decision Commentary</label>
+                        <label className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Decision Commentary (Optional)</label>
                         <textarea 
                           ref={noteRef}
                           value={decisionNote}
                           onChange={(e) => setDecisionNote(e.target.value)}
-                          placeholder="Provide audit reasoning..."
+                          placeholder="Provide reasoning if any (optional for approval)..."
                           className="input-field py-2.5 md:py-3 min-h-[80px] md:min-h-[100px] resize-none text-[11px] md:text-xs"
                         />
                       </div>
@@ -409,17 +409,19 @@ export const ApprovalsPanel: React.FC = () => {
                       {(!selectedReq || selectedReq.status !== RequisitionStatus.DISBURSED) && (
                         <button 
                           onClick={handleReject}
-                          disabled={loading || !decisionNote.trim()}
+                          disabled={loading}
                           className="px-4 md:px-6 py-2 md:py-3 bg-white border border-rose-200 text-rose-600 rounded-xl text-[10px] md:text-xs font-black uppercase hover:bg-rose-50 transition-all cursor-pointer shadow-sm shadow-rose-100 disabled:opacity-50"
                         >
                           Reject
                         </button>
                       )}
                       <button 
-                        onClick={() => setApprovalStep("CODE")}
-                        className="btn-primary px-5 md:px-8 py-2 md:py-3 text-[10px] md:text-xs"
+                        onClick={handleApprove}
+                        disabled={loading}
+                        className="btn-primary px-5 md:px-8 py-2 md:py-3 text-[10px] md:text-xs flex items-center gap-2 cursor-pointer"
                       >
-                        Verify Key
+                        {loading ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                        Approve Requisition
                       </button>
                     </div>
                   )}
