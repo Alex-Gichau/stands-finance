@@ -3536,7 +3536,38 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
           handleFirestoreError(e, OperationType.CREATE, `alerts/${alertId}`);
         }
       }
-      if (status === RequisitionStatus.DISBURSED) updates.disbursedAt = new Date().toISOString();
+      if (status === RequisitionStatus.DISBURSED) {
+        updates.disbursedAt = new Date().toISOString();
+
+        // Auto-create transaction record for Web Transactions
+        const txId = `tx-disb-${id}`;
+        const transactionObj: Transaction = {
+          id: txId,
+          externalRef: `MPESA-DISB-${id.toUpperCase().replace(/^REQ-/, '')}`,
+          sourceSystem: "PCE St. Andrews Disbursed Treasury",
+          amount: req.amount,
+          type: TransactionType.DEBIT,
+          status: TransactionStatus.COMPLETED,
+          description: `Disbursement: ${req.title}${req.payableTo ? ` (Payable to: ${req.payableTo})` : ''}`,
+          category: req.groupName || "General Disbursed Fund",
+          timestamp: updates.disbursedAt,
+          performedBy: currentUser?.name || req.requesterName || "Finance Treasury",
+          metadata: {
+            requisitionId: req.id,
+            payableTo: req.payableTo,
+            groupId: req.groupId,
+            isRealDisbursed: true
+          }
+        };
+
+        // Optimistic update for transactions state
+        setTransactions(prev => [transactionObj, ...prev.filter(t => t.id !== txId)]);
+
+        // Asynchronous database write
+        if (!skipFirestore && db) {
+          setDoc(doc(db, "transactions", txId), cleanFirestoreData(transactionObj), { merge: true }).catch(() => {});
+        }
+      }
 
       const updatedReq = { ...req, ...updates, id };
 
@@ -3970,13 +4001,45 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const uniqueTransactions = React.useMemo(() => {
     const seen = new Set<string>();
-    return transactions.filter(t => {
-      if (!t || !t.id) return false;
-      if (seen.has(t.id)) return false;
-      seen.add(t.id);
-      return true;
+    const txList: Transaction[] = [];
+
+    // Add state transactions
+    transactions.forEach(t => {
+      if (t && t.id && !seen.has(t.id)) {
+        seen.add(t.id);
+        txList.push(t);
+      }
     });
-  }, [transactions]);
+
+    // Auto derive transactions for any DISBURSED requisition
+    requisitions.filter(r => r.status === RequisitionStatus.DISBURSED).forEach(req => {
+      const txId = `tx-disb-${req.id}`;
+      if (!seen.has(txId)) {
+        seen.add(txId);
+        txList.push({
+          id: txId,
+          externalRef: `MPESA-DISB-${req.id.toUpperCase().replace(/^REQ-/, '')}`,
+          sourceSystem: "PCE St. Andrews Disbursed Treasury",
+          amount: req.amount,
+          type: TransactionType.DEBIT,
+          status: TransactionStatus.COMPLETED,
+          description: `Disbursement: ${req.title}${req.payableTo ? ` (Payable to: ${req.payableTo})` : ''}`,
+          category: req.groupName || "General Disbursed Fund",
+          timestamp: req.disbursedAt || req.updatedAt || req.submittedAt || new Date().toISOString(),
+          performedBy: req.requesterName || "Finance Treasury",
+          metadata: {
+            requisitionId: req.id,
+            payableTo: req.payableTo,
+            groupId: req.groupId,
+            isRealDisbursed: true
+          }
+        });
+      }
+    });
+
+    // Filter web transactions to strictly ONLY contain disbursed funds
+    return txList.filter(t => t.status === TransactionStatus.COMPLETED || t.metadata?.isRealDisbursed || t.id.startsWith("tx-disb-"));
+  }, [transactions, requisitions]);
 
   const uniqueReports = React.useMemo(() => {
     const seen = new Set<string>();

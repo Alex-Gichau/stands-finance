@@ -1527,7 +1527,7 @@ async function startServer() {
               <div style="font-family: sans-serif; padding: 25px; color: #1e293b; background-color: #f8fafc; max-width: 600px; margin: 0 auto; border-radius: 12px; border: 1px solid #e2e8f0;">
                 <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px;">
                   <h1 style="color: #1e3a8a; margin: 0; font-size: 20px; text-transform: uppercase; letter-spacing: 0.1em;">${fromName} Update</h1>
-                  <p style="color: #64748b; font-size: 11px; margin: 4px 0 0 0; font-weight: bold; letter-spacing: 0.05em;">PCEA EAST ANDREWS CHURCH</p>
+                  <p style="color: #64748b; font-size: 11px; margin: 4px 0 0 0; font-weight: bold; letter-spacing: 0.05em;">PCEA ST ANDREW'S CHURCH</p>
                 </div>
                 <div style="background-color: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); line-height: 1.6; color: #334155;">
                   ${content.replace(/\n/g, '<br />')}

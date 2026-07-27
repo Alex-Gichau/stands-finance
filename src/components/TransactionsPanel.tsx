@@ -48,32 +48,36 @@ const TransactionsPanel: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<TransactionStatus | "ALL">("ALL");
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  // Auto sync real disbursed fund requisitions into stored transactions
-  useEffect(() => {
-    const disbursedCount = requisitions.filter(r => r.status === RequisitionStatus.DISBURSED).length;
-    if (disbursedCount > 0 && syncRealDisbursedTransactions && transactions.length === 0) {
-      syncRealDisbursedTransactions().catch(() => {});
-    }
-  }, [requisitions, syncRealDisbursedTransactions, transactions.length]);
 
   const disbursedReqs = useMemo(() => {
     return requisitions.filter(r => r.status === RequisitionStatus.DISBURSED);
   }, [requisitions]);
 
   const filteredTransactions = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    const numericTerm = term.replace(/[^0-9.]/g, "");
+
     return transactions.filter(t => {
-      const matchesSearch = 
-        t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.externalRef.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.sourceSystem.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (t.category && t.category.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (t.metadata?.payableTo && t.metadata.payableTo.toLowerCase().includes(searchTerm.toLowerCase()));
-      
+      let matchesSearch = true;
+      if (term) {
+        const refMatch = t.externalRef.toLowerCase().includes(term) || t.id.toLowerCase().includes(term);
+        const vendorMatch = 
+          (t.metadata?.payableTo && t.metadata.payableTo.toLowerCase().includes(term)) ||
+          (t.performedBy && t.performedBy.toLowerCase().includes(term)) ||
+          t.description.toLowerCase().includes(term) ||
+          (t.category && t.category.toLowerCase().includes(term));
+        const amountMatch = 
+          t.amount.toString().includes(term) ||
+          t.amount.toLocaleString().toLowerCase().includes(term) ||
+          (numericTerm.length > 0 && t.amount.toString().includes(numericTerm));
+        const systemMatch = t.sourceSystem.toLowerCase().includes(term);
+
+        matchesSearch = refMatch || vendorMatch || amountMatch || systemMatch;
+      }
+
       const matchesType = typeFilter === "ALL" || t.type === typeFilter;
       const matchesStatus = statusFilter === "ALL" || t.status === statusFilter;
-      
+
       return matchesSearch && matchesType && matchesStatus;
     });
   }, [transactions, searchTerm, typeFilter, statusFilter]);
@@ -91,19 +95,6 @@ const TransactionsPanel: React.FC = () => {
       failedCount: transactions.filter(t => t.status === TransactionStatus.FAILED).length,
     };
   }, [transactions, disbursedReqs]);
-
-  const handleSyncReal = async () => {
-    setIsSyncing(true);
-    try {
-      if (syncRealDisbursedTransactions) {
-        await syncRealDisbursedTransactions();
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   const handleClearWeb = async () => {
     try {
@@ -156,7 +147,7 @@ const TransactionsPanel: React.FC = () => {
               Real Disbursed Funds & Transactions
             </h1>
             <p className="text-sm text-slate-300 max-w-2xl font-normal">
-              Official ledger of all verified, settled, and disbursed treasury funds. Clear unverified web transactions and synchronize real disbursed requisition records to store them permanently on the website.
+              Official ledger of all verified, settled, and disbursed treasury funds. Transactions are automatically created and updated in real-time as disbursements occur.
             </p>
           </div>
 
@@ -167,15 +158,6 @@ const TransactionsPanel: React.FC = () => {
             >
               <Trash2 size={15} />
               <span>Clear Web Transactions</span>
-            </button>
-
-            <button
-              onClick={handleSyncReal}
-              disabled={isSyncing || isDbSaving}
-              className="flex items-center gap-2 bg-sky-500 hover:bg-sky-400 text-slate-950 px-5 py-2.5 rounded-xl text-xs font-black transition-all shadow-lg shadow-sky-500/20 cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw size={15} className={cn(isSyncing && "animate-spin")} />
-              <span>Store Real Disbursed Funds</span>
             </button>
           </div>
         </div>
@@ -245,15 +227,24 @@ const TransactionsPanel: React.FC = () => {
         {/* Controls Toolbar */}
         <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1">
-            <div className="relative flex-1 max-w-md group">
+            <div className="relative flex-1 max-w-lg group">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-sky-600 transition-colors" />
               <input
                 type="text"
-                placeholder="Search reference, payee, ministry or description..."
+                placeholder="Search history by Reference ID, Vendor, or Amount (e.g. MPESA-123, John, 5000)..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-white border-2 border-slate-100 rounded-2xl py-2.5 pl-11 pr-4 text-sm focus:outline-none focus:ring-4 focus:ring-sky-50 focus:border-sky-600 transition-all font-medium"
+                className="w-full bg-white border-2 border-slate-100 rounded-2xl py-2.5 pl-11 pr-10 text-sm focus:outline-none focus:ring-4 focus:ring-sky-50 focus:border-sky-600 transition-all font-medium text-slate-800 placeholder:text-slate-400"
               />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100 transition-colors"
+                  title="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <select
@@ -423,19 +414,11 @@ const TransactionsPanel: React.FC = () => {
                 <History className="w-10 h-10" />
               </div>
               <div>
-                <h3 className="text-base font-black text-slate-900">No transactions stored on website</h3>
+                <h3 className="text-base font-black text-slate-900">No disbursed transactions recorded yet</h3>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-                  Click <strong className="text-sky-600">"Store Real Disbursed Funds"</strong> above to scan all disbursed requisitions and write their official details to the website's database.
+                  Once a requisition is approved and marked as disbursed by Finance, the official disbursement transaction will automatically appear here.
                 </p>
               </div>
-              <button
-                onClick={handleSyncReal}
-                disabled={isSyncing}
-                className="mt-2 flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md"
-              >
-                <RefreshCw size={14} className={cn(isSyncing && "animate-spin")} />
-                <span>Store Disbursed Funds Transactions</span>
-              </button>
             </div>
           )}
         </div>
