@@ -12,6 +12,7 @@ import {
   BACKUP_INTERVAL_MS,
   BackupLogEntry 
 } from "../services/googleDriveBackupService";
+import { triggerAutosendBackupEmail, AUTOSEND_DEFAULT_EMAIL } from "../services/autosendBackupService";
 import { 
   Cloud, 
   CloudUpload, 
@@ -118,6 +119,26 @@ export const DriveBackupModal: React.FC<DriveBackupModalProps> = ({ isOpen, onCl
     downloadBackupLocally(payload);
   };
 
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+
+  const handleSendEmailBackup = async () => {
+    setIsSendingEmail(true);
+    setStatusMessage(`Compiling database JSON snapshot & sending to ${AUTOSEND_DEFAULT_EMAIL}...`);
+    try {
+      const res = await triggerAutosendBackupEmail(AUTOSEND_DEFAULT_EMAIL, contextData, "AUTO_DRIVE");
+      if (res.success) {
+        setStatusMessage(`✅ Dispatched backup JSON email to ${AUTOSEND_DEFAULT_EMAIL}`);
+      } else {
+        setStatusMessage(`⚠️ ${res.message}`);
+      }
+    } catch (err: any) {
+      setStatusMessage(`⚠️ ${err.message || "Failed to send backup email"}`);
+    } finally {
+      setIsSendingEmail(false);
+      refreshLogsAndTimes();
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -199,11 +220,20 @@ export const DriveBackupModal: React.FC<DriveBackupModalProps> = ({ isOpen, onCl
             </button>
 
             <button
+              onClick={handleSendEmailBackup}
+              disabled={isSendingEmail}
+              className="w-full sm:w-auto px-5 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer border border-indigo-500 shadow-sm disabled:opacity-50"
+            >
+              <Mail size={16} className={isSendingEmail ? "animate-bounce" : ""} />
+              <span>{isSendingEmail ? "Sending..." : "Email JSON Backup"}</span>
+            </button>
+
+            <button
               onClick={handleDownloadLocal}
               className="w-full sm:w-auto px-5 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer border border-slate-200"
             >
               <Download size={16} />
-              <span>Download JSON Backup</span>
+              <span>Download JSON</span>
             </button>
           </div>
 

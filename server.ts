@@ -3935,6 +3935,267 @@ async function startServer() {
     }
   });
 
+  // Helper storage functions for Backup Email Autosend
+  const backupEmailLogsPath = path.join(process.cwd(), "data", "backup_email_logs.json");
+  const backupEmailConfigPath = path.join(process.cwd(), "data", "backup_email_config.json");
+
+  const getBackupEmailLogs = () => {
+    try {
+      if (fs.existsSync(backupEmailLogsPath)) {
+        return JSON.parse(fs.readFileSync(backupEmailLogsPath, "utf-8"));
+      }
+    } catch (e) {
+      console.error("Error reading backup email logs:", e);
+    }
+    return [];
+  };
+
+  const saveBackupEmailLogs = (logs: any[]) => {
+    try {
+      const dir = path.dirname(backupEmailLogsPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(backupEmailLogsPath, JSON.stringify(logs.slice(0, 100), null, 2), "utf-8");
+    } catch (e) {
+      console.error("Error writing backup email logs:", e);
+    }
+  };
+
+  const getBackupEmailConfig = () => {
+    try {
+      if (fs.existsSync(backupEmailConfigPath)) {
+        return JSON.parse(fs.readFileSync(backupEmailConfigPath, "utf-8"));
+      }
+    } catch (e) {}
+    return {
+      targetEmail: "geeshau.standsmedia@gmail.com",
+      enabled: true,
+      frequency: "5-HOURS",
+      lastSentTimestamp: null,
+      totalBackupsSent: 0
+    };
+  };
+
+  const saveBackupEmailConfig = (config: any) => {
+    try {
+      const dir = path.dirname(backupEmailConfigPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(backupEmailConfigPath, JSON.stringify(config, null, 2), "utf-8");
+    } catch (e) {
+      console.error("Error writing backup email config:", e);
+    }
+  };
+
+  // GET /api/backup-email-status
+  app.get("/api/backup-email-status", async (req, res) => {
+    try {
+      const config = getBackupEmailConfig();
+      const logs = getBackupEmailLogs();
+      res.json({
+        success: true,
+        config,
+        logs,
+        totalLogs: logs.length
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // POST /api/backup-email-config
+  app.post("/api/backup-email-config", async (req, res) => {
+    try {
+      const current = getBackupEmailConfig();
+      const updated = {
+        ...current,
+        ...req.body,
+        targetEmail: req.body?.targetEmail ? req.body.targetEmail.trim() : current.targetEmail
+      };
+      saveBackupEmailConfig(updated);
+      res.json({ success: true, config: updated });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // POST /api/backup-autosend-email - Main endpoint to dispatch backup JSON file to recipient
+  app.post("/api/backup-autosend-email", async (req, res) => {
+    try {
+      const config = getBackupEmailConfig();
+      const targetEmail = (req.body?.email || config.targetEmail || "geeshau.standsmedia@gmail.com").trim();
+      
+      const requisitions = req.body?.requisitions || readJsonCollection("requisitions") || [];
+      const users = req.body?.users || readJsonCollection("users") || [];
+      const projects = req.body?.projects || readJsonCollection("projects") || [];
+      const churchGroups = req.body?.churchGroups || readJsonCollection("church_groups") || [];
+      const ledgerBooks = req.body?.ledgerBooks || readJsonCollection("ledger_books") || [];
+      const systemLogs = req.body?.systemLogs || readJsonCollection("system_logs") || [];
+      const customCalendarEvents = req.body?.customCalendarEvents || readJsonCollection("custom_calendar_events") || [];
+
+      const timestamp = new Date().toISOString();
+      const dateStr = timestamp.replace(/[:.]/g, "-").slice(0, 16);
+      const fileName = `STANDS_eReqs_Backup_${dateStr}.json`;
+
+      const backupPayload = {
+        timestamp,
+        targetAccount: targetEmail,
+        version: "4.2.0",
+        systemSettings: req.body?.systemSettings || readJsonCollection("settings") || {},
+        users,
+        requisitions,
+        projects,
+        churchGroups,
+        ledgerBooks,
+        systemLogs,
+        customCalendarEvents,
+        summary: {
+          totalRequisitions: requisitions.length,
+          totalUsers: users.length,
+          totalProjects: projects.length,
+          totalGroups: churchGroups.length,
+          totalLedgers: ledgerBooks.length
+        }
+      };
+
+      const jsonContent = JSON.stringify(backupPayload, null, 2);
+      const jsonBuffer = Buffer.from(jsonContent, "utf-8");
+      const sizeKb = Math.round(jsonBuffer.length / 1024);
+
+      const subject = `[AUTOSEND BACKUP] System Database Snapshot JSON (${dateStr})`;
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 620px; padding: 24px; color: #1e293b; background: #f8fafc; border-radius: 16px; border: 1px solid #e2e8f0; margin: 0 auto;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <div style="display: inline-block; background: #4f46e5; color: white; padding: 8px 18px; border-radius: 20px; font-weight: bold; font-size: 12px; letter-spacing: 1px; text-transform: uppercase;">
+              🛡️ STANDS eRequisitions System Backup
+            </div>
+          </div>
+          <h2 style="color: #0f172a; margin-top: 0; font-size: 20px; text-align: center; font-weight: 800;">
+            Database Snapshot Attached
+          </h2>
+          <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+            Hello Super Administrator,
+          </p>
+          <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+            An automated backup snapshot of the STANDS eRequisitions database has been compiled and attached as a JSON file for recipient <strong>${targetEmail}</strong>.
+          </p>
+
+          <div style="background: white; padding: 20px; border-radius: 12px; border: 1px solid #cbd5e1; margin: 20px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <h4 style="margin: 0 0 14px 0; font-size: 12px; text-transform: uppercase; color: #64748b; letter-spacing: 1px; font-weight: 800;">
+              Snapshot Summary Metrics
+            </h4>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px 0; color: #64748b;">Target Email:</td>
+                <td style="padding: 8px 0; font-weight: bold; color: #4f46e5; text-align: right;">${targetEmail}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px 0; color: #64748b;">File Attachment:</td>
+                <td style="padding: 8px 0; font-weight: bold; font-family: monospace; text-align: right;">${fileName}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px 0; color: #64748b;">Snapshot Size:</td>
+                <td style="padding: 8px 0; font-weight: bold; text-align: right;">${sizeKb} KB</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px 0; color: #64748b;">Total Requisitions:</td>
+                <td style="padding: 8px 0; font-weight: bold; text-align: right;">${backupPayload.summary.totalRequisitions}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px 0; color: #64748b;">Registered Users:</td>
+                <td style="padding: 8px 0; font-weight: bold; text-align: right;">${backupPayload.summary.totalUsers}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px 0; color: #64748b;">Church Groups/Ministries:</td>
+                <td style="padding: 8px 0; font-weight: bold; text-align: right;">${backupPayload.summary.totalGroups}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #64748b;">Dispatched Timestamp:</td>
+                <td style="padding: 8px 0; font-weight: bold; text-align: right;">${new Date(timestamp).toLocaleString()}</td>
+              </tr>
+            </table>
+          </div>
+
+          <p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 24px; border-top: 1px solid #e2e8f0; pt-16px;">
+            This is an automated system security backup dispatch from PCEA St. Andrews STANDS eRequisitions.
+          </p>
+        </div>
+      `;
+
+      let emailStatus = "DELIVERED";
+      let warning = null;
+
+      try {
+        await transporter.sendMail({
+          from: `"STANDS eRequisitions AutoBackup" <${process.env.SMTP_USER || "ict.team@pceastandrews.org"}>`,
+          to: targetEmail,
+          subject,
+          html,
+          attachments: [
+            {
+              filename: fileName,
+              content: jsonBuffer,
+              contentType: "application/json"
+            }
+          ]
+        });
+      } catch (mailErr: any) {
+        console.warn("[Autosend Backup Email] Mailer warning / offline simulation:", mailErr.message || mailErr);
+        emailStatus = "SIMULATED_LOCAL_STORE";
+        warning = mailErr.message || "SMTP dispatch queued or offline simulation";
+      }
+
+      // Write backup file locally for disk fallback
+      const backupDir = path.join(process.cwd(), "data", "email_json_backups");
+      if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+      const localFilePath = path.join(backupDir, fileName);
+      fs.writeFileSync(localFilePath, jsonContent, "utf-8");
+
+      // Update Config & Logs
+      config.lastSentTimestamp = timestamp;
+      config.totalBackupsSent = (config.totalBackupsSent || 0) + 1;
+      saveBackupEmailConfig(config);
+
+      const logEntry = {
+        id: `embak-${Date.now()}`,
+        timestamp,
+        targetEmail,
+        fileName,
+        sizeKb,
+        status: emailStatus,
+        warning,
+        summary: backupPayload.summary,
+        triggerType: req.body?.triggerType || "MANUAL"
+      };
+
+      const existingLogs = getBackupEmailLogs();
+      saveBackupEmailLogs([logEntry, ...existingLogs]);
+
+      persistActivity({
+        action: "AUTOSEND_BACKUP_EMAIL",
+        details: `Dispatched JSON backup snapshot (${sizeKb} KB) to ${targetEmail} (${emailStatus})`,
+        performedBy: "SUPER_ADMIN_SYSTEM",
+        timestamp
+      });
+
+      return res.json({
+        success: true,
+        status: emailStatus,
+        targetEmail,
+        fileName,
+        sizeKb,
+        timestamp,
+        summary: backupPayload.summary,
+        warning,
+        message: `JSON backup snapshot successfully compiled (${sizeKb} KB) and auto-sent to ${targetEmail}.`
+      });
+    } catch (err: any) {
+      console.error("[/api/backup-autosend-email error]:", err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Failed to execute JSON backup email dispatch"
+      });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

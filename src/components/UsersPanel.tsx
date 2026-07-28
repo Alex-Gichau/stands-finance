@@ -345,15 +345,25 @@ export const UsersPanel: React.FC = () => {
     setIsSaving(true);
     try {
       const primaryGroup = finalGroups[0] || editGroup.trim() || "";
-      await updateUserProfile(editingUser.id, {
+      const profileUpdates = {
         name: editName.trim(),
         role: editRole,
         group: primaryGroup || undefined,
         groups: finalGroups,
         approverCode: (editRole === UserRole.APPROVER_L1 || editRole === UserRole.APPROVER_L2) ? editApproverCode.trim() : undefined
-      });
+      };
+
+      // Optimistic update for local modal state
+      setEditingUser(prev => prev ? { ...prev, ...profileUpdates } : null);
+
+      await updateUserProfile(editingUser.id, profileUpdates);
+
       setEditSuccess("Profile updated successfully!");
-      setTimeout(() => { setEditingUser(null); setEditSuccess(null); }, 1500);
+      // Quick smooth close
+      setTimeout(() => { 
+        setEditingUser(null); 
+        setEditSuccess(null); 
+      }, 300);
     } catch (err: any) {
       setEditError(err?.message || "Update failed.");
     } finally {

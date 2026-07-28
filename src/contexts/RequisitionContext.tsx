@@ -33,6 +33,7 @@ import {
 import { getProjectRequisitions } from "../utils/budgetUtils";
 import { databaseService } from "../lib/databaseService";
 import { uploadAttachmentsToLocalServer } from "../lib/utils";
+import { triggerAutosendBackupEmail, AUTOSEND_DEFAULT_EMAIL } from "../services/autosendBackupService";
 import { initializeApp as initFirebaseApp } from "firebase/app";
 import { 
   getAuth, 
@@ -561,6 +562,77 @@ interface RequisitionContextType {
 
 const RequisitionContext = createContext<RequisitionContextType | undefined>(undefined);
 
+const DEFAULT_PERMISSIONS: PermissionConfig[] = [
+  {
+    id: UserRole.CHURCH_GROUP,
+    role: UserRole.CHURCH_GROUP,
+    access: { dashboard: true, requisitions: true, approvals: false, finance: true, reports: false, users: false, settings: false, accessControl: false, auditTrail: false, transactions: true },
+    actions: { canCreateRequisition: true, canApproveL1: false, canApproveL2: false, canDisburse: false, canDeleteRequisition: false, canManageUsers: false, canManageSettings: false, canViewTransactions: true }
+  },
+  {
+    id: UserRole.APPROVER_L1,
+    role: UserRole.APPROVER_L1,
+    access: { dashboard: true, requisitions: true, approvals: true, finance: true, reports: false, users: false, settings: false, accessControl: false, auditTrail: false, transactions: true },
+    actions: { canCreateRequisition: false, canApproveL1: true, canApproveL2: false, canDisburse: false, canDeleteRequisition: false, canManageUsers: false, canManageSettings: false, canViewTransactions: true }
+  },
+  {
+    id: UserRole.APPROVER_L2,
+    role: UserRole.APPROVER_L2,
+    access: { dashboard: true, requisitions: true, approvals: true, finance: true, reports: false, users: false, settings: false, accessControl: false, auditTrail: false, transactions: true },
+    actions: { canCreateRequisition: false, canApproveL1: false, canApproveL2: true, canDisburse: false, canDeleteRequisition: false, canManageUsers: false, canManageSettings: false, canViewTransactions: true }
+  },
+  {
+    id: UserRole.FINANCE,
+    role: UserRole.FINANCE,
+    access: { dashboard: true, requisitions: true, approvals: false, finance: true, reports: true, users: false, settings: true, accessControl: false, auditTrail: true, transactions: true },
+    actions: { canCreateRequisition: false, canApproveL1: false, canApproveL2: false, canDisburse: true, canDeleteRequisition: false, canManageUsers: false, canManageSettings: true, canViewTransactions: true }
+  },
+  {
+    id: UserRole.ADMIN,
+    role: UserRole.ADMIN,
+    access: { dashboard: true, requisitions: true, approvals: true, finance: true, reports: true, users: true, settings: true, accessControl: true, auditTrail: true, transactions: true },
+    actions: { canCreateRequisition: true, canApproveL1: true, canApproveL2: true, canDisburse: true, canDeleteRequisition: true, canManageUsers: true, canManageSettings: true, canViewTransactions: true }
+  }
+];
+
+function normalizePermissionConfig(p: any): PermissionConfig {
+  if (!p) return null as any;
+  const rawAccess = p?.access || {};
+  const rawActions = p?.actions || {};
+
+  const access = {
+    dashboard: Boolean(rawAccess.dashboard !== undefined ? rawAccess.dashboard : true),
+    requisitions: Boolean(rawAccess.requisitions !== undefined ? rawAccess.requisitions : true),
+    approvals: Boolean(rawAccess.approvals !== undefined ? rawAccess.approvals : false),
+    finance: Boolean(rawAccess.finance !== undefined ? rawAccess.finance : true),
+    reports: Boolean(rawAccess.reports !== undefined ? rawAccess.reports : false),
+    users: Boolean(rawAccess.users !== undefined ? rawAccess.users : false),
+    settings: Boolean(rawAccess.settings !== undefined ? rawAccess.settings : false),
+    accessControl: Boolean(rawAccess.accessControl !== undefined ? rawAccess.accessControl : (rawAccess.access_control !== undefined ? rawAccess.access_control : false)),
+    auditTrail: Boolean(rawAccess.auditTrail !== undefined ? rawAccess.auditTrail : (rawAccess.audit_trail !== undefined ? rawAccess.audit_trail : false)),
+    transactions: Boolean(rawAccess.transactions !== undefined ? rawAccess.transactions : true),
+  };
+
+  const actions = {
+    canCreateRequisition: Boolean(rawActions.canCreateRequisition !== undefined ? rawActions.canCreateRequisition : (rawActions.can_create_requisition !== undefined ? rawActions.can_create_requisition : false)),
+    canApproveL1: Boolean(rawActions.canApproveL1 !== undefined ? rawActions.canApproveL1 : (rawActions.can_approve_l1 !== undefined ? rawActions.can_approve_l1 : false)),
+    canApproveL2: Boolean(rawActions.canApproveL2 !== undefined ? rawActions.canApproveL2 : (rawActions.can_approve_l2 !== undefined ? rawActions.can_approve_l2 : false)),
+    canDisburse: Boolean(rawActions.canDisburse !== undefined ? rawActions.canDisburse : (rawActions.can_disburse !== undefined ? rawActions.can_disburse : false)),
+    canDeleteRequisition: Boolean(rawActions.canDeleteRequisition !== undefined ? rawActions.canDeleteRequisition : (rawActions.can_delete_requisition !== undefined ? rawActions.can_delete_requisition : false)),
+    canManageUsers: Boolean(rawActions.canManageUsers !== undefined ? rawActions.canManageUsers : (rawActions.can_manage_users !== undefined ? rawActions.can_manage_users : false)),
+    canManageSettings: Boolean(rawActions.canManageSettings !== undefined ? rawActions.canManageSettings : (rawActions.can_manage_settings !== undefined ? rawActions.can_manage_settings : false)),
+    canViewTransactions: Boolean(rawActions.canViewTransactions !== undefined ? rawActions.canViewTransactions : (rawActions.can_view_transactions !== undefined ? rawActions.can_view_transactions : true)),
+  };
+
+  const role = (p?.role || p?.id || "") as UserRole;
+  return {
+    id: p?.id || role,
+    role,
+    access,
+    actions
+  };
+}
+
 export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -608,7 +680,18 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       console.error("Failed to save custom calendar events:", e);
     }
   }, [customCalendarEvents]);
-  const [permissionConfigs, setPermissionConfigs] = useState<PermissionConfig[]>([]);
+  const [permissionConfigs, setPermissionConfigs] = useState<PermissionConfig[]>(() => {
+    try {
+      const cached = localStorage.getItem("stands_cache_permissions");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(normalizePermissionConfig).filter(Boolean);
+        }
+      }
+    } catch (e) {}
+    return DEFAULT_PERMISSIONS;
+  });
   const [loading, setLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(true);
   const [isDbSaving, setIsDbSaving] = useState(false);
@@ -1031,36 +1114,73 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (!skipFirestore) {
         await setDoc(doc(db, "settings", "system"), updates, { merge: true });
       }
+
+      const headers = await getAuthHeaders();
+      await fetch(`/api/db/settings/system`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ id: "system", ...updates })
+      }).catch(e => console.warn("[DB Sync] Error updating system settings:", e));
+
       await addSystemLog("SYSTEM_SETTINGS_UPDATE", `System settings updated: ${JSON.stringify(updates)}`, { updates });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, "settings/system");
+      console.error("Failed to update system settings:", err);
     }
   }, [addSystemLog, skipFirestore]);
 
   const updateRolePermissions = useCallback(async (roleId: string, updates: any) => {
-    // Optimistic state update: update local state synchronously so UI toggles flip instantly
+    let updatedConfig: PermissionConfig | null = null;
     setPermissionConfigs(prev => {
       const idx = prev.findIndex(p => p.role === roleId);
       if (idx >= 0) {
         const next = [...prev];
-        next[idx] = {
+        updatedConfig = {
           ...next[idx],
           ...updates,
+          role: roleId as any,
           access: { ...(next[idx].access || {}), ...(updates.access || {}) },
           actions: { ...(next[idx].actions || {}), ...(updates.actions || {}) }
         };
+        next[idx] = updatedConfig;
+        try {
+          localStorage.setItem("stands_cache_permissions", JSON.stringify(next));
+        } catch (e) {}
         return next;
       }
-      return [...prev, { role: roleId as any, ...updates }];
+      updatedConfig = {
+        id: roleId,
+        role: roleId as any,
+        access: { ...(updates.access || {}) },
+        actions: { ...(updates.actions || {}) },
+        ...updates
+      };
+      const next = [...prev, updatedConfig];
+      try {
+        localStorage.setItem("stands_cache_permissions", JSON.stringify(next));
+      } catch (e) {}
+      return next;
     });
 
     try {
       if (!skipFirestore) {
         await setDoc(doc(db, "permissions", roleId), updates, { merge: true });
       }
+
+      const headers = await getAuthHeaders();
+      await fetch(`/api/db/permissions/${roleId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({
+          id: roleId,
+          role: roleId,
+          access: updatedConfig?.access || updates.access,
+          actions: updatedConfig?.actions || updates.actions
+        })
+      }).catch(e => console.warn("[DB Sync] Error updating role permissions:", e));
+
       await addSystemLog("PERMISSIONS_UPDATED", `Access rights modified for role: ${roleId}`, { roleId, updates });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `permissions/${roleId}`);
+      console.error("Failed to update role permissions:", err);
     }
   }, [db, addSystemLog, skipFirestore]);
 
@@ -1640,18 +1760,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const filterGroups = JSON.parse(currentUserGroupsJSON) as string[];
     const parsedGroups = filterGroups.length > 0 ? filterGroups : (currentUserGroup ? [currentUserGroup] : []);
 
-    // Optimization: Filter by group on server if there's only one group to reduce initial load
-    let baseQuery = query(collection(db, "requisitions"), orderBy("submittedAt", "desc"), limit(100));
-    
-    // Server-side filtering for group users with a single primary group
-    if (isGroupUser && parsedGroups.length === 1) {
-      baseQuery = query(
-        collection(db, "requisitions"), 
-        where("groupName", "==", parsedGroups[0]),
-        orderBy("submittedAt", "desc"), 
-        limit(100)
-      );
-    }
+    let baseQuery = query(collection(db, "requisitions"), orderBy("submittedAt", "desc"), limit(250));
 
     let isFirstSnap = true;
 
@@ -1666,10 +1775,6 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
           approvalHistory: safeNormalizeApprovalHistory(r?.approvalHistory || r?.approval_history)
         } as Requisition;
       });
-      // Client-side additional filtering for non-standard access or multiple groups
-      if (isGroupUser && parsedGroups.length > 1) {
-        data = data.filter(req => parsedGroups.includes(req.groupId) || parsedGroups.includes(req.groupName));
-      }
       if (hidePrototype) data = data.filter(req => !req.id.startsWith("req-seed-"));
 
       if (isFirstSnap) {
@@ -1731,7 +1836,6 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     const unsubProjects = onSnapshot(collection(db, "projects"), (snap) => {
       let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
-      if (shouldFilter) data = data.filter(p => parsedGroups.includes(p.groupId) || parsedGroups.includes(p.name));
       if (hidePrototype) data = data.filter(p => !["p1", "p2", "p3", "p4", "p5"].includes(p.id));
       setProjects(data);
     }, (err) => handleSyncError(err, OperationType.LIST, "projects"));
@@ -2437,9 +2541,6 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
               } as Project;
             }).filter(Boolean) as Project[];
 
-            if (isGroupUser && parsedGroups.length > 0) {
-              data = data.filter(p => p && p.groupId && (parsedGroups.includes(p.groupId) || parsedGroups.includes(p.name)));
-            }
             if (hidePrototype) {
               data = data.filter(p => p && p.id && !["p1", "p2", "p3", "p4", "p5"].includes(p.id));
             }
@@ -2618,19 +2719,69 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         // Process Permissions
         try {
           if (dbData?.permissions && Array.isArray(dbData.permissions)) {
-            const data = dbData.permissions.map((p: any) => {
-              if (!p) return null;
-              return {
-                id: p?.id || "",
-                role: p?.role || "",
-                access: p?.access || null,
-                actions: p?.actions || []
-              } as PermissionConfig;
-            }).filter(Boolean) as PermissionConfig[];
-            setPermissionConfigs(data);
+            const data = dbData.permissions
+              .map(normalizePermissionConfig)
+              .filter(p => p && p.role) as PermissionConfig[];
+
+            if (data.length > 0) {
+              setPermissionConfigs(prev => {
+                const map = new Map<string, PermissionConfig>();
+                DEFAULT_PERMISSIONS.forEach(p => map.set(p.role, p));
+                data.forEach(p => {
+                  const existing = map.get(p.role);
+                  map.set(p.role, normalizePermissionConfig({
+                    id: p.id || existing?.id || p.role,
+                    role: p.role,
+                    access: { ...(existing?.access || {}), ...(p.access || {}) },
+                    actions: { ...(existing?.actions || {}), ...(p.actions || {}) }
+                  }));
+                });
+                prev.forEach(p => {
+                  if (p && p.role) {
+                    const existing = map.get(p.role);
+                    map.set(p.role, normalizePermissionConfig({
+                      id: p.id || existing?.id || p.role,
+                      role: p.role,
+                      access: { ...(existing?.access || {}), ...(p.access || {}) },
+                      actions: { ...(existing?.actions || {}), ...(p.actions || {}) }
+                    }));
+                  }
+                });
+                const result = Array.from(map.values());
+                try {
+                  localStorage.setItem("stands_cache_permissions", JSON.stringify(result));
+                } catch (e) {}
+                return result;
+              });
+            }
           }
         } catch (permErr) {
           console.error("[DB Sync] Error mapping permissions:", permErr);
+        }
+
+        // Process Settings
+        try {
+          if (dbData?.settings && Array.isArray(dbData.settings)) {
+            const systemDoc = dbData.settings.find((s: any) => s?.id === "system" || s?.id === "settings_system");
+            if (systemDoc) {
+              setSystemSettings(prev => {
+                const nextSettings = {
+                  ...prev,
+                  ...systemDoc,
+                  hideSupplementaryBudgetBtn: Boolean(systemDoc.hide_supplementary_budget_btn !== undefined ? systemDoc.hide_supplementary_budget_btn : (systemDoc.hideSupplementaryBudgetBtn !== undefined ? systemDoc.hideSupplementaryBudgetBtn : prev.hideSupplementaryBudgetBtn)),
+                  vendorListViewLevel: systemDoc.vendor_list_view_level || systemDoc.vendorListViewLevel || prev.vendorListViewLevel,
+                  requisitionExpiryDays: Number(systemDoc.requisition_expiry_days || systemDoc.requisitionExpiryDays) || prev.requisitionExpiryDays,
+                  isSystemOffline: Boolean(systemDoc.is_system_offline !== undefined ? systemDoc.is_system_offline : (systemDoc.isSystemOffline !== undefined ? systemDoc.isSystemOffline : prev.isSystemOffline))
+                };
+                try {
+                  localStorage.setItem("stands_cache_system_settings", JSON.stringify(nextSettings));
+                } catch (e) {}
+                return nextSettings;
+              });
+            }
+          }
+        } catch (settingsErr) {
+          console.error("[DB Sync] Error mapping settings:", settingsErr);
         }
 
         // Process Thresholds
@@ -2807,6 +2958,20 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             localStorage.setItem(LAST_BACKUP_TIME_KEY, new Date().toISOString());
             console.log("[Google Drive Auto-Backup] 5-hour backup completed successfully for ict.team@pceastandrews.org.");
           }
+
+          // Trigger Autosend Backup Email to geeshau.standsmedia@gmail.com
+          triggerAutosendBackupEmail(AUTOSEND_DEFAULT_EMAIL, {
+            systemSettings,
+            requisitions,
+            users,
+            projects,
+            churchGroups,
+            ledgerBooks,
+            systemLogs,
+            customCalendarEvents
+          }, "SCHEDULED").catch(err => {
+            console.warn("[Autosend Email Backup] Auto-dispatch attempt failed:", err);
+          });
         } catch (e) {
           console.warn("[Google Drive Auto-Backup] Scheduled backup check failed:", e);
         }
@@ -3090,58 +3255,115 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       const existingUser = users.find(u => u.id === id);
       if (existingUser) {
-        await databaseService.saveUserProfile({ ...existingUser, isApproved: true });
-        await addSystemLog("USER_APPROVAL", `Admin approved/activated user ID: ${id}`, { userId: id });
+        const updatedUser = { ...existingUser, isApproved: true };
+        
+        // Optimistic local state update
+        setUsers(prev => {
+          const next = prev.map(u => u.id === id ? updatedUser : u);
+          try { localStorage.setItem("stands_cache_users", JSON.stringify(next)); } catch (e) {}
+          return next;
+        });
+        if (currentUser?.id === id) {
+          setCurrentUser(prev => prev ? { ...prev, isApproved: true } : prev);
+        }
+
+        // Asynchronous background sync
+        databaseService.saveUserProfile(updatedUser).catch(e => console.warn("[User Sync] Background approve failed:", e));
+        addSystemLog("USER_APPROVAL", `Admin approved/activated user ID: ${id}`, { userId: id }).catch(e => console.warn("[User Sync] Log failed:", e));
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${id}`);
+      console.error("Error approving user:", err);
     }
-  }, [users]);
+  }, [users, currentUser, addSystemLog]);
 
   const suspendUser = useCallback(async (id: string, isSuspended: boolean) => {
     try {
       const existingUser = users.find(u => u.id === id);
       if (existingUser) {
-        await databaseService.saveUserProfile({ ...existingUser, isSuspended });
-        await addSystemLog("USER_SUSPENSION", `Admin changed suspension for user ID: ${id} to ${isSuspended}`, { userId: id, isSuspended });
+        const updatedUser = { ...existingUser, isSuspended };
+        
+        // Optimistic local state update
+        setUsers(prev => {
+          const next = prev.map(u => u.id === id ? updatedUser : u);
+          try { localStorage.setItem("stands_cache_users", JSON.stringify(next)); } catch (e) {}
+          return next;
+        });
+        if (currentUser?.id === id) {
+          setCurrentUser(prev => prev ? { ...prev, isSuspended } : prev);
+        }
+
+        // Asynchronous background sync
+        databaseService.saveUserProfile(updatedUser).catch(e => console.warn("[User Sync] Background suspend failed:", e));
+        addSystemLog("USER_SUSPENSION", `Admin changed suspension for user ID: ${id} to ${isSuspended}`, { userId: id, isSuspended }).catch(e => console.warn("[User Sync] Log failed:", e));
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${id}`);
+      console.error("Error suspending user:", err);
     }
-  }, [users]);
+  }, [users, currentUser, addSystemLog]);
 
   const updateUserRole = useCallback(async (id: string, role: UserRole) => {
     try {
       const existingUser = users.find(u => u.id === id);
       if (existingUser) {
-        await databaseService.saveUserProfile({ ...existingUser, role });
+        const updatedUser = { ...existingUser, role };
         
+        // Optimistic local state update
+        setUsers(prev => {
+          const next = prev.map(u => u.id === id ? updatedUser : u);
+          try { localStorage.setItem("stands_cache_users", JSON.stringify(next)); } catch (e) {}
+          return next;
+        });
+        if (currentUser?.id === id) {
+          setCurrentUser(prev => prev ? { ...prev, role } : prev);
+        }
+
+        // Asynchronous background sync
+        databaseService.saveUserProfile(updatedUser).catch(e => console.warn("[User Sync] Background role update failed:", e));
+
         const isElevated = [UserRole.ADMIN, UserRole.FINANCE, UserRole.APPROVER_L1, UserRole.APPROVER_L2].includes(role);
         const actionTitle = isElevated ? "ELEVATED_ROLE_GRANTED" : "USER_ROLE_UPDATE";
         const detailsText = isElevated 
           ? `🚨 SECURITY NOTICE: Admin granted ELEVATED rights (${role}) to user ID: ${id}`
           : `Admin changed role of user ID: ${id} to ${role}`;
           
-        await addSystemLog(actionTitle, detailsText, { userId: id, newRole: role, elevated: isElevated });
+        addSystemLog(actionTitle, detailsText, { userId: id, newRole: role, elevated: isElevated }).catch(e => console.warn("[User Sync] Log failed:", e));
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${id}`);
+      console.error("Error updating user role:", err);
     }
-  }, [users]);
+  }, [users, currentUser, addSystemLog]);
 
   const updateUserProfile = useCallback(async (id: string, updates: Partial<UserProfile>) => {
-    return withDbLoading("Updating user profile...", async () => {
-      try {
-        const existingUser = users.find(u => u.id === id);
-        if (existingUser) {
-          await databaseService.saveUserProfile({ ...existingUser, ...updates });
-          await addSystemLog("USER_PROFILE_UPDATE", `Profile updated for user ID: ${id}`, { userId: id, updates });
-        }
-      } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, `users/${id}`);
+    try {
+      const existingUser = users.find(u => u.id === id);
+      const updatedUser = existingUser ? { ...existingUser, ...updates } : ({ id, ...updates } as UserProfile);
+
+      // 1. Optimistic update: Update React state immediately (0ms UI lag)
+      setUsers(prev => {
+        const exists = prev.some(u => u.id === id);
+        const next = exists 
+          ? prev.map(u => u.id === id ? { ...u, ...updates } : u)
+          : [...prev, updatedUser];
+        try { localStorage.setItem("stands_cache_users", JSON.stringify(next)); } catch (e) {}
+        return next;
+      });
+
+      if (currentUser?.id === id) {
+        setCurrentUser(prev => prev ? { ...prev, ...updates } : prev);
       }
-    });
-  }, [users, addSystemLog, withDbLoading]);
+
+      // 2. Non-blocking asynchronous backend save (no full screen loading overlay)
+      databaseService.saveUserProfile(updatedUser).catch(e => {
+        console.warn("[User Sync] Background save profile failed:", e);
+      });
+
+      addSystemLog("USER_PROFILE_UPDATE", `Profile updated for user ID: ${id}`, { userId: id, updates }).catch(e => {
+        console.warn("[User Sync] System log failed:", e);
+      });
+    } catch (err) {
+      console.error("Error updating user profile:", err);
+    }
+  }, [users, currentUser, addSystemLog]);
 
   const updateCurrentUserPassword = useCallback(async (newPassword: string) => {
     try {
@@ -3253,15 +3475,28 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       throw new Error("Unauthorized: Only Super Admins can delete other Super Admins.");
     }
 
+    // Optimistic removal from React state & localStorage
+    setUsers(prev => {
+      const next = prev.filter(u => u.id !== id);
+      try { localStorage.setItem("stands_cache_users", JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+
     try {
-      await deleteDoc(doc(db, "users", id));
-      await addSystemLog("USER_DELETED", `User deleted: ${userToDelete.email} (${userToDelete.role})`, { 
+      deleteDoc(doc(db, "users", id)).catch(e => console.warn("[User Sync] Delete doc failed:", e));
+      const headers = await getAuthHeaders();
+      fetch(`/api/db/users/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", ...headers }
+      }).catch(e => console.warn("[User Sync] Delete API failed:", e));
+
+      addSystemLog("USER_DELETED", `User deleted: ${userToDelete.email} (${userToDelete.role})`, { 
         userId: id, 
         email: userToDelete.email, 
         role: userToDelete.role 
-      });
+      }).catch(e => console.warn("[User Sync] Log failed:", e));
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `users/${id}`);
+      console.error("Error deleting user:", err);
     }
   }, [currentUser, users, addSystemLog]);
 

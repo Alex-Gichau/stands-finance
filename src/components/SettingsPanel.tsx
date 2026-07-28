@@ -50,6 +50,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { SystemHealth } from "./SystemHealth";
 import { databaseService } from "../lib/databaseService";
 import { DriveBackupModal } from "./DriveBackupModal";
+import { AutosendBackupMonitoringPanel } from "./AutosendBackupMonitoringPanel";
 
 export const SettingsPanel: React.FC = () => {
   const { 
@@ -1342,6 +1343,9 @@ sudo systemctl enable mongod`}
                 </div>
               </div>
             </section>
+
+            {/* Autosend JSON Email Backup & Super Admin Monitoring Section */}
+            <AutosendBackupMonitoringPanel />
 
             {/* Google Drive 5-Hour Automated System Backup Section */}
             <section className="bg-card rounded-[2rem] border border-border p-8 shadow-sm transition-all space-y-6">

@@ -18,14 +18,14 @@ export const GlobalFiscalOverview: React.FC<GlobalFiscalOverviewProps> = ({
   status = "OPEN",
   className
 }) => {
-  const { requisitions } = useRequisitions();
+  const { requisitions, churchGroups } = useRequisitions();
 
   const fiscalStats = useMemo(() => {
-    const activeProjects = projects.filter(p => p.fiscalYear === activeYear);
+    const activeProjects = projects.filter(p => p.fiscalYear === activeYear || (!p.fiscalYear && activeYear === 2026));
     const totalAllocated = activeProjects.reduce((sum, p) => sum + p.allocatedBudget, 0);
     
     const committedRequisitions = requisitions.filter(r => 
-      r.fiscalYear === activeYear && 
+      (!r.fiscalYear || r.fiscalYear === activeYear) && 
       [
         RequisitionStatus.SUBMITTED, 
         RequisitionStatus.APPROVED_L1, 
@@ -38,7 +38,7 @@ export const GlobalFiscalOverview: React.FC<GlobalFiscalOverviewProps> = ({
     const totalSpentAndCommitted = committedRequisitions.reduce((sum, r) => sum + r.amount, 0);
     const utilizationRate = totalAllocated > 0 ? (totalSpentAndCommitted / totalAllocated) * 100 : 0;
     const requisitionsCount = committedRequisitions.length;
-    const projectsCount = activeProjects.length;
+    const projectsCount = Math.max(activeProjects.length, churchGroups.length);
     const totalRemaining = Math.max(0, totalAllocated - totalSpentAndCommitted);
 
     return {
@@ -49,7 +49,7 @@ export const GlobalFiscalOverview: React.FC<GlobalFiscalOverviewProps> = ({
       projectsCount,
       totalRemaining
     };
-  }, [projects, requisitions, activeYear]);
+  }, [projects, churchGroups, requisitions, activeYear]);
 
   return (
     <motion.div

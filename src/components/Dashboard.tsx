@@ -126,6 +126,8 @@ const Dashboard: React.FC<{
   const { 
     requisitions, 
     projects, 
+    churchGroups,
+    ledgerBooks,
     alerts, 
     currentUser, 
     seedAllEcosystemData, 
@@ -415,49 +417,75 @@ const Dashboard: React.FC<{
   const { year: activeYear } = useActiveFiscalYear();
 
   const assignedMinistries = useMemo(() => {
-    return currentUser?.groups && currentUser.groups.length > 0 
-      ? currentUser.groups 
-      : (currentUser?.group ? [currentUser.group] : []);
+    if (!currentUser) return [];
+    const list: string[] = [];
+    if (currentUser.group && currentUser.group.trim()) list.push(currentUser.group.trim());
+    if (Array.isArray(currentUser.groups)) {
+      currentUser.groups.forEach(g => {
+        if (g && g.trim() && !list.includes(g.trim())) list.push(g.trim());
+      });
+    }
+    return list;
   }, [currentUser]);
 
   const [activeMinistryView, setActiveMinistryView] = useState<string>("ALL");
 
   const { currentProjectForBanner, totalAllocatedForBanner, totalUsedForBanner, totalRequisitionsForBanner } = useMemo(() => {
-    const activeProjects = projects.filter(p => assignedMinistries.includes(p.groupId) && p.fiscalYear === activeYear);
-    
-    if (activeMinistryView === "ALL") {
-      const allocated = activeProjects.reduce((sum, p) => sum + (Number(p.allocatedBudget) || 0), 0);
-      const reqs = requisitions.filter(r => 
-        activeProjects.some(p => p.id === r.projectId) && 
-        COMMITTED_REQUISITION_STATUSES.includes(r.status)
-      );
-      const used = reqs.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
-      return {
-        currentProjectForBanner: null,
-        totalAllocatedForBanner: allocated,
-        totalUsedForBanner: used,
-        totalRequisitionsForBanner: reqs.length
-      };
-    } else {
-      const proj = activeProjects.find(p => p.groupId === activeMinistryView);
-      if (!proj) {
-        return {
-          currentProjectForBanner: null,
-          totalAllocatedForBanner: 0,
-          totalUsedForBanner: 0,
-          totalRequisitionsForBanner: 0
-        };
-      }
-      const { usedAmount } = calculateProjectUtilization(proj, requisitions);
-      const reqs = getProjectRequisitions(proj, requisitions);
-      return {
-        currentProjectForBanner: proj,
-        totalAllocatedForBanner: proj.allocatedBudget,
-        totalUsedForBanner: usedAmount,
-        totalRequisitionsForBanner: reqs.length
-      };
+    if (assignedMinistries.length === 0) {
+      return { currentProjectForBanner: null, totalAllocatedForBanner: 0, totalUsedForBanner: 0, totalRequisitionsForBanner: 0 };
     }
-  }, [assignedMinistries, activeMinistryView, projects, requisitions, activeYear]);
+
+    const selectedMinistries = activeMinistryView === "ALL" ? assignedMinistries : [activeMinistryView];
+
+    let allocated = 0;
+    let used = 0;
+    let reqCount = 0;
+
+    selectedMinistries.forEach(min => {
+      const cleanMin = min.toLowerCase().trim();
+      
+      const minProjects = projects.filter(p => {
+        if (p.fiscalYear && p.fiscalYear !== activeYear && activeYear !== 2026) return false;
+        const cleanGroup = (p.groupId || "").toLowerCase().trim();
+        const cleanName = (p.name || "").toLowerCase().trim();
+        return cleanGroup === cleanMin || cleanName === cleanMin || cleanGroup.includes(cleanMin) || cleanMin.includes(cleanGroup);
+      });
+
+      let minAllocated = minProjects.reduce((sum, p) => sum + (Number(p.allocatedBudget) || 0), 0);
+      
+      if (minAllocated === 0) {
+        const matchingLedger = ledgerBooks.find(lb => {
+          const lbName = (lb.ministryName || "").toLowerCase().trim();
+          const lbId = (lb.ministryId || "").toLowerCase().trim();
+          return lbName === cleanMin || lbId === cleanMin || lbName.includes(cleanMin) || cleanMin.includes(lbName);
+        });
+        if (matchingLedger && matchingLedger.budgetLimit) {
+          minAllocated = matchingLedger.budgetLimit;
+        }
+      }
+
+      const minReqs = requisitions.filter(r => {
+        if (!COMMITTED_REQUISITION_STATUSES.includes(r.status)) return false;
+        const cleanReqGroup = (r.groupName || r.groupId || "").toLowerCase().trim();
+        const matchesGroup = cleanReqGroup === cleanMin || cleanReqGroup.includes(cleanMin) || cleanMin.includes(cleanReqGroup);
+        const matchesProject = minProjects.some(p => p.id === r.projectId);
+        return matchesGroup || matchesProject;
+      });
+
+      const minUsed = minReqs.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+
+      allocated += minAllocated;
+      used += minUsed;
+      reqCount += minReqs.length;
+    });
+
+    return {
+      currentProjectForBanner: null,
+      totalAllocatedForBanner: allocated,
+      totalUsedForBanner: used,
+      totalRequisitionsForBanner: reqCount
+    };
+  }, [assignedMinistries, activeMinistryView, projects, ledgerBooks, requisitions, activeYear]);
 
   const fiscalSummary = useMemo(() => {
     const activeProjects = projects.filter(p => p.fiscalYear === activeYear);
@@ -831,7 +859,7 @@ const Dashboard: React.FC<{
       />
 
       {/* Scoped Budget Banner for assigned ministries */}
-      {assignedMinistries.length > 0 && totalAllocatedForBanner > 0 && (
+      {assignedMinistries.length > 0 && (
         <div className="space-y-4">
           {/* Multi-Ministry View Switcher Toggle */}
           {assignedMinistries.length > 1 && (

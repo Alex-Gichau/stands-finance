@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import { Project, RequisitionStatus } from "../types";
 import { formatCurrency, cn } from "../lib/utils";
 import { Wallet, CheckCircle, AlertTriangle, PiggyBank, ArrowDownRight, TrendingDown } from "lucide-react";
@@ -10,11 +10,12 @@ interface BudgetCircularGaugesProps {
   projects: Project[];
 }
 
-interface GaugeItemProps {
+interface BudgetCircularGaugeItemProps {
   project: Project;
+  isAssigned?: boolean;
 }
 
-const BudgetCircularGaugeItem: React.FC<GaugeItemProps> = ({ project }) => {
+const BudgetCircularGaugeItem: React.FC<BudgetCircularGaugeItemProps> = ({ project, isAssigned }) => {
   const { requisitions } = useRequisitions();
   const { name, allocatedBudget } = project;
 
@@ -65,19 +66,27 @@ const BudgetCircularGaugeItem: React.FC<GaugeItemProps> = ({ project }) => {
       id={`gauge-card-${project.id}`}
       whileHover={{ y: -4, transition: { duration: 0.2 } }}
       className={cn(
-        "bg-gradient-to-br p-5 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col items-center text-center justify-between min-h-[260px] relative overflow-hidden transition-all group",
+        "bg-gradient-to-br p-5 rounded-3xl border shadow-xs flex flex-col items-center text-center justify-between min-h-[270px] relative overflow-hidden transition-all group",
+        isAssigned ? "border-indigo-300 ring-2 ring-indigo-500/20" : "border-slate-200/80",
         bgGradient
       )}
     >
+      {/* Assigned badge if applicable */}
+      {isAssigned && (
+        <span className="absolute top-2 left-2 bg-indigo-600 text-white text-[7px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full z-10 shadow-sm">
+          Your Ministry
+        </span>
+      )}
+
       {/* Decorative subtle pulse border for low budget */}
       {remainingPct <= 10 && (
         <span className="absolute inset-x-0 top-0 h-[3px] bg-rose-500 animate-pulse" />
       )}
 
       {/* Top Header line of card */}
-      <div className="w-full space-y-1">
+      <div className="w-full space-y-1 pt-2">
         <div className="flex items-center justify-center gap-1">
-          <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Remaining Base</span>
+          <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Headroom Base</span>
           {alertIcon}
         </div>
         <h4 className="text-[10px] font-black text-slate-800 uppercase tracking-wider line-clamp-1 group-hover:text-primary transition-colors pr-1 pl-1" title={name}>
@@ -120,7 +129,7 @@ const BudgetCircularGaugeItem: React.FC<GaugeItemProps> = ({ project }) => {
             {remainingPct.toFixed(0)}%
           </span>
           <span className="text-[7px] font-bold text-slate-400 uppercase tracking-widest leading-none mt-1">
-            BUDGET LEFT
+            HEADROOM
           </span>
         </div>
       </div>
@@ -145,14 +154,73 @@ const BudgetCircularGaugeItem: React.FC<GaugeItemProps> = ({ project }) => {
 };
 
 export const BudgetCircularGauges: React.FC<BudgetCircularGaugesProps> = ({ projects }) => {
-  const { requisitions } = useRequisitions();
+  const { requisitions, churchGroups, currentUser, ledgerBooks } = useRequisitions();
   const { year: activeYear } = useActiveFiscalYear();
   const [showAllGauges, setShowAllGauges] = useState(false);
+  const [filterMode, setFilterMode] = useState<"MY_MINISTRIES" | "ALL">("MY_MINISTRIES");
 
-  // Filters projects belonging to the active year.
+  // User assigned group names (clean lower-case set)
+  const assignedGroupsList = useMemo(() => {
+    if (!currentUser) return [];
+    const list: string[] = [];
+    if (currentUser.group) list.push(currentUser.group.trim());
+    if (Array.isArray(currentUser.groups)) {
+      currentUser.groups.forEach(g => {
+        if (g && !list.includes(g.trim())) list.push(g.trim());
+      });
+    }
+    return list;
+  }, [currentUser]);
+
+  // Combine DB projects for active fiscal year with any active church groups missing explicit project rows
   const activeYearProjects = useMemo(() => {
-    return projects.filter(p => p.fiscalYear === activeYear);
-  }, [projects, activeYear]);
+    const existing = projects.filter(p => p.fiscalYear === activeYear || (!p.fiscalYear && activeYear === 2026));
+    const existingGroupNames = new Set(existing.map(p => (p.groupId || p.name).toLowerCase().trim()));
+
+    const synthesized: Project[] = [];
+    churchGroups.forEach(cg => {
+      const cgClean = cg.name.toLowerCase().trim();
+      if (!existingGroupNames.has(cgClean)) {
+        // Find if there is a ledger book with budget limit for this group
+        const matchingLedger = ledgerBooks.find(lb => lb.ministryName.toLowerCase().trim() === cgClean || lb.ministryId.toLowerCase().trim() === cgClean);
+        const allocatedBudget = matchingLedger ? matchingLedger.budgetLimit : 0;
+
+        synthesized.push({
+          id: `cg-synth-${cg.id || cg.name}`,
+          name: cg.name,
+          groupId: cg.name,
+          allocatedBudget,
+          spentAmount: 0,
+          status: "ACTIVE",
+          color: "bg-indigo-500",
+          fiscalYear: activeYear
+        });
+      }
+    });
+
+    return [...existing, ...synthesized];
+  }, [projects, churchGroups, ledgerBooks, activeYear]);
+
+  // Check if project belongs to assigned groups
+  const isProjectAssigned = useCallback((p: Project) => {
+    if (assignedGroupsList.length === 0) return false;
+    const pGroup = (p.groupId || p.name).toLowerCase().trim();
+    return assignedGroupsList.some(ag => {
+      const cleanAg = ag.toLowerCase().trim();
+      return pGroup === cleanAg || pGroup.includes(cleanAg) || cleanAg.includes(pGroup);
+    });
+  }, [assignedGroupsList]);
+
+  const assignedProjects = useMemo(() => {
+    return activeYearProjects.filter(p => isProjectAssigned(p));
+  }, [activeYearProjects, isProjectAssigned]);
+
+  const displayedProjectsList = useMemo(() => {
+    if (filterMode === "MY_MINISTRIES" && assignedGroupsList.length > 0 && assignedProjects.length > 0) {
+      return assignedProjects;
+    }
+    return activeYearProjects;
+  }, [filterMode, assignedGroupsList, assignedProjects, activeYearProjects]);
 
   // Total Summary values for global stats
   const summary = useMemo(() => {
@@ -177,8 +245,8 @@ export const BudgetCircularGauges: React.FC<BudgetCircularGaugesProps> = ({ proj
     };
   }, [activeYearProjects, requisitions]);
 
-  const displayedProjects = showAllGauges ? activeYearProjects : activeYearProjects.slice(0, 5);
-  const hasMore = activeYearProjects.length > 5;
+  const displayedProjects = showAllGauges ? displayedProjectsList : displayedProjectsList.slice(0, 5);
+  const hasMore = displayedProjectsList.length > 5;
 
   return (
     <div 
@@ -189,10 +257,15 @@ export const BudgetCircularGauges: React.FC<BudgetCircularGaugesProps> = ({ proj
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
-            <span className="p-1 px-1.5 bg-indigo-50 text-indigo-600 rounded-md text-[9px] font-black uppercase tracking-wider flex items-center gap-1 w-fit">
+            <span className="p-1 px-1.5 bg-indigo-50 text-indigo-600 rounded-md text-[9px] font-black uppercase tracking-wider flex items-center gap-1 w-fit border border-indigo-100">
               <PiggyBank size={12} />
-              Remaining reserves breakdown
+              Ministry Headroom Breakdown
             </span>
+            {assignedGroupsList.length > 0 && (
+              <span className="bg-emerald-50 text-emerald-700 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border border-emerald-200">
+                {assignedGroupsList.length} Assigned {assignedGroupsList.length === 1 ? "Ministry" : "Ministries"}
+              </span>
+            )}
           </div>
           <h3 className="text-sm md:text-base font-black text-slate-900 uppercase tracking-tight">
             Ministry Headroom & Safe-To-Spend Gauges
@@ -228,28 +301,69 @@ export const BudgetCircularGauges: React.FC<BudgetCircularGaugesProps> = ({ proj
         </div>
       </div>
 
-      {activeYearProjects.length > 0 ? (
+      {/* Filter Toggle for Users with assigned groups */}
+      {assignedGroupsList.length > 0 && assignedProjects.length > 0 && (
+        <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mr-2">Display Scope:</span>
+          <button
+            onClick={() => setFilterMode("MY_MINISTRIES")}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer border",
+              filterMode === "MY_MINISTRIES"
+                ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+            )}
+          >
+            My Assigned Ministries ({assignedProjects.length})
+          </button>
+          <button
+            onClick={() => setFilterMode("ALL")}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer border",
+              filterMode === "ALL"
+                ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+            )}
+          >
+            All Organization Ministries ({activeYearProjects.length})
+          </button>
+        </div>
+      )}
+
+      {displayedProjectsList.length > 0 ? (
         <div className="space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {displayedProjects.map(project => (
-              <BudgetCircularGaugeItem key={project.id} project={project} />
+              <BudgetCircularGaugeItem 
+                key={project.id} 
+                project={project} 
+                isAssigned={isProjectAssigned(project)}
+              />
             ))}
           </div>
           {hasMore && (
             <div className="flex justify-center pt-2">
               <button
                 onClick={() => setShowAllGauges(!showAllGauges)}
-                className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 px-6 py-2.5 rounded-full border border-slate-200 transition-colors"
+                className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 px-6 py-2.5 rounded-full border border-slate-200 transition-colors cursor-pointer"
               >
-                {showAllGauges ? "Show Less" : `See All ${activeYearProjects.length} Categories`}
+                {showAllGauges ? "Show Less" : `See All ${displayedProjectsList.length} Categories`}
               </button>
             </div>
           )}
         </div>
       ) : (
-        <div className="text-center py-12 bg-slate-50 border border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-300">
+        <div className="text-center py-12 bg-slate-50 border border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-400">
           <Wallet size={36} />
           <p className="text-[10px] font-black uppercase tracking-widest mt-2">No active group budget items found</p>
+          {filterMode === "MY_MINISTRIES" && (
+            <button
+              onClick={() => setFilterMode("ALL")}
+              className="mt-3 text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:underline"
+            >
+              View All Organization Ministries ({activeYearProjects.length})
+            </button>
+          )}
         </div>
       )}
     </div>
