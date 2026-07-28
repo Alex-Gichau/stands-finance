@@ -3552,7 +3552,12 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [db]);
 
-  const sendEmailNotification = useCallback(async (req: Requisition, status: string, details?: string) => {
+  const sendEmailNotification = useCallback(async (
+    req: Requisition, 
+    status: string, 
+    details?: string,
+    approverName?: string
+  ) => {
     let targetEmail = req.requesterEmail;
     
     if (!targetEmail) {
@@ -3572,18 +3577,25 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: targetEmail,
-          requesterName: req.requesterName,
+          requesterName: req.requesterName || "Requester",
+          requesterEmail: req.requesterEmail || targetEmail,
           amount: req.amount,
           title: req.title,
           requisitionId: req.id,
           status: status,
-          details: details
+          details: details,
+          groupName: req.groupName || "General Ministry",
+          description: req.description || "",
+          payableTo: req.payableTo || "N/A",
+          submittedAt: req.submittedAt || new Date().toISOString(),
+          approverName: approverName || currentUser?.name || currentUser?.email || "Reviewing Official",
+          approvalReason: details || ""
         })
       });
     } catch (err) {
       console.error("Failed to trigger email notification:", err);
     }
-  }, [users]);
+  }, [users, currentUser]);
 
   const syncRequisitionToGoogleSheets = useCallback(async (req: Requisition) => {
     try {
@@ -3676,7 +3688,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       expiresAt: expiresAt.toISOString(),
       escalationLevel: 0,
       approvalHistory: [],
-      flaggedForAudit: reqData.amount > 100000,
+      flaggedForAudit: reqData.flaggedForAudit !== undefined ? reqData.flaggedForAudit : false,
       fiscalYear: systemSettings.currentFiscalYear || 2026,
     };
 
@@ -3796,7 +3808,12 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }).catch(() => {});
 
       if (status === RequisitionStatus.APPROVED_L1 || status === RequisitionStatus.APPROVED_L2 || status === RequisitionStatus.DISBURSED || status === RequisitionStatus.REJECTED) {
-         sendEmailNotification(req, status, decision === "REJECT" ? (rejectionReason || note) : note);
+         sendEmailNotification(
+           updatedReq, 
+           status, 
+           decision === "REJECT" ? (rejectionReason || note) : note,
+           currentUser?.name || currentUser?.email || "Reviewing Official"
+         );
       }
 
       await syncRequisitionToGoogleSheets(updatedReq);
@@ -3916,7 +3933,12 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
       
       if (status === RequisitionStatus.APPROVED_L1 || status === RequisitionStatus.APPROVED_L2 || status === RequisitionStatus.DISBURSED || status === RequisitionStatus.REJECTED) {
-         sendEmailNotification(req, status, decision === "REJECT" ? (rejectionReason || note) : note).catch(() => {});
+         sendEmailNotification(
+           updatedReq, 
+           status, 
+           decision === "REJECT" ? (rejectionReason || note) : note,
+           currentUser?.name || currentUser?.email || "Reviewing Official"
+         ).catch(() => {});
       }
 
       addSystemLog("STATUS_CHANGE", `Requisition '${req.title}' decision: ${decision} -> New Status: ${status}`, {
@@ -4000,7 +4022,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const cleanedUpdates = {
         ...updates,
         updatedAt: new Date().toISOString(),
-        flaggedForAudit: newAmount > 100000 ? true : (updates.flaggedForAudit !== undefined ? updates.flaggedForAudit : (currentReq.flaggedForAudit || false))
+        flaggedForAudit: updates.flaggedForAudit !== undefined ? updates.flaggedForAudit : (currentReq.flaggedForAudit || false)
       };
 
       const updatedReq: Requisition = {
@@ -4033,7 +4055,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const cleanedUpdates = {
         ...updates,
         updatedAt: new Date().toISOString(),
-        flaggedForAudit: newAmount > 100000 ? true : (updates.flaggedForAudit !== undefined ? updates.flaggedForAudit : (currentReq.flaggedForAudit || false))
+        flaggedForAudit: updates.flaggedForAudit !== undefined ? updates.flaggedForAudit : (currentReq.flaggedForAudit || false)
       };
       
       const updatedReq = { ...currentReq, ...cleanedUpdates };
