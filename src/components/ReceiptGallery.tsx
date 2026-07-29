@@ -10,9 +10,11 @@ import { cn, normalizeAttachmentUrl } from "../lib/utils";
 
 interface ReceiptGalleryProps {
   receipts: string[];
+  requisitionTitle?: string;
+  groupName?: string;
 }
 
-export const ReceiptGallery: React.FC<ReceiptGalleryProps> = ({ receipts }) => {
+export const ReceiptGallery: React.FC<ReceiptGalleryProps> = ({ receipts, requisitionTitle, groupName }) => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [zoom, setZoom] = useState<number>(1);
   const [rotation, setRotation] = useState<number>(0);
@@ -21,6 +23,22 @@ export const ReceiptGallery: React.FC<ReceiptGalleryProps> = ({ receipts }) => {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   if (!receipts || receipts.length === 0) return null;
+
+  const getDownloadName = (index: number) => {
+    const sanitize = (str: string) =>
+      (str || "")
+        .trim()
+        .replace(/[^a-zA-Z0-9_\-\s]/g, "")
+        .replace(/\s+/g, "_")
+        .replace(/_+/g, "_");
+
+    if (groupName || requisitionTitle) {
+      const group = sanitize(groupName || "") || "Group";
+      const title = sanitize(requisitionTitle || "") || "Requisition";
+      return `Receipt_${group}_${title}_${index + 1}.png`;
+    }
+    return `Receipt_${index + 1}.png`;
+  };
 
   const downloadImage = (url: string, filename: string) => {
     const link = document.createElement("a");
@@ -89,7 +107,7 @@ export const ReceiptGallery: React.FC<ReceiptGalleryProps> = ({ receipts }) => {
               key={`${receipt}-${index}`}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => downloadImage(normalizedReceipt, `receipt_${index + 1}.png`)}
+              onClick={() => downloadImage(normalizedReceipt, getDownloadName(index))}
               className="relative flex-shrink-0 w-32 h-44 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 cursor-pointer group shadow-sm"
             >
               <img 
@@ -139,7 +157,7 @@ export const ReceiptGallery: React.FC<ReceiptGalleryProps> = ({ receipts }) => {
                   onClick={() => {
                     const link = document.createElement("a");
                     link.href = selectedImage;
-                    link.download = `receipt_${Date.now()}.png`;
+                    link.download = getDownloadName(0);
                     link.click();
                   }}
                   className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-all border border-white/10"

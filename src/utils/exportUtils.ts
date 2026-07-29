@@ -1024,47 +1024,74 @@ export function generateVoucherHtml(req: Requisition, currentUser: any): string 
   `;
 }
 
+/**
+ * Generates a descriptive filename for receipt exports, including Group Name and Requisition Title.
+ * e.g., "Receipt_Music_Ministry_June_2026_requisition_6CLNCRAQ.html"
+ */
+export function getReceiptFileName(req: Requisition, extension: string = "html"): string {
+  const sanitize = (str: string) =>
+    (str || "")
+      .trim()
+      .replace(/[^a-zA-Z0-9_\-\s]/g, "")
+      .replace(/\s+/g, "_")
+      .replace(/_+/g, "_");
+
+  const group = sanitize(req.groupName) || "Group";
+  const title = sanitize(req.title) || "Requisition";
+  const id = sanitize(req.id) || "Receipt";
+
+  return `Receipt_${group}_${title}_${id}.${extension}`;
+}
+
 export function generateReceiptHtml(req: Requisition): string {
+  const fileName = getReceiptFileName(req, "pdf");
   return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Receipt - ${req.id}</title>
+  <title>${fileName}</title>
   <style>
     @page {
-      size: A5 portrait;
-      margin: 10mm;
+      size: A4 portrait;
+      margin: 15mm;
+    }
+    * {
+      box-sizing: border-box;
     }
     body {
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       color: #0f172a;
       margin: 0;
-      padding: 0;
-      background: #ffffff;
+      padding: 20px;
+      background: #f8fafc;
       -webkit-font-smoothing: antialiased;
     }
-    .receipt {
+    .receipt-container {
       position: relative;
       width: 100%;
-      max-width: 128mm;
+      max-width: 680px;
       margin: 0 auto;
-      padding: 5px;
+      padding: 40px;
       box-sizing: border-box;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
       display: flex;
       flex-direction: column;
       justify-content: space-between;
       overflow: hidden;
-      min-height: 180mm;
+      min-height: 800px;
     }
     .watermark {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 260px;
-      height: 260px;
-      opacity: 0.035;
+      width: 320px;
+      height: 320px;
+      opacity: 0.03;
       pointer-events: none;
       z-index: 0;
     }
@@ -1075,11 +1102,11 @@ export function generateReceiptHtml(req: Requisition): string {
       flex-direction: column;
       height: 100%;
       justify-content: space-between;
+      gap: 32px;
     }
     .header {
-      border-bottom: 2px solid #0f172a;
-      padding-bottom: 12px;
-      margin-bottom: 15px;
+      border-bottom: 3px solid #0f172a;
+      padding-bottom: 20px;
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
@@ -1087,77 +1114,94 @@ export function generateReceiptHtml(req: Requisition): string {
     .brand {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 14px;
     }
     .brand-logo {
-      width: 30px;
-      height: 30px;
+      width: 44px;
+      height: 44px;
       background: #0f172a;
-      color: white;
-      border-radius: 8px;
+      color: #ffffff;
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 900;
-      font-size: 16px;
+      font-size: 22px;
     }
     .church-info h1 {
-      font-size: 14px;
+      font-size: 20px;
       font-weight: 900;
       margin: 0;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      color: #0f172a;
     }
     .church-info p {
-      font-size: 8px;
-      font-weight: 900;
+      font-size: 11px;
+      font-weight: 800;
       color: #64748b;
-      margin: 2px 0 0 0;
+      margin: 3px 0 0 0;
       text-transform: uppercase;
-      letter-spacing: 1.2px;
+      letter-spacing: 1.5px;
     }
     .receipt-meta {
       text-align: right;
     }
     .meta-label {
-      font-size: 8px;
+      font-size: 10px;
       font-weight: 900;
-      color: #94a3b8;
+      color: #64748b;
       text-transform: uppercase;
-      letter-spacing: 0.8px;
+      letter-spacing: 1px;
+      display: block;
+      margin-bottom: 4px;
     }
     .meta-value {
-      font-family: monospace;
-      font-weight: 700;
-      font-size: 11px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-weight: 800;
+      font-size: 16px;
+      color: #0f172a;
     }
     .info-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 15px;
+      gap: 20px;
+      padding: 16px;
+      background: #f8fafc;
+      border-radius: 12px;
+      border: 1px solid #f1f5f9;
     }
     .info-item label {
       display: block;
-      font-size: 8px;
-      font-weight: 900;
-      color: #94a3b8;
-      text-transform: uppercase;
-      margin-bottom: 2px;
-    }
-    .info-item div {
       font-size: 10px;
+      font-weight: 800;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 4px;
+    }
+    .info-item .primary-val {
+      font-size: 14px;
+      font-weight: 800;
+      color: #0f172a;
+      line-height: 1.3;
+    }
+    .info-item .secondary-val {
+      color: #475569;
+      font-size: 12px;
+      margin-top: 2px;
+      text-transform: uppercase;
       font-weight: 700;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 15px;
+      margin: 8px 0;
     }
     th {
-      border-bottom: 1.5px solid #0f172a;
-      padding: 6px 0;
-      font-size: 8px;
+      border-bottom: 2px solid #0f172a;
+      padding: 10px 0;
+      font-size: 11px;
       font-weight: 900;
       color: #0f172a;
       text-transform: uppercase;
@@ -1165,87 +1209,130 @@ export function generateReceiptHtml(req: Requisition): string {
       letter-spacing: 1px;
     }
     td {
-      padding: 10px 0;
+      padding: 16px 0;
       border-bottom: 1px solid #e2e8f0;
+      vertical-align: top;
+    }
+    .item-title {
+      font-weight: 800;
+      font-size: 15px;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+    .item-desc {
+      font-size: 12px;
+      color: #475569;
+      font-style: italic;
+      line-height: 1.5;
+    }
+    .item-status {
+      margin-top: 8px;
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: #059669;
+      background: #ecfdf5;
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    .item-amount {
+      text-align: right;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-weight: 800;
+      font-size: 16px;
+      color: #0f172a;
     }
     .amount-words {
       background: #f8fafc;
-      padding: 10px;
-      border-radius: 6px;
+      padding: 16px;
+      border-radius: 12px;
       border: 1px solid #e2e8f0;
-      margin-bottom: 15px;
     }
     .amount-words label {
       display: block;
-      font-size: 8px;
+      font-size: 10px;
       font-weight: 900;
-      color: #94a3b8;
+      color: #64748b;
       text-transform: uppercase;
-      margin-bottom: 3px;
+      letter-spacing: 0.8px;
+      margin-bottom: 6px;
     }
     .amount-words div {
-      font-size: 9px;
-      font-weight: 700;
-      font-style: italic;
+      font-size: 13px;
+      font-weight: 800;
+      color: #1e293b;
       text-transform: uppercase;
+      line-height: 1.4;
     }
     .footer {
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
-      padding-top: 15px;
-      border-top: 1px dashed #cbd5e1;
+      padding-top: 24px;
+      border-top: 2px dashed #cbd5e1;
       margin-top: auto;
+      gap: 16px;
     }
     .signature-area {
-      border-top: 1px solid #cbd5e1;
-      width: 110px;
-      padding-top: 3px;
-      margin-top: 15px;
-      font-size: 7px;
+      border-top: 1px solid #94a3b8;
+      width: 130px;
+      padding-top: 6px;
+      margin-top: 20px;
+      font-size: 9px;
       font-weight: 900;
-      color: #94a3b8;
+      color: #64748b;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.8px;
+    }
+    .qr-block {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border: 1px solid #cbd5e1;
+      padding: 10px 14px;
+      border-radius: 12px;
+      background: #f8fafc;
     }
     .grand-total {
       text-align: right;
     }
     .grand-total .val {
-      font-size: 14px;
+      font-size: 22px;
       font-weight: 900;
-      font-family: monospace;
-      margin-bottom: 1px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: #0f172a;
+      margin-bottom: 2px;
     }
     .grand-total .lab {
-      font-size: 7px;
+      font-size: 10px;
       font-weight: 900;
-      color: #94a3b8;
+      color: #64748b;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.8px;
     }
     @media print {
       body {
         padding: 0;
         margin: 0;
-        background: white;
+        background: #ffffff;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
-      .receipt {
+      .receipt-container {
         border: none !important;
         box-shadow: none !important;
         padding: 0 !important;
         margin: 0 auto !important;
         width: 100% !important;
         max-width: 100% !important;
-        height: 100% !important;
+        border-radius: 0 !important;
       }
     }
   </style>
 </head>
 <body>
-  <div class="receipt">
+  <div class="receipt-container">
     <div class="watermark">
       <svg viewBox="0 0 100 100" fill="none" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="50" cy="50" r="44" stroke-width="1.5" stroke-dasharray="3 3"></circle>
@@ -1275,12 +1362,13 @@ export function generateReceiptHtml(req: Requisition): string {
         <div class="info-grid">
           <div class="info-item">
             <label>Issued To</label>
-            <div>${req.requesterName}</div>
-            <div style="color: #64748b; font-size: 8px; margin-top: 1px; text-transform: uppercase; font-weight: bold;">${req.groupName}</div>
+            <div class="primary-val">${req.requesterName}</div>
+            <div class="secondary-val">${req.groupName}</div>
           </div>
           <div class="info-item" style="text-align: right;">
             <label>Transaction Date</label>
-            <div>${formatDate(req.submittedAt)}</div>
+            <div class="primary-val">${formatDate(req.submittedAt)}</div>
+            <div class="secondary-val">FY ${req.fiscalYear || '2026'}</div>
           </div>
         </div>
         <table>
@@ -1293,10 +1381,11 @@ export function generateReceiptHtml(req: Requisition): string {
           <tbody>
             <tr>
               <td>
-                <div style="font-weight: 700; font-size: 10px; margin-bottom: 2px;">${req.title}</div>
-                <div style="font-size: 8px; color: #64748b; font-style: italic;">"${req.description}"</div>
+                <div class="item-title">${req.title}</div>
+                <div class="item-desc">"${req.description}"</div>
+                <div class="item-status">Status: ${req.status}</div>
               </td>
-              <td style="text-align: right; font-family: monospace; font-weight: 700; font-size: 10px;">
+              <td class="item-amount">
                 ${formatCurrency(req.amount)}
               </td>
             </tr>
@@ -1309,15 +1398,15 @@ export function generateReceiptHtml(req: Requisition): string {
       </div>
       <div class="footer">
         <div>
-          <div style="color: #10b981; font-size: 7px; font-weight: 900; margin-bottom: 3px; display: flex; align-items: center; gap: 4px;">✓ AUTHORIZED DIGITALLY</div>
+          <div style="color: #059669; font-size: 10px; font-weight: 900; margin-bottom: 4px; display: flex; align-items: center; gap: 4px;">✓ AUTHORIZED DIGITALLY</div>
           <div class="signature-area">Ministry Stamp</div>
         </div>
-        <div style="display: flex; align-items: center; gap: 8px; border: 1px solid #cbd5e1; padding: 6px 10px; border-radius: 8px; background: #f8fafc;">
-          <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`VERIFY REQUISITION #${req.id} | ${req.title} | ${formatCurrency(req.amount)} | Status: ${req.status} | Requester: ${req.requesterName}`)}" alt="QR Code" style="width: 50px; height: 50px; border-radius: 4px;" />
+        <div class="qr-block">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`VERIFY REQUISITION #${req.id} | ${req.title} | ${formatCurrency(req.amount)} | Status: ${req.status} | Group: ${req.groupName}`)}" alt="QR Code" style="width: 54px; height: 54px; border-radius: 6px;" />
           <div style="text-align: left;">
-            <div style="font-size: 7px; font-weight: 900; color: #059669; text-transform: uppercase;">Scannable QR</div>
-            <div style="font-size: 7px; font-weight: 700; color: #334155;">Mobile Verification</div>
-            <div style="font-size: 7px; font-family: monospace; color: #64748b;">#${req.id}</div>
+            <div style="font-size: 9px; font-weight: 900; color: #059669; text-transform: uppercase;">Scannable QR</div>
+            <div style="font-size: 9px; font-weight: 700; color: #334155;">Mobile Verification</div>
+            <div style="font-size: 9px; font-family: monospace; color: #64748b;">#${req.id}</div>
           </div>
         </div>
         <div class="grand-total">
@@ -1330,6 +1419,22 @@ export function generateReceiptHtml(req: Requisition): string {
 </body>
 </html>
   `;
+}
+
+/**
+ * Downloads a formal HTML receipt file with group name and requisition title in the filename.
+ */
+export function downloadReceiptHtml(req: Requisition): void {
+  const html = generateReceiptHtml(req);
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = getReceiptFileName(req, "html");
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 /**

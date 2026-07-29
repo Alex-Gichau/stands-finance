@@ -56,7 +56,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import { Info, HardDrive } from "lucide-react";
 import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
-import { formatCurrency, formatDate, cn, getDaysSinceSubmission, normalizeAttachmentUrl } from "../lib/utils";
+import { formatCurrency, formatDate, cn, getDaysSinceSubmission, formatRequisitionAge, isFinalStage, normalizeAttachmentUrl } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { printRequisitions, downloadRequisitionsHtml, downloadRequisitionsCsv, downloadRequisitionsPdf, printRequisitionVoucher, printRequisitionReceipt } from "../utils/exportUtils";
 import { NewRequisitionForm } from "./NewRequisitionForm";
@@ -2235,7 +2235,8 @@ export const RequisitionsPanel: React.FC = () => {
                 {activeItems.map((req, i) => {
                   const updateAge = now - new Date(req.updatedAt).getTime();
                   const isRecentlyApprovedOrDisbursed = (req.status === RequisitionStatus.APPROVED_L2 || req.status === RequisitionStatus.DISBURSED) && updateAge < 8000;
-                  const daysOld = getDaysSinceSubmission(req.submittedAt || req.createdAt);
+                  const formattedAge = formatRequisitionAge(req.submittedAt || req.createdAt, req.status);
+                  const compactAge = formatRequisitionAge(req.submittedAt || req.createdAt, req.status, { compact: true });
 
                   return (
                     <motion.tr 
@@ -2276,9 +2277,11 @@ export const RequisitionsPanel: React.FC = () => {
                             <span className="font-bold text-slate-900 text-xs md:text-sm break-words leading-snug">
                               <HighlightText text={req.title} highlight={globalSearchTerm} />
                             </span>
-                            <span className="text-[8px] md:text-[9px] font-mono font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded uppercase tracking-tight shrink-0">
-                              {daysOld}d old
-                            </span>
+                            {compactAge && (
+                              <span className="text-[8px] md:text-[9px] font-mono font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded uppercase tracking-tight shrink-0">
+                                {compactAge}
+                              </span>
+                            )}
                             {req.flaggedForAudit && (
                               <span title="Flagged for Audit" className="inline-flex shrink-0">
                                 <Flag size={11} className="text-rose-500 fill-rose-500" />
@@ -2339,12 +2342,16 @@ export const RequisitionsPanel: React.FC = () => {
                         </div>
                       </td>
                       <td className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4">
-                        <div className="flex items-center gap-1.5">
-                          <Clock size={11} className="text-slate-400" />
-                          <span className="text-[10px] md:text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
-                            {daysOld} {daysOld === 1 ? "day" : "days"} old
-                          </span>
-                        </div>
+                        {formattedAge ? (
+                          <div className="flex items-center gap-1.5">
+                            <Clock size={11} className="text-slate-400" />
+                            <span className="text-[10px] md:text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
+                              {formattedAge}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 font-mono">-</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -3451,7 +3458,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                 })}
                   {req.receipts && req.receipts.length > 0 && (
                     <div className="w-full mt-2">
-                      <ReceiptGallery receipts={req.receipts} />
+                      <ReceiptGallery receipts={req.receipts} requisitionTitle={req.title} groupName={req.groupName} />
                     </div>
                   )}
                   {(!req.attachments || req.attachments.length === 0) && (!req.receipts || req.receipts.length === 0) && (
@@ -3671,10 +3678,14 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                       <span className="text-slate-500 flex items-center gap-1.5"><CalendarDays size={13} /> Submitted</span>
                       <span className="font-bold text-slate-700">{formatDate(req.submittedAt)}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[10px] md:text-xs">
-                      <span className="text-slate-500 flex items-center gap-1.5"><Clock size={13} /> Days Old</span>
-                      <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md font-mono">{getDaysSinceSubmission(req.submittedAt || req.createdAt)} {getDaysSinceSubmission(req.submittedAt || req.createdAt) === 1 ? "day" : "days"} old</span>
-                    </div>
+                    {formatRequisitionAge(req.submittedAt || req.createdAt, req.status) && (
+                      <div className="flex items-center justify-between text-[10px] md:text-xs">
+                        <span className="text-slate-500 flex items-center gap-1.5"><Clock size={13} /> Days Old</span>
+                        <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md font-mono">
+                          {formatRequisitionAge(req.submittedAt || req.createdAt, req.status)}
+                        </span>
+                      </div>
+                    )}
                     {req.recurrence && req.recurrence !== "NONE" && (
                       <div className="flex items-center justify-between text-[10px] md:text-xs">
                         <span className="text-slate-500 flex items-center gap-1.5"><Repeat size={13} /> Recurrence</span>

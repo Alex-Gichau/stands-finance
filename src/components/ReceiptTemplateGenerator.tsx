@@ -6,11 +6,12 @@
 import React, { useRef, useState, useMemo } from "react";
 import { Requisition } from "../types";
 import { formatCurrency, formatDate, cn } from "../lib/utils";
-import { Printer, Download, X, FileText, CheckCircle, Shield, Paperclip, Loader2, QrCode } from "lucide-react";
+import { Printer, Download, X, FileText, CheckCircle, Paperclip, Loader2, Image as ImageIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { useRequisitions } from "../contexts/RequisitionContext";
-import { printRequisitionReceipt, downloadRequisitionsCsv, generateReceiptHtml } from "../utils/exportUtils";
+import { printRequisitionReceipt, downloadReceiptHtml, getReceiptFileName } from "../utils/exportUtils";
 import { QRCodeSVG } from "qrcode.react";
+import html2canvas from "html2canvas";
 
 interface ReceiptTemplateGeneratorProps {
   req: Requisition;
@@ -20,6 +21,7 @@ interface ReceiptTemplateGeneratorProps {
 export const ReceiptTemplateGenerator: React.FC<ReceiptTemplateGeneratorProps> = ({ req, onClose }) => {
   const { uploadReceipts, addSystemLog } = useRequisitions();
   const [isAttaching, setIsAttaching] = useState(false);
+  const [isDownloadingImage, setIsDownloadingImage] = useState(false);
   const [attached, setAttached] = useState(false);
   const receiptRef = useRef<HTMLDivElement>(null);
 
@@ -42,17 +44,33 @@ export const ReceiptTemplateGenerator: React.FC<ReceiptTemplateGeneratorProps> =
     printRequisitionReceipt(req);
   };
 
-  const downloadReceipt = () => {
-    const html = generateReceiptHtml(req);
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `receipt_${req.id}.html`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  const downloadHtml = () => {
+    downloadReceiptHtml(req);
+  };
+
+  const downloadImage = async () => {
+    if (!receiptRef.current) return;
+    setIsDownloadingImage(true);
+    try {
+      const canvas = await html2canvas(receiptRef.current, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        logging: false
+      });
+      const url = canvas.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = getReceiptFileName(req, "png");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Failed to download receipt image:", error);
+      alert("Could not download receipt image.");
+    } finally {
+      setIsDownloadingImage(false);
+    }
   };
 
   const attachToRequisition = async () => {
@@ -60,23 +78,14 @@ export const ReceiptTemplateGenerator: React.FC<ReceiptTemplateGeneratorProps> =
     
     setIsAttaching(true);
     try {
-      // Lazily import dom-to-image-more to handle modern CSS like oklch better than html2canvas
-      const domToImageModule = await import("dom-to-image-more");
-      const domToImage = domToImageModule.default;
-
-      // Capture the receipt as an image with high quality
-      const imageData = await domToImage.toPng(receiptRef.current, {
-        bgcolor: "#ffffff",
-        quality: 1,
-        width: receiptRef.current.offsetWidth * 2,
-        height: receiptRef.current.offsetHeight * 2,
-        style: {
-          transform: "scale(2)",
-          transformOrigin: "top left",
-          width: receiptRef.current.offsetWidth + "px",
-          height: receiptRef.current.offsetHeight + "px",
-        }
+      const canvas = await html2canvas(receiptRef.current, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        logging: false
       });
+
+      const imageData = canvas.toDataURL("image/png");
       
       // Attach to requisition
       await uploadReceipts(req.id, [imageData]);
@@ -93,36 +102,38 @@ export const ReceiptTemplateGenerator: React.FC<ReceiptTemplateGeneratorProps> =
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center sm:p-4 bg-slate-900/80 backdrop-blur-md">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-md overflow-y-auto">
       <motion.div 
-        initial={{ scale: 0.9, opacity: 0 }}
+        initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-white rounded-none md:rounded-[2.5rem] w-full max-w-2xl h-full md:h-auto md:max-h-[90vh] shadow-2xl overflow-hidden border-t md:border border-slate-200 flex flex-col"
+        className="bg-white rounded-2xl sm:rounded-[2rem] w-full max-w-3xl my-auto shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[92vh]"
       >
-        <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 sticky top-0 z-10">
+        {/* Modal Header */}
+        <div className="px-6 py-4 sm:px-8 sm:py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 sticky top-0 z-20 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary rounded-2xl flex items-center justify-center text-white shadow-lg shadow-primary/20">
+            <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white shadow-md">
               <FileText size={20} />
             </div>
             <div>
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Receipt Template Generator</h3>
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Formal Expenditure Proof Protocol</p>
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Expenditure Receipt Preview</h3>
+              <p className="text-[11px] text-slate-500 font-bold">{req.groupName} • {req.title}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white rounded-full transition-all border border-transparent hover:border-slate-200 text-slate-400 hover:text-rose-500">
+          <button onClick={onClose} className="p-2 hover:bg-slate-200/60 rounded-full transition-all text-slate-400 hover:text-slate-700">
             <X size={20} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-10 bg-slate-100/50">
-          {/* Scrollable Receipt Preview (Optimized for Printing) */}
+        {/* Modal Content / Preview Container */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100/60 flex justify-center">
           <div 
             ref={receiptRef}
-            className="bg-white shadow-xl border border-slate-200 rounded-lg p-16 w-full max-w-[210mm] min-h-[297mm] mx-auto mb-10 flex flex-col justify-between relative overflow-hidden select-none print:shadow-none print:border-0 print:p-0 print:m-0"
+            className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-10 w-full max-w-[650px] shadow-sm relative overflow-hidden select-none text-slate-900 flex flex-col justify-between gap-8 min-h-[680px]"
+            style={{ backgroundColor: "#ffffff" }}
           >
-            {/* Elegant, Subtle Watermark Vector Background */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.035] select-none z-0">
-              <svg viewBox="0 0 100 100" className="w-[500px] h-[500px] text-slate-900" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            {/* Very Subtle Vector Background Watermark */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.025] select-none z-0">
+              <svg viewBox="0 0 100 100" className="w-[400px] h-[400px] text-slate-900" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="50" cy="50" r="44" strokeWidth="1.5" strokeDasharray="3 3" />
                 <circle cx="50" cy="50" r="40" strokeWidth="1" />
                 <line x1="22" y1="22" x2="78" y2="78" strokeWidth="1" strokeDasharray="2 2" />
@@ -133,149 +144,175 @@ export const ReceiptTemplateGenerator: React.FC<ReceiptTemplateGeneratorProps> =
               </svg>
             </div>
 
-            {/* Receipt Content Container with elevated z-index */}
-            <div className="relative z-10 flex flex-col justify-between h-full space-y-8">
-              <div>
-                <div className="flex justify-between items-start border-b-4 border-slate-900 pb-8 mb-8">
-                  <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black text-3xl shadow-sm border border-slate-800">
-                      ✝
-                    </div>
-                    <div className="space-y-1 animate-fade-in">
-                      <h1 className="text-2xl font-black uppercase text-slate-900 leading-none tracking-tight">St. Andrews</h1>
-                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Expenditure Receipt</p>
-                    </div>
+            {/* Receipt Main Section */}
+            <div className="relative z-10 flex flex-col gap-6">
+              {/* Header */}
+              <div className="flex justify-between items-start border-b-2 border-slate-900 pb-5">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black text-2xl shadow-sm">
+                    ✝
                   </div>
-                  <div className="text-right">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Receipt #</div>
-                    <div className="font-mono text-xl font-bold text-slate-900">#{req.id.toUpperCase()}</div>
+                  <div>
+                    <h1 className="text-lg sm:text-xl font-black uppercase text-slate-900 leading-none tracking-tight">St. Andrews</h1>
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">Expenditure Receipt</p>
                   </div>
                 </div>
-
-                <div className="grid grid-cols-2 gap-8 mb-10">
-                  <div className="space-y-1">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Issued To</div>
-                    <div className="text-lg font-bold text-slate-900 leading-snug">{req.requesterName}</div>
-                    <div className="text-xs text-slate-500 uppercase font-black tracking-tight">{req.groupName}</div>
-                  </div>
-                  <div className="text-right space-y-1">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Transaction Date</div>
-                    <div className="text-lg font-bold text-slate-900 leading-snug">{formatDate(req.submittedAt)}</div>
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-4">Fiscal Year</div>
-                    <div className="text-sm font-bold text-slate-900 leading-snug">{req.fiscalYear || '2026'}</div>
-                  </div>
-                </div>
-
-                <div className="border-b-2 border-slate-900 mb-8">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="border-b border-slate-200">
-                      <tr>
-                        <th className="pb-3 text-xs font-black text-slate-400 uppercase tracking-widest">Item Description</th>
-                        <th className="pb-3 text-xs font-black text-slate-400 uppercase tracking-widest text-right">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      <tr>
-                        <td className="py-6 align-top">
-                          <div className="text-lg font-bold text-slate-900 mb-2">{req.title}</div>
-                          <div className="text-sm text-slate-600 leading-relaxed italic">"{req.description}"</div>
-                          <div className="mt-4 text-[10px] uppercase font-black text-slate-400">Status: {req.status}</div>
-                        </td>
-                        <td className="py-6 text-right align-top">
-                          <div className="font-mono font-bold text-slate-900 text-lg">{formatCurrency(req.amount)}</div>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="space-y-2 bg-slate-50/80 p-6 rounded-2xl border border-slate-100">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Amount in Words</div>
-                  <div className="text-base font-bold text-slate-800 leading-tight uppercase font-serif">{req.amountWords}</div>
+                <div className="text-right">
+                  <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5">Receipt #</div>
+                  <div className="font-mono text-sm sm:text-base font-extrabold text-slate-900">#{req.id.toUpperCase()}</div>
                 </div>
               </div>
 
-              <div className="pt-8 border-t-2 border-dashed border-slate-300 mt-auto">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-emerald-600">
-                      <CheckCircle size={16} />
-                      <span className="text-xs font-black uppercase tracking-widest">Authorized Digitally</span>
-                    </div>
-                    <div className="border-t-2 border-slate-300 pt-3 w-48">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ministry Stamp</p>
-                    </div>
-                  </div>
-
-                  {/* Unique QR Code Verification Block */}
-                  <div className="flex items-center gap-3 bg-slate-50 border-2 border-slate-200 p-2.5 rounded-2xl shadow-sm">
-                    <div className="bg-white p-1.5 rounded-xl border border-slate-200 shrink-0">
-                      <QRCodeSVG 
-                        value={qrPayload}
-                        size={72}
-                        level="M"
-                        bgColor="#ffffff"
-                        fgColor="#0f172a"
-                      />
-                    </div>
-                    <div className="text-left space-y-0.5 max-w-[120px]">
-                      <span className="inline-block text-[8px] font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded uppercase tracking-wider">
-                        Scannable QR
-                      </span>
-                      <p className="text-[9px] font-bold text-slate-900 uppercase tracking-tight leading-tight">Quick Mobile Verification</p>
-                      <p className="text-[8px] font-mono text-slate-400">#{(req.id || "").toUpperCase()}</p>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <div className="text-2xl font-black text-slate-900 font-mono leading-none mb-1">{formatCurrency(req.amount)}</div>
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Value Paid</div>
-                  </div>
+              {/* Info Grid */}
+              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <div>
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Issued To</span>
+                  <div className="text-sm font-extrabold text-slate-900">{req.requesterName}</div>
+                  <div className="text-xs font-bold text-slate-600 uppercase tracking-tight mt-0.5">{req.groupName}</div>
                 </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Transaction Date</span>
+                  <div className="text-sm font-extrabold text-slate-900">{formatDate(req.submittedAt)}</div>
+                  <div className="text-xs font-bold text-slate-600 uppercase tracking-tight mt-0.5">FY {req.fiscalYear || "2026"}</div>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div className="border-b border-slate-200 pb-4">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b-2 border-slate-900">
+                      <th className="pb-2 text-xs font-black text-slate-900 uppercase tracking-widest">Item Description</th>
+                      <th className="pb-2 text-xs font-black text-slate-900 uppercase tracking-widest text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="py-4 align-top pr-4">
+                        <div className="text-base font-bold text-slate-900 mb-1">{req.title}</div>
+                        <div className="text-xs text-slate-600 leading-relaxed italic">"{req.description}"</div>
+                        <div className="mt-3">
+                          <span className="text-[9px] font-black uppercase text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                            Status: {req.status}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-4 text-right align-top font-mono font-extrabold text-slate-900 text-base">
+                        {formatCurrency(req.amount)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Amount in Words */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Amount in Words</span>
+                <div className="text-sm font-bold text-slate-800 uppercase font-serif tracking-tight leading-snug">{req.amountWords}</div>
+              </div>
+            </div>
+
+            {/* Receipt Footer */}
+            <div className="relative z-10 pt-5 border-t-2 border-dashed border-slate-300 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mt-auto">
+              <div className="space-y-3">
+                <div className="flex items-center gap-1.5 text-emerald-700">
+                  <CheckCircle size={15} />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Authorized Digitally</span>
+                </div>
+                <div className="border-t border-slate-400 pt-1.5 w-36">
+                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Ministry Stamp</p>
+                </div>
+              </div>
+
+              {/* QR Verification */}
+              <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-200 p-2 rounded-xl">
+                <div className="bg-white p-1 rounded-lg border border-slate-200 shrink-0">
+                  <QRCodeSVG 
+                    value={qrPayload}
+                    size={56}
+                    level="M"
+                    bgColor="#ffffff"
+                    fgColor="#0f172a"
+                  />
+                </div>
+                <div className="text-left space-y-0.5">
+                  <span className="inline-block text-[8px] font-black text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                    Verified
+                  </span>
+                  <p className="text-[9px] font-bold text-slate-900 uppercase tracking-tight">Mobile Scan</p>
+                  <p className="text-[8px] font-mono text-slate-500">#{req.id.toUpperCase()}</p>
+                </div>
+              </div>
+
+              {/* Grand Total */}
+              <div className="text-right">
+                <div className="text-xl sm:text-2xl font-black text-slate-900 font-mono leading-none mb-1">{formatCurrency(req.amount)}</div>
+                <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Total Value Paid</div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="px-10 py-8 border-t border-slate-100 bg-white flex items-center justify-between">
-          <div className="flex items-center gap-3">
-             <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Template Preview Active</span>
+        {/* Modal Actions Footer */}
+        <div className="px-6 py-4 sm:px-8 sm:py-5 border-t border-slate-100 bg-white flex flex-wrap items-center justify-between gap-3 shrink-0">
+          <div className="text-[11px] font-bold text-slate-500 hidden sm:block">
+            Download or print receipt with ministry and title in filename.
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-wrap ml-auto">
+            <button 
+              onClick={downloadHtml}
+              className="px-4 py-2.5 border border-slate-200 hover:border-slate-300 hover:bg-slate-50 rounded-xl text-xs font-bold text-slate-700 transition-all flex items-center gap-1.5"
+              title="Download clean HTML receipt"
+            >
+              <Download size={14} />
+              <span>HTML</span>
+            </button>
+
+            <button 
+              onClick={downloadImage}
+              disabled={isDownloadingImage}
+              className="px-4 py-2.5 border border-slate-200 hover:border-slate-300 hover:bg-slate-50 rounded-xl text-xs font-bold text-slate-700 transition-all flex items-center gap-1.5"
+              title="Download PNG image of receipt"
+            >
+              {isDownloadingImage ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
+              <span>Image</span>
+            </button>
+
             <button 
               onClick={attachToRequisition}
               disabled={isAttaching || attached}
               className={cn(
-                "px-6 py-3 border rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2",
+                "px-4 py-2.5 border rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
                 attached 
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-600" 
-                  : "bg-amber-50 border-amber-200 text-amber-600 hover:bg-amber-100"
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-700" 
+                  : "bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100"
               )}
+              title="Attach receipt image directly to requisition record"
             >
               {isAttaching ? (
                 <>
-                  <Loader2 size={16} className="animate-spin" />
-                  Processing...
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>Attaching...</span>
                 </>
               ) : attached ? (
                 <>
-                  <CheckCircle size={16} />
-                  Attached to Ledger
+                  <CheckCircle size={14} />
+                  <span>Attached</span>
                 </>
               ) : (
                 <>
-                  <Paperclip size={16} />
-                  Attach to Requisition
+                  <Paperclip size={14} />
+                  <span>Attach to Requisition</span>
                 </>
               )}
             </button>
+
             <button 
               onClick={printReceipt}
-              className="btn-primary px-8 py-3 flex items-center gap-2"
+              className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md"
             >
-              <Printer size={16} />
-              Print
+              <Printer size={14} />
+              <span>Print / Save PDF</span>
             </button>
           </div>
         </div>

@@ -8,7 +8,7 @@ import { ComposedChart, Area, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, L
 import { useRequisitions, useActiveFiscalYear } from "../contexts/RequisitionContext";
 import { COMMITTED_REQUISITION_STATUSES, calculateProjectUtilization, getProjectRequisitions } from "../utils/budgetUtils";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
-import { formatCurrency, cn, getDaysSinceSubmission } from "../lib/utils";
+import { formatCurrency, cn, getDaysSinceSubmission, formatRequisitionAge, isFinalStage } from "../lib/utils";
 import { AlertTriangle, TrendingUp, Layout, Activity, ClipboardList, CheckCircle, Wallet, Users, X, Eye, Repeat, Clock, ArrowUpRight, Search, Trash2, Printer, FileText, ShieldCheck, CalendarRange, Flag, HelpCircle, Moon, Sun, Plus, Calendar, ChevronLeft, ChevronRight, Bell } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { RequisitionDetailModal } from "./RequisitionsPanel";
@@ -1818,9 +1818,9 @@ const Dashboard: React.FC<{
                       <div>
                         <div className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors flex items-center gap-1.5 flex-wrap">
                           <span>{req.title}</span>
-                          {req.status !== RequisitionStatus.DISBURSED && (
+                          {formatRequisitionAge(req.submittedAt, req.status, { compact: true }) && (
                             <span className="text-[8px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded uppercase tracking-tight">
-                              {getDaysSinceSubmission(req.submittedAt)}d
+                              {formatRequisitionAge(req.submittedAt, req.status, { compact: true })}
                             </span>
                           )}
                           {req.flaggedForAudit && (

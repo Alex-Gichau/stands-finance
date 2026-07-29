@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { RequisitionStatus } from "../types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -35,9 +36,49 @@ export function formatDate(dateString: string) {
   });
 }
 
+export function isFinalStage(status?: RequisitionStatus | string): boolean {
+  if (!status) return false;
+  const s = String(status).toUpperCase();
+  return (
+    s === RequisitionStatus.DISBURSED ||
+    s === RequisitionStatus.REJECTED ||
+    s === RequisitionStatus.CANCELLED ||
+    s === "DISBURSED" ||
+    s === "REJECTED" ||
+    s === "CANCELLED"
+  );
+}
+
+export function formatRequisitionAge(
+  submittedAt: string | undefined,
+  status?: RequisitionStatus | string,
+  options?: { compact?: boolean }
+): string | null {
+  if (isFinalStage(status)) {
+    return null;
+  }
+  if (!submittedAt) return null;
+
+  const dateMs = new Date(submittedAt).getTime();
+  if (isNaN(dateMs)) return null;
+
+  const diffMs = Math.abs(Date.now() - dateMs);
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (days > 30) {
+    const months = Math.max(1, Math.floor(days / 30));
+    const label = months === 1 ? "1 month" : `${months} months`;
+    return options?.compact ? `${label} old` : `${label} old`;
+  } else {
+    const label = `${days} ${days === 1 ? "day" : "days"}`;
+    return options?.compact ? `${days}d old` : `${label} old`;
+  }
+}
+
 export function getDaysSinceSubmission(submittedAt: string) {
+  if (!submittedAt) return 0;
   const diffTime = Math.abs(new Date().getTime() - new Date(submittedAt).getTime());
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return Math.floor(diffTime / (1000 * 60 * 60 * 24));
 }
 
 export async function sendSlackNotification(params: {

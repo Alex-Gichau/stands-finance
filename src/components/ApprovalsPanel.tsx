@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
-import { formatCurrency, formatDate, cn } from "../lib/utils";
+import { formatCurrency, formatDate, cn, formatRequisitionAge } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 
 export const ApprovalsPanel: React.FC = () => {
@@ -243,10 +243,14 @@ export const ApprovalsPanel: React.FC = () => {
                   </div>
                   
                   <div className="flex items-center gap-3 pl-[38px] md:pl-[46px]">
-                    <div className="flex items-center gap-1">
-                      <Clock size={9} className="text-slate-400 md:w-2.5 md:h-2.5" />
-                      <span className="text-[8.5px] md:text-[9.5px] font-bold text-slate-500 uppercase tracking-wider">{Math.ceil((Date.now() - new Date(req.submittedAt).getTime()) / (1000 * 60 * 60 * 24))} Days</span>
-                    </div>
+                    {formatRequisitionAge(req.submittedAt, req.status) && (
+                      <div className="flex items-center gap-1">
+                        <Clock size={9} className="text-slate-400 md:w-2.5 md:h-2.5" />
+                        <span className="text-[8.5px] md:text-[9.5px] font-bold text-slate-500 uppercase tracking-wider">
+                          {formatRequisitionAge(req.submittedAt, req.status)}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-1.5">
                        <div className="w-3.5 h-3.5 md:w-4 md:h-4 rounded-full bg-slate-100 flex items-center justify-center text-[7.5px] md:text-[8.5px] font-bold text-slate-500 border border-white">
                         {req.requesterName.charAt(0)}
