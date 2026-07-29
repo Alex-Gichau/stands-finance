@@ -52,7 +52,6 @@ import {
   Maximize2,
   Minimize2
 } from "lucide-react";
-import * as pdfjsLib from "pdfjs-dist";
 import { Info, HardDrive } from "lucide-react";
 import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
@@ -447,68 +446,6 @@ const RichDocumentViewer = ({
   );
 };
 
-const ThumbnailItem = ({ 
-  pageNum, 
-  pdfDoc, 
-  activePage, 
-  onClick 
-}: { 
-  pageNum: number; 
-  pdfDoc: any; 
-  activePage: number; 
-  onClick: (page: number) => void;
-}) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  
-  useEffect(() => {
-    if (!pdfDoc) return;
-    let isMounted = true;
-    
-    const renderThumb = async () => {
-      try {
-        const page = await pdfDoc.getPage(pageNum);
-        if (!isMounted) return;
-        
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        
-        const context = canvas.getContext('2d');
-        if (!context) return;
-        
-        const viewport = page.getViewport({ scale: 0.15 });
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        
-        await page.render({
-          canvasContext: context,
-          viewport: viewport
-        }).promise;
-      } catch (err) {
-        // Ignored
-      }
-    };
-    
-    renderThumb();
-    return () => {
-      isMounted = false;
-    };
-  }, [pdfDoc, pageNum]);
-  
-  return (
-    <div 
-      onClick={() => onClick(pageNum)}
-      className={`p-2 rounded-xl cursor-pointer transition-all flex flex-col items-center gap-1.5 shrink-0 border ${
-        activePage === pageNum 
-          ? "bg-indigo-500/10 border-indigo-500 scale-105" 
-          : "border-transparent hover:bg-slate-800/40"
-      }`}
-    >
-      <canvas ref={canvasRef} className="shadow-md rounded border border-slate-700 bg-white w-24" />
-      <span className="text-[10px] font-bold text-slate-400 font-mono">Page {pageNum}</span>
-    </div>
-  );
-};
-
 const PdfDocumentViewer = ({ 
   docProps,
   requisition
@@ -521,18 +458,8 @@ const PdfDocumentViewer = ({
   };
   requisition?: any;
 }) => {
-  const [pdfDoc, setPdfDoc] = useState<any>(null);
-  const [numPages, setNumPages] = useState<number>(0);
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [zoom, setZoom] = useState<number>(1.0);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showThumbnails, setShowThumbnails] = useState<boolean>(true);
   const [fileSizeText, setFileSizeText] = useState<string>("Calculating...");
-  
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const renderTaskRef = useRef<any>(null);
-  
+
   const isRealPdfUrl = !docProps.isSimulated && (
     docProps.url.startsWith("data:application/pdf") ||
     docProps.url.startsWith("blob:") ||
@@ -541,7 +468,6 @@ const PdfDocumentViewer = ({
     docProps.url.startsWith("/api/")
   );
 
-  // Fetch or calculate file size
   useEffect(() => {
     if (!docProps.url) {
       setFileSizeText("Unknown size");
@@ -565,8 +491,7 @@ const PdfDocumentViewer = ({
           setFileSizeText(formatBytes(blob.size));
         }
       } catch (e) {
-        const randomSize = Math.floor(Math.random() * 300) + 120;
-        setFileSizeText(`${randomSize} KB (Estimated)`);
+        setFileSizeText("PDF Document");
       }
     };
     fetchSize();
@@ -579,93 +504,6 @@ const PdfDocumentViewer = ({
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   }
-
-  // Load PDF document
-  useEffect(() => {
-    if (!isRealPdfUrl) return;
-    
-    let isMounted = true;
-    const loadPdf = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        try {
-          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-        } catch (e) {}
-
-        const loadingTask = pdfjsLib.getDocument({ url: docProps.url });
-        const pdf = await loadingTask.promise;
-        
-        if (!isMounted) return;
-        setPdfDoc(pdf);
-        setNumPages(pdf.numPages);
-        setCurrentPage(1);
-      } catch (err: any) {
-        console.error("Error loading PDF via pdfjs-dist:", err);
-        if (isMounted) {
-          setError(err.message || "Failed to load PDF document.");
-        }
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-    
-    loadPdf();
-    return () => {
-      isMounted = false;
-    };
-  }, [docProps.url, isRealPdfUrl]);
-
-  // Render active page to canvas
-  useEffect(() => {
-    if (!pdfDoc || !canvasRef.current) return;
-    
-    let isMounted = true;
-    const renderPage = async () => {
-      try {
-        if (renderTaskRef.current) {
-          renderTaskRef.current.cancel();
-        }
-        
-        const page = await pdfDoc.getPage(currentPage);
-        if (!isMounted) return;
-        
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        
-        const context = canvas.getContext('2d');
-        if (!context) return;
-        
-        const viewport = page.getViewport({ scale: zoom });
-        const ratio = window.devicePixelRatio || 1;
-        canvas.width = viewport.width * ratio;
-        canvas.height = viewport.height * ratio;
-        canvas.style.width = `${viewport.width}px`;
-        canvas.style.height = `${viewport.height}px`;
-        context.scale(ratio, ratio);
-        
-        const renderContext = {
-          canvasContext: context,
-          viewport: viewport
-        };
-        
-        const renderTask = page.render(renderContext);
-        renderTaskRef.current = renderTask;
-        
-        await renderTask.promise;
-      } catch (err: any) {
-        if (err.name !== 'RenderingCancelledException') {
-          console.error("Error rendering PDF page:", err);
-        }
-      }
-    };
-    
-    renderPage();
-    return () => {
-      isMounted = false;
-    };
-  }, [pdfDoc, currentPage, zoom]);
 
   const metadataPanel = (
     <div className="bg-slate-950/60 p-5 space-y-5 flex flex-col h-full text-slate-300 font-sans border-t md:border-t-0 md:border-l border-slate-800/85 w-full md:w-[280px] shrink-0">
@@ -730,111 +568,63 @@ const PdfDocumentViewer = ({
     </div>
   );
 
-  if (isRealPdfUrl && !error) {
+  if (isRealPdfUrl) {
     return (
       <div className="w-full h-full min-h-[72vh] md:min-h-[80vh] max-w-6xl bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden flex flex-col shadow-2xl">
         {/* Controls Toolbar */}
         <div className="bg-slate-950 border-b border-slate-800 px-4 py-3 flex items-center justify-between gap-4 select-none shrink-0">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowThumbnails(!showThumbnails)}
-              className={`p-2 rounded-xl transition-all border ${
-                showThumbnails 
-                  ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-400" 
-                  : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
-              } cursor-pointer`}
-              title="Toggle Thumbnails"
-            >
-              <LayoutGrid size={16} />
-            </button>
-            <span className="text-xs font-bold text-slate-200 hidden sm:inline truncate max-w-[200px]">
+          <div className="flex items-center gap-2.5">
+            <span className="px-2 py-0.5 bg-rose-500/20 text-rose-400 font-black rounded border border-rose-500/30 uppercase tracking-wider text-[9px]">
+              PDF EMBED
+            </span>
+            <span className="text-xs font-bold text-slate-200 truncate max-w-[240px] md:max-w-[400px]">
               {docProps.name}
             </span>
           </div>
 
-          {/* Page Navigation */}
-          {numPages > 0 && (
-            <div className="flex items-center gap-2">
-              <button
-                disabled={currentPage <= 1 || loading}
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                className="p-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-850 disabled:opacity-30 disabled:hover:bg-slate-900 rounded-lg text-slate-200 transition-colors cursor-pointer"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <span className="text-xs font-bold font-mono text-slate-300 min-w-[70px] text-center">
-                Page {currentPage} / {numPages}
-              </span>
-              <button
-                disabled={currentPage >= numPages || loading}
-                onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))}
-                className="p-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-850 disabled:opacity-30 disabled:hover:bg-slate-900 rounded-lg text-slate-200 transition-colors cursor-pointer"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          )}
-
-          {/* Zoom Controls */}
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => setZoom(z => Math.max(0.5, z - 0.15))}
-              className="p-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-850 rounded-lg text-slate-200 cursor-pointer"
-              title="Zoom Out"
+          <div className="flex items-center gap-2">
+            <a
+              href={docProps.url}
+              download={docProps.name}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
             >
-              <ZoomOut size={16} />
-            </button>
-            <span className="text-xs font-bold font-mono text-slate-400 min-w-[40px] text-center hidden sm:inline">
-              {Math.round(zoom * 100)}%
-            </span>
+              <Download size={14} />
+              <span className="hidden sm:inline">Download</span>
+            </a>
             <button
-              onClick={() => setZoom(z => Math.min(2.5, z + 0.15))}
-              className="p-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-850 rounded-lg text-slate-200 cursor-pointer"
-              title="Zoom In"
+              onClick={() => {
+                const win = window.open();
+                if (win) win.document.write(`<iframe src="${docProps.url}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+              }}
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
             >
-              <ZoomIn size={16} />
+              <ExternalLink size={14} />
+              <span>Popout</span>
             </button>
           </div>
         </div>
 
-        {/* Viewer Body: Split into sidebar, canvas, and information panel */}
+        {/* Embedded PDF Viewer Container */}
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
-          {/* Thumbnails Sidebar */}
-          {showThumbnails && numPages > 0 && (
-            <div className="w-full md:w-[150px] md:h-full bg-slate-950/40 border-b md:border-b-0 md:border-r border-slate-800 flex md:flex-col gap-3 p-3 overflow-x-auto md:overflow-y-auto shrink-0 select-none scrollbar-thin">
-              {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
-                <ThumbnailItem 
-                  key={`thumb-${pageNum}`}
-                  pageNum={pageNum}
-                  pdfDoc={pdfDoc}
-                  activePage={currentPage}
-                  onClick={setCurrentPage}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* PDF Canvas area */}
-          <div className="flex-1 overflow-auto bg-slate-950/10 p-4 md:p-8 flex items-start justify-center relative min-h-[300px]">
-            {loading ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-900/60 backdrop-blur-sm z-30">
-                <Loader2 size={24} className="animate-spin text-indigo-400" />
-                <p className="text-xs font-semibold text-slate-300">Parsing attachment document...</p>
-              </div>
-            ) : (
-              <div className="shadow-2xl rounded-sm border border-slate-800 overflow-hidden bg-white">
-                <canvas ref={canvasRef} />
-              </div>
-            )}
+          <div className="flex-1 bg-slate-950 p-2 sm:p-4 flex items-center justify-center relative min-h-[400px]">
+            <object
+              data={docProps.url}
+              type="application/pdf"
+              className="w-full h-full rounded-2xl overflow-hidden border border-slate-800 shadow-inner"
+            >
+              <iframe
+                src={docProps.url}
+                title={docProps.name}
+                className="w-full h-full border-0 rounded-2xl bg-slate-900"
+              />
+            </object>
           </div>
 
-          {/* Information Panel (Desktop/Side-by-side) */}
           <div className="hidden md:block h-full">
             {metadataPanel}
           </div>
         </div>
 
-        {/* Information Panel (Mobile/Below) */}
         <div className="block md:hidden overflow-y-auto border-t border-slate-800 bg-slate-900 shrink-0 max-h-[220px]">
           {metadataPanel}
         </div>
