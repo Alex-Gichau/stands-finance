@@ -2063,7 +2063,7 @@ function AppContent() {
               {isSyncingData ? (
                 <>
                   <RefreshCw className="animate-spin text-indigo-500" size={10} />
-                  <span className="text-indigo-600 font-medium tracking-wide">Syncing Data (Checking Cache/Firestore)...</span>
+                  <span className="text-indigo-600 font-medium tracking-wide">Syncing Data 🔍</span>
                 </>
               ) : (
                 <>System synchronized • {new Date().toLocaleTimeString()}</>
