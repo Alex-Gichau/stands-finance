@@ -99,11 +99,14 @@
   .dark .hover\:bg-slate-50\/30:hover {
     background-color: #1e293b !important;
   }
-  .dark .text-slate-900 {
+  .dark .text-slate-950,
+  .dark .text-slate-900,
+  .dark .text-slate-850,
+  .dark .text-black {
     color: #f8fafc !important;
   }
   .dark .text-slate-800 {
-    color: #e2e8f0 !important;
+    color: #f1f5f9 !important;
   }
   .dark .text-slate-700 {
     color: #cbd5e1 !important;
@@ -113,6 +116,31 @@
   }
   .dark .text-slate-500 {
     color: #94a3b8 !important;
+  }
+  .dark .text-indigo-950,
+  .dark .text-indigo-900,
+  .dark .text-indigo-800 {
+    color: #a5b4fc !important;
+  }
+  .dark .text-emerald-950,
+  .dark .text-emerald-900,
+  .dark .text-emerald-800 {
+    color: #6ee7b7 !important;
+  }
+  .dark .text-blue-950,
+  .dark .text-blue-900,
+  .dark .text-blue-800 {
+    color: #93c5fd !important;
+  }
+  .dark .text-amber-950,
+  .dark .text-amber-900,
+  .dark .text-amber-800 {
+    color: #fde047 !important;
+  }
+  .dark .text-rose-950,
+  .dark .text-rose-900,
+  .dark .text-rose-800 {
+    color: #fca5a5 !important;
   }
 }
 
