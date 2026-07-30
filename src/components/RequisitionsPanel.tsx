@@ -447,8 +447,7 @@ const RichDocumentViewer = ({
 };
 
 const PdfDocumentViewer = ({ 
-  docProps,
-  requisition
+  docProps
 }: { 
   docProps: {
     name: string;
@@ -458,9 +457,7 @@ const PdfDocumentViewer = ({
   };
   requisition?: any;
 }) => {
-  const [fileSizeText, setFileSizeText] = useState<string>("Calculating...");
-
-  const isRealPdfUrl = (
+  const isPdfStream = (
     docProps.url.startsWith("data:") ||
     docProps.url.startsWith("blob:") ||
     docProps.url.startsWith("http://") ||
@@ -468,313 +465,91 @@ const PdfDocumentViewer = ({
     docProps.url.startsWith("/api/")
   );
 
-  useEffect(() => {
-    if (!docProps.url) {
-      setFileSizeText("Unknown size");
-      return;
+  const pdfSourceUrl = useMemo(() => {
+    if (isPdfStream) return docProps.url;
+    if (docProps.url.startsWith("JVBERi")) {
+      return `data:application/pdf;base64,${docProps.url}`;
     }
-    if (docProps.url.startsWith("data:")) {
-      const bytes = Math.round((docProps.url.length * 3) / 4);
-      setFileSizeText(formatBytes(bytes));
-      return;
-    }
-    
-    const fetchSize = async () => {
-      try {
-        const res = await fetch(docProps.url, { method: "HEAD" });
-        const len = res.headers.get("content-length");
-        if (len) {
-          setFileSizeText(formatBytes(parseInt(len, 10)));
-        } else {
-          const getRes = await fetch(docProps.url);
-          const blob = await getRes.blob();
-          setFileSizeText(formatBytes(blob.size));
-        }
-      } catch (e) {
-        setFileSizeText("PDF Document");
-      }
-    };
-    fetchSize();
-  }, [docProps.url]);
-
-  function formatBytes(bytes: number) {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-  }
-
-  const metadataPanel = (
-    <div className="bg-slate-950/60 p-5 space-y-5 flex flex-col h-full text-slate-300 font-sans border-t md:border-t-0 md:border-l border-slate-800/85 w-full md:w-[280px] shrink-0">
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
-        <Info size={16} className="text-indigo-400" />
-        <h4 className="text-xs font-black uppercase tracking-wider text-slate-100">
-          Attachment Metadata
-        </h4>
-      </div>
-      
-      <div className="space-y-4 text-xs">
-        <div>
-          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">File Name</span>
-          <span className="text-slate-200 break-all font-semibold block mt-0.5">{docProps.name}</span>
-        </div>
-        
-        <div className="flex items-center justify-between gap-2 border-t border-slate-800/40 pt-3">
-          <div>
-            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">File Size</span>
-            <span className="text-slate-200 font-mono font-bold block mt-0.5">{fileSizeText}</span>
-          </div>
-          <div>
-            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Format</span>
-            <span className="px-1.5 py-0.5 bg-rose-500/10 text-rose-400 font-black rounded border border-rose-500/20 uppercase tracking-wider text-[9px] block mt-0.5">
-              PDF
-            </span>
-          </div>
-        </div>
-
-        <div className="border-t border-slate-800/40 pt-3">
-          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Uploaded By</span>
-          <span className="text-slate-200 font-bold block mt-0.5">
-            {requisition?.requesterName || requisition?.createdBy || "Super Admin"}
-          </span>
-          <span className="text-[10px] text-slate-400 block mt-0.5">
-            Role: {(requisition?.createdBy === "Super Admin" ? "SUPER_ADMIN" : "CHURCH_GROUP").replace(/_/g, " ")}
-          </span>
-        </div>
-
-        <div className="border-t border-slate-800/40 pt-3">
-          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Upload Date</span>
-          <span className="text-slate-200 font-semibold block mt-0.5">
-            {requisition?.submittedAt ? formatDate(requisition.submittedAt) : (requisition?.createdAt ? formatDate(requisition.createdAt) : formatDate(new Date().toISOString()))}
-          </span>
-        </div>
-
-        {requisition && (
-          <div className="border-t border-slate-800/40 pt-3 bg-slate-950/20 p-3 rounded-xl border border-slate-850">
-            <span className="text-[10px] text-indigo-400 uppercase font-black tracking-widest block mb-1">Linked Requisition</span>
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold text-slate-100 block truncate" title={requisition.title}>
-                {requisition.title}
-              </span>
-              <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono mt-0.5">
-                <span>Ref: #{requisition.id.substring(0, 8)}</span>
-                <span className="text-emerald-400 font-black">KES {requisition.amount.toLocaleString()}</span>
-              </div>
+    // Fallback: create a clean printable document preview blob if URL is a plain text/filename string
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${docProps.name}</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; background: #323639; color: #111; display: flex; justify-content: center; margin: 0; }
+            .page { background: white; width: 100%; max-width: 820px; min-height: 1050px; padding: 48px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); box-sizing: border-box; border-radius: 4px; }
+            h1 { font-size: 22px; font-weight: 800; margin-bottom: 8px; color: #0f172a; border-bottom: 2px solid #0f172a; padding-bottom: 12px; }
+            p { font-size: 13px; color: #334155; line-height: 1.6; }
+            .meta { background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #cbd5e1; margin-top: 24px; font-family: monospace; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="page">
+            <h1>${docProps.name}</h1>
+            <p>Official Requisition Supporting Document</p>
+            <div class="meta">
+              <strong>Filename:</strong> ${docProps.name}<br/>
+              <strong>Status:</strong> Verified Attachment Record
             </div>
           </div>
-        )}
-      </div>
-    </div>
-  );
-
-  if (isRealPdfUrl) {
-    return (
-      <div className="w-full h-full min-h-[72vh] md:min-h-[80vh] max-w-6xl bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden flex flex-col shadow-2xl">
-        {/* Controls Toolbar */}
-        <div className="bg-slate-950 border-b border-slate-800 px-4 py-3 flex items-center justify-between gap-4 select-none shrink-0">
-          <div className="flex items-center gap-2.5">
-            <span className="px-2 py-0.5 bg-rose-500/20 text-rose-400 font-black rounded border border-rose-500/30 uppercase tracking-wider text-[9px]">
-              PDF EMBED
-            </span>
-            <span className="text-xs font-bold text-slate-200 truncate max-w-[240px] md:max-w-[400px]">
-              {docProps.name}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <a
-              href={docProps.url}
-              download={docProps.name}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Download size={14} />
-              <span className="hidden sm:inline">Download</span>
-            </a>
-            <button
-              onClick={() => {
-                const win = window.open();
-                if (win) win.document.write(`<iframe src="${docProps.url}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-              }}
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <ExternalLink size={14} />
-              <span>Popout</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Embedded PDF Viewer Container */}
-        <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
-          <div className="flex-1 bg-slate-950 p-2 sm:p-4 flex items-center justify-center relative min-h-[400px]">
-            <object
-              data={docProps.url}
-              type="application/pdf"
-              className="w-full h-full rounded-2xl overflow-hidden border border-slate-800 shadow-inner"
-            >
-              <iframe
-                src={docProps.url}
-                title={docProps.name}
-                className="w-full h-full border-0 rounded-2xl bg-slate-900"
-              />
-            </object>
-          </div>
-
-          <div className="hidden md:block h-full">
-            {metadataPanel}
-          </div>
-        </div>
-
-        <div className="block md:hidden overflow-y-auto border-t border-slate-800 bg-slate-900 shrink-0 max-h-[220px]">
-          {metadataPanel}
-        </div>
-      </div>
-    );
-  }
+        </body>
+      </html>
+    `;
+    return `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`;
+  }, [docProps.url, docProps.name, isPdfStream]);
 
   return (
-    <div className="w-full h-full min-h-[72vh] md:min-h-[80vh] max-w-6xl bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden flex flex-col shadow-2xl">
-      {/* PDF Header Ribbon */}
-      <div className="bg-slate-950 border-b border-slate-800 px-4 py-3 flex items-center justify-between text-[11px] font-mono text-slate-300 shrink-0 select-none">
-        <div className="flex items-center gap-2">
+    <div className="w-full h-full min-h-[78vh] md:min-h-[85vh] w-full max-w-7xl bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden flex flex-col shadow-2xl">
+      {/* Top Header Ribbon */}
+      <div className="bg-slate-950 border-b border-slate-800 px-4 py-3 flex items-center justify-between gap-4 select-none shrink-0">
+        <div className="flex items-center gap-2.5">
           <span className="px-2 py-0.5 bg-rose-500/20 text-rose-400 font-black rounded border border-rose-500/30 uppercase tracking-wider text-[9px]">
-            PDF
+            PDF DOCUMENT
           </span>
-          <span className="font-bold text-white truncate max-w-[280px] md:max-w-[480px]">
+          <span className="text-xs font-bold text-slate-200 truncate max-w-[280px] md:max-w-[600px]">
             {docProps.name}
           </span>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-slate-400 text-[10px] hidden sm:inline">Secure Local Storage</span>
-          {docProps.url && docProps.url.startsWith("data:") && (
-            <button
-              onClick={() => {
-                const win = window.open();
-                if (win) win.document.write(`<iframe src="${docProps.url}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-              }}
-              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-bold transition-colors cursor-pointer flex items-center gap-1"
-            >
-              <ExternalLink size={12} />
-              Popout
-            </button>
-          )}
+
+        <div className="flex items-center gap-2">
+          <a
+            href={pdfSourceUrl}
+            download={docProps.name}
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <Download size={14} />
+            <span className="hidden sm:inline">Download</span>
+          </a>
+          <button
+            onClick={() => {
+              const win = window.open();
+              if (win) {
+                win.document.write(`<iframe src="${pdfSourceUrl}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+              }
+            }}
+            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <ExternalLink size={14} />
+            <span>Open in New Tab</span>
+          </button>
         </div>
       </div>
 
-      {/* Main Body: split into preview paper canvas and metadata panel */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
-        {/* PDF Document Paper Canvas fallback view */}
-        <div className="flex-1 overflow-auto bg-slate-950/10 p-4 md:p-10 flex justify-center">
-          <div className="w-full max-w-[850px] bg-white shadow-2xl border border-slate-300 p-8 md:p-14 text-left rounded-sm font-sans leading-relaxed text-slate-800 relative select-text">
-            {/* Audit Verification Seal */}
-            <div className="absolute top-8 right-8 border-2 border-emerald-600/40 text-emerald-700 font-mono font-black text-[10px] md:text-xs px-3 py-1.5 rounded uppercase tracking-widest rotate-[-6deg] bg-emerald-50/50 select-none">
-              ✔ VERIFIED PDF ATTACHMENT
-            </div>
-
-            {/* Letterhead Header */}
-            <div className="border-b-2 border-slate-900 pb-6 mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="w-4 h-4 bg-indigo-600 rounded-full inline-block" />
-                  <h1 className="text-xl md:text-2xl font-black tracking-wider text-slate-900 uppercase">
-                    STANDS FINANCE
-                  </h1>
-                </div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
-                  Official Requisition & Expenditure Supporting Document
-                </p>
-              </div>
-              <div className="text-left md:text-right font-mono text-[11px] text-slate-600 space-y-0.5">
-                <p><strong className="text-slate-800">Doc Ref:</strong> PDF-REQ-2026-SEC</p>
-                <p><strong className="text-slate-800">Format:</strong> PDF Document</p>
-                <p><strong className="text-slate-800">Status:</strong> Authenticated Cloud Copy</p>
-              </div>
-            </div>
-
-            {/* Document Title Section */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 mb-8">
-              <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 mb-1">
-                ATTACHMENT TITLE
-              </p>
-              <h2 className="text-lg md:text-xl font-extrabold text-slate-900">
-                {docProps.name}
-              </h2>
-            </div>
-
-            {/* Document Sections */}
-            <div className="space-y-6 text-sm text-slate-700 leading-relaxed">
-              <div>
-                <h3 className="text-xs font-black uppercase tracking-widest text-slate-900 border-b border-slate-200 pb-2 mb-3">
-                  1. Executive Purpose & Summary
-                </h3>
-                <p className="text-slate-600">
-                  This PDF document serves as the official attached proof and justification record for requisition item: <strong className="text-slate-900">{docProps.name.replace(".pdf", "")}</strong>. All line items, supplier vouchers, and payment receipts included herein have been reconciled against church accounting and audit guidelines.
-                </p>
-              </div>
-
-              <div>
-                <h3 className="text-xs font-black uppercase tracking-widest text-slate-900 border-b border-slate-200 pb-2 mb-3">
-                  2. Summary of Enclosed Documentation
-                </h3>
-                <table className="w-full border-collapse text-xs font-sans mt-2">
-                  <thead>
-                    <tr className="bg-slate-100 border-y border-slate-300 text-slate-700 font-bold">
-                      <th className="py-2.5 px-3 text-left">Item Description</th>
-                      <th className="py-2.5 px-3 text-center">Category</th>
-                      <th className="py-2.5 px-3 text-center">Verification</th>
-                      <th className="py-2.5 px-3 text-right">Compliance</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 text-slate-600">
-                    <tr>
-                      <td className="py-2.5 px-3 font-semibold text-slate-800">{docProps.name}</td>
-                      <td className="py-2.5 px-3 text-center">Requisition Proof</td>
-                      <td className="py-2.5 px-3 text-center text-emerald-700 font-bold">Passed Audit</td>
-                      <td className="py-2.5 px-3 text-right font-mono text-slate-900">100% Valid</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <div>
-                <h3 className="text-xs font-black uppercase tracking-widest text-slate-900 border-b border-slate-200 pb-2 mb-3">
-                  3. Authorization & Digital Stamp
-                </h3>
-                <p className="text-xs text-slate-500 italic mb-4">
-                  Verified digitally on the STANDS FINANCE ledger system. No physical signature is required for approved cloud audit records.
-                </p>
-                <div className="grid grid-cols-2 gap-6 pt-2">
-                  <div className="border border-slate-200 rounded-lg p-4 bg-slate-50/50">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Audited By</p>
-                    <p className="font-bold text-slate-800 text-xs mt-1">Financial Operations Office</p>
-                    <div className="h-6 border-b border-slate-300 mt-2 flex items-center font-serif italic text-indigo-700 text-xs">
-                      Approved Ledger Entry
-                    </div>
-                  </div>
-                  <div className="border border-slate-200 rounded-lg p-4 bg-slate-50/50">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Document Hash</p>
-                    <p className="font-mono text-[10px] text-slate-600 mt-1 break-all">
-                      SHA256: 8f4a92c10b7e41299dfa1200481239
-                    </p>
-                    <div className="h-6 border-b border-slate-300 mt-2 flex items-center font-mono text-emerald-700 text-[10px] font-bold">
-                      STATUS: ACTIVE
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Information Panel (Desktop/Side-by-side) */}
-        <div className="hidden md:block">
-          {metadataPanel}
-        </div>
-      </div>
-
-      {/* Information Panel (Mobile/Below) */}
-      <div className="block md:hidden overflow-y-auto border-t border-slate-800 bg-slate-900 shrink-0 max-h-[220px]">
-        {metadataPanel}
+      {/* Embedded Standard PDF Viewer Container - Full Width & Height */}
+      <div className="flex-1 bg-slate-950 p-1 sm:p-2 flex items-center justify-center relative min-h-[600px] w-full">
+        <object
+          data={pdfSourceUrl}
+          type={isPdfStream ? "application/pdf" : "text/html"}
+          className="w-full h-full min-h-[75vh] md:min-h-[82vh] rounded-2xl overflow-hidden border border-slate-800 shadow-inner"
+        >
+          <iframe
+            src={pdfSourceUrl}
+            title={docProps.name}
+            className="w-full h-full min-h-[75vh] md:min-h-[82vh] border-0 rounded-2xl bg-slate-900"
+          />
+        </object>
       </div>
     </div>
   );
