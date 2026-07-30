@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback } from "react";
-import { Project, RequisitionStatus } from "../types";
+import { Project, RequisitionStatus, UserRole } from "../types";
 import { formatCurrency, cn } from "../lib/utils";
 import { Wallet, CheckCircle, AlertTriangle, PiggyBank, ArrowDownRight, TrendingDown } from "lucide-react";
 import { motion } from "motion/react";
@@ -215,19 +215,31 @@ export const BudgetCircularGauges: React.FC<BudgetCircularGaugesProps> = ({ proj
     return activeYearProjects.filter(p => isProjectAssigned(p));
   }, [activeYearProjects, isProjectAssigned]);
 
+  const isRestrictedRole = useMemo(() => {
+    if (!currentUser) return false;
+    return (
+      currentUser.role === UserRole.CHURCH_GROUP ||
+      currentUser.role === UserRole.APPROVER_L1 ||
+      currentUser.role === UserRole.APPROVER_L2
+    );
+  }, [currentUser]);
+
   const displayedProjectsList = useMemo(() => {
+    if (isRestrictedRole) {
+      return assignedProjects;
+    }
     if (filterMode === "MY_MINISTRIES" && assignedGroupsList.length > 0 && assignedProjects.length > 0) {
       return assignedProjects;
     }
     return activeYearProjects;
-  }, [filterMode, assignedGroupsList, assignedProjects, activeYearProjects]);
+  }, [isRestrictedRole, filterMode, assignedGroupsList, assignedProjects, activeYearProjects]);
 
-  // Total Summary values for global stats
+  // Total Summary values for displayed stats
   const summary = useMemo(() => {
     let totalBudget = 0;
     let totalSpent = 0;
 
-    activeYearProjects.forEach(p => {
+    displayedProjectsList.forEach(p => {
       totalBudget += p.allocatedBudget;
       const { usedAmount } = calculateProjectUtilization(p, requisitions);
       totalSpent += usedAmount;
@@ -241,9 +253,9 @@ export const BudgetCircularGauges: React.FC<BudgetCircularGaugesProps> = ({ proj
       totalSpent,
       totalRemaining,
       overallRemainingPct,
-      count: activeYearProjects.length
+      count: displayedProjectsList.length
     };
-  }, [activeYearProjects, requisitions]);
+  }, [displayedProjectsList, requisitions]);
 
   const displayedProjects = showAllGauges ? displayedProjectsList : displayedProjectsList.slice(0, 5);
   const hasMore = displayedProjectsList.length > 5;
@@ -301,8 +313,8 @@ export const BudgetCircularGauges: React.FC<BudgetCircularGaugesProps> = ({ proj
         </div>
       </div>
 
-      {/* Filter Toggle for Users with assigned groups */}
-      {assignedGroupsList.length > 0 && assignedProjects.length > 0 && (
+      {/* Filter Toggle for Users with assigned groups - hidden for restricted roles (approvers & church groups) who only see assigned ministries */}
+      {!isRestrictedRole && assignedGroupsList.length > 0 && assignedProjects.length > 0 && (
         <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mr-2">Display Scope:</span>
           <button
@@ -356,10 +368,10 @@ export const BudgetCircularGauges: React.FC<BudgetCircularGaugesProps> = ({ proj
         <div className="text-center py-12 bg-slate-50 border border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-400">
           <Wallet size={36} />
           <p className="text-[10px] font-black uppercase tracking-widest mt-2">No active group budget items found</p>
-          {filterMode === "MY_MINISTRIES" && (
+          {!isRestrictedRole && filterMode === "MY_MINISTRIES" && (
             <button
               onClick={() => setFilterMode("ALL")}
-              className="mt-3 text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:underline"
+              className="mt-3 text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:underline cursor-pointer"
             >
               View All Organization Ministries ({activeYearProjects.length})
             </button>
