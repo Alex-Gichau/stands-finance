@@ -185,7 +185,7 @@ function convertBase64ToLocalFile(attachmentStr: string, uploadsDir: string, vps
     
     fs.writeFileSync(filePath, buffer);
     
-    const fileUrl = `http://${vpsIp}:3000/uploads/${uniqueFileName}`;
+    const fileUrl = `/uploads/${uniqueFileName}`;
     console.log(`[Base64 Purger] Converted base64 to VPS disk file: ${fileUrl}`);
     
     return hasPrefix ? `${fileName}::${fileUrl}` : fileUrl;
@@ -410,8 +410,7 @@ async function startServer() {
       
       fs.writeFileSync(filePath, buffer);
       
-      const vpsIp = process.env.VPS_IP || "178.104.122.211";
-      const fileUrl = `http://${vpsIp}:3000/uploads/${uniqueFileName}`;
+      const fileUrl = `/uploads/${uniqueFileName}`;
       console.log(`[Local Upload] Saved file to VPS local disk: ${fileUrl}`);
       
       res.json({ success: true, url: fileUrl });

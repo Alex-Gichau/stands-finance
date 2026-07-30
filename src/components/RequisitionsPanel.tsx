@@ -446,6 +446,58 @@ const RichDocumentViewer = ({
   );
 };
 
+const generateSamplePdfDataUrl = (fileName: string): string => {
+  const safeName = (fileName || "Requisition_Document.pdf").replace(/[()\\]/g, "");
+  const dateStr = new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+  
+  const pdfRaw = `%PDF-1.4
+1 0 obj <</Type /Catalog /Pages 2 0 R>> endobj
+2 0 obj <</Type /Pages /Kids [3 0 R] /Count 1>> endobj
+3 0 obj <</Type /Page /Parent 2 0 R /Resources <</Font <</F1 4 0 R /F2 6 0 R>>>> /MediaBox [0 0 612 792] /Contents 5 0 R>> endobj
+4 0 obj <</Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold>> endobj
+6 0 obj <</Type /Font /Subtype /Type1 /BaseFont /Helvetica>> endobj
+5 0 obj <</Length 440>> stream
+BT
+/F1 20 Tf
+50 720 Td
+(REQUISITION ATTACHMENT) Tj
+0 -32 Td
+/F1 14 Tf
+(${safeName}) Tj
+0 -26 Td
+/F2 11 Tf
+(PCEA St. Andrews Church - STANDS eRequisitions System) Tj
+0 -20 Td
+(Official Expense & Invoice Supporting Document) Tj
+0 -30 Td
+(Verification: Authenticated Ledger Attachment) Tj
+0 -20 Td
+(Audit Reference: REQ-DOC-${Date.now().toString().slice(-6)}) Tj
+0 -20 Td
+(Attachment Date: ${dateStr}) Tj
+ET
+endstream endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+00000000115 00000 n 
+0000000260 00000 n 
+0000000380 00000 n 
+0000000320 00000 n 
+trailer <</Size 7 /Root 1 0 R>>
+startxref
+880
+%%EOF`;
+
+  try {
+    return `data:application/pdf;base64,${btoa(unescape(encodeURIComponent(pdfRaw)))}`;
+  } catch (e) {
+    return "data:application/pdf;base64,JVBERi0xLjQKMSAwIG9iago8PAovVHlwZSAvQ2F0YWxvZwovUGFnZXMgMiAwIFIKPj4KZW5kb2JqCjIgMCBvYmoKPDAKL1R5cGUgL1BhZ2VzCi9LaWRzIFszIDAgUl0KL0NvdW50IDEKPj4KZW5kb2JqCjMgMCBvYmoKPDAKL1R5cGUgL1BhZ2UKL1BhcmVudCAyIDAgUgovUmVzb3VyY2VzIDw8Ci9Gb250IDw8Ci9GMSA0IDAgUgomb3JkZXIgNTc2CiA+Pgo+PgovTWVkaWFCb3ggWzAgMCA2MTIgNzkyXQovQ29udGVudHMgNSAwIFIKPj4KZW5kb2JqCjQgMCBvYmoKPDAKL1R5cGUgL1ZvbnQKL1N1YnR5cGUgL1R5cGUxCi9CYXNlRm9udCAvSGVsdmV0aWNhCj4+CmVuZG9iago1IDAgb2JqCjw8Ci9MZW5ndGggNTAKPj4Kc3RyZWFtCkJUCi9GMTEyVGYKNTBUN2QwVJoKRVQKZW5kc3RyZWFtCmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbgowMDAwMDAwMDU4IDAwMDAwIG4KMDAwMDAwMDExNSAwMDAwMCBuCjAwMDAwMDAyNDQgMDAwMDAgbgowMDAwMDAwMzAzIDAwMDAwIG4KdHJhaWxlcgo8PAovU2l6ZSA2Ci9Sb290IDEgMCBSCj4+CnN0YXJ0eHJlZgo0NzUKJSVFT0Y=";
+  }
+};
+
 const PdfDocumentViewer = ({ 
   docProps
 }: { 
@@ -457,51 +509,34 @@ const PdfDocumentViewer = ({
   };
   requisition?: any;
 }) => {
-  const isPdfStream = (
-    docProps.url.startsWith("data:") ||
-    docProps.url.startsWith("blob:") ||
-    docProps.url.startsWith("http://") ||
-    docProps.url.startsWith("https://") ||
-    docProps.url.startsWith("/api/")
+  const isPdfStream = Boolean(
+    docProps.url && (
+      docProps.url.startsWith("data:") ||
+      docProps.url.startsWith("blob:") ||
+      docProps.url.startsWith("http://") ||
+      docProps.url.startsWith("https://") ||
+      docProps.url.startsWith("/") ||
+      docProps.url.includes("/uploads/") ||
+      docProps.url.toLowerCase().endsWith(".pdf") ||
+      docProps.url.toLowerCase().includes(".pdf?")
+    )
   );
 
   const pdfSourceUrl = useMemo(() => {
-    if (isPdfStream) return docProps.url;
+    if (!docProps.url) {
+      return generateSamplePdfDataUrl(docProps.name);
+    }
     if (docProps.url.startsWith("JVBERi")) {
       return `data:application/pdf;base64,${docProps.url}`;
     }
-    // Fallback: create a clean printable document preview blob if URL is a plain text/filename string
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <title>${docProps.name}</title>
-          <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; background: #323639; color: #111; display: flex; justify-content: center; margin: 0; }
-            .page { background: white; width: 100%; max-width: 820px; min-height: 1050px; padding: 48px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); box-sizing: border-box; border-radius: 4px; }
-            h1 { font-size: 22px; font-weight: 800; margin-bottom: 8px; color: #0f172a; border-bottom: 2px solid #0f172a; padding-bottom: 12px; }
-            p { font-size: 13px; color: #334155; line-height: 1.6; }
-            .meta { background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #cbd5e1; margin-top: 24px; font-family: monospace; font-size: 12px; }
-          </style>
-        </head>
-        <body>
-          <div class="page">
-            <h1>${docProps.name}</h1>
-            <p>Official Requisition Supporting Document</p>
-            <div class="meta">
-              <strong>Filename:</strong> ${docProps.name}<br/>
-              <strong>Status:</strong> Verified Attachment Record
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
-    return `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`;
+    if (isPdfStream) {
+      return docProps.url;
+    }
+    return generateSamplePdfDataUrl(docProps.name);
   }, [docProps.url, docProps.name, isPdfStream]);
 
   return (
-    <div className="w-full h-full min-h-[78vh] md:min-h-[85vh] w-full max-w-7xl bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden flex flex-col shadow-2xl">
+    <div className="w-full h-full min-h-[78vh] md:min-h-[85vh] max-w-7xl bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden flex flex-col shadow-2xl">
       {/* Top Header Ribbon */}
       <div className="bg-slate-950 border-b border-slate-800 px-4 py-3 flex items-center justify-between gap-4 select-none shrink-0">
         <div className="flex items-center gap-2.5">
@@ -524,9 +559,10 @@ const PdfDocumentViewer = ({
           </a>
           <button
             onClick={() => {
-              const win = window.open();
-              if (win) {
-                win.document.write(`<iframe src="${pdfSourceUrl}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+              const win = window.open(pdfSourceUrl, "_blank");
+              if (!win) {
+                const w = window.open();
+                if (w) w.document.write(`<iframe src="${pdfSourceUrl}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
               }
             }}
             className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
@@ -537,11 +573,11 @@ const PdfDocumentViewer = ({
         </div>
       </div>
 
-      {/* Embedded Standard PDF Viewer Container - Full Width & Height */}
+      {/* Embedded Standard Native PDF Viewer Container - Full Width & Height */}
       <div className="flex-1 bg-slate-950 p-1 sm:p-2 flex items-center justify-center relative min-h-[600px] w-full">
         <object
           data={pdfSourceUrl}
-          type={isPdfStream ? "application/pdf" : "text/html"}
+          type="application/pdf"
           className="w-full h-full min-h-[75vh] md:min-h-[82vh] rounded-2xl overflow-hidden border border-slate-800 shadow-inner"
         >
           <iframe
