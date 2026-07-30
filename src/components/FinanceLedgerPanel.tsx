@@ -34,7 +34,9 @@ import {
   Lock,
   ShieldCheck,
   Download,
-  Calendar
+  Calendar,
+  CalendarRange,
+  Save
 } from "lucide-react";
 import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition, Project } from "../types";
@@ -123,6 +125,7 @@ export const FinanceLedgerPanel: React.FC = () => {
     openFinancialYear,
     fiscalYears,
     createFiscalYear,
+    updateFiscalYearDates,
     toggleFiscalYearStatus,
     setActiveFiscalYear,
     cloneFiscalYearBudgets,
@@ -248,6 +251,57 @@ export const FinanceLedgerPanel: React.FC = () => {
     setWizardTitle(`FY ${activeYear + 1} Budget Baseline`);
     setWizardNotes(`Cloned allocations dynamically from ${activeYear}`);
   }, [activeYear]);
+
+  const isAdminOrSuperAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN;
+
+  // Fiscal Year Setup States
+  const [targetFiscalYearForDates, setTargetFiscalYearForDates] = React.useState<number>(activeYear);
+  const [fyStartDate, setFyStartDate] = React.useState<string>(`${activeYear}-01-01`);
+  const [fyEndDate, setFyEndDate] = React.useState<string>(`${activeYear}-12-31`);
+  const [isSavingDates, setIsSavingDates] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    setTargetFiscalYearForDates(activeYear);
+  }, [activeYear]);
+
+  React.useEffect(() => {
+    const fyObj = fiscalYears.find(f => f.year === targetFiscalYearForDates);
+    if (fyObj?.startDate) {
+      setFyStartDate(fyObj.startDate);
+    } else if (systemSettings?.fiscalYearStartDate && targetFiscalYearForDates === activeYear) {
+      setFyStartDate(systemSettings.fiscalYearStartDate);
+    } else {
+      setFyStartDate(`${targetFiscalYearForDates}-01-01`);
+    }
+
+    if (fyObj?.endDate) {
+      setFyEndDate(fyObj.endDate);
+    } else if (systemSettings?.fiscalYearEndDate && targetFiscalYearForDates === activeYear) {
+      setFyEndDate(systemSettings.fiscalYearEndDate);
+    } else {
+      setFyEndDate(`${targetFiscalYearForDates}-12-31`);
+    }
+  }, [targetFiscalYearForDates, activeYear, fiscalYears, systemSettings]);
+
+  const handleSaveFiscalDates = async () => {
+    if (!fyStartDate || !fyEndDate) return;
+    setIsSavingDates(true);
+    try {
+      if (updateFiscalYearDates) {
+        await updateFiscalYearDates(targetFiscalYearForDates, fyStartDate, fyEndDate);
+      } else {
+        await updateSystemSettings({
+          fiscalYearStartDate: fyStartDate,
+          fiscalYearEndDate: fyEndDate
+        });
+      }
+    } catch (err: any) {
+      console.error("Failed to save fiscal year dates:", err);
+      alert(err.message || "Failed to save fiscal year dates.");
+    } finally {
+      setIsSavingDates(false);
+    }
+  };
 
   const handleEditProjectBudget = async (project: Project) => {
     if (!isFinanceOrAdmin) {
@@ -2341,78 +2395,141 @@ export const FinanceLedgerPanel: React.FC = () => {
             </section>
           )}
 
-          {/* Budget allocation form relocated below multiyear fiscal planning */}
+          {/* Budget allocation form & Fiscal Year Setup */}
           {isFinanceOrAdmin && (
-            <section className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Allocate Group Budget Limits</h3>
-              <form onSubmit={handleAllocateBudget} className="space-y-4">
-                <div className="space-y-2 relative">
-                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Select Group / Ministry</label>
-                  
-                  <div className="relative">
-                    <input
-                      disabled={yearStatus === "CLOSED" && currentUser?.role !== UserRole.SUPER_ADMIN}
-                      type="text"
-                      placeholder="Type to search church groups/ministries..."
-                      value={groupSearchQuery}
-                      onChange={(e) => {
-                        setGroupSearchQuery(e.target.value);
-                        setSelectedGroupId(""); // Force re-selection
-                        setIsGroupDropdownOpen(true);
-                      }}
-                      onFocus={() => setIsGroupDropdownOpen(true)}
-                      className="w-full px-4 py-3 bg-slate-550/5 border border-slate-200 rounded-xl text-xs font-bold focus:border-indigo-600 outline-none transition-all placeholder:text-slate-400"
-                    />
-                    {groupSearchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setGroupSearchQuery("");
-                          setSelectedGroupId("");
-                        }}
-                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 p-1 hover:bg-slate-200/50 rounded-full"
-                      >
-                        <X size={14} />
-                      </button>
-                    )}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Ministry Budget Controls */}
+              <section className={cn(
+                "bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4",
+                isAdminOrSuperAdmin ? "lg:col-span-7" : "lg:col-span-12"
+              )}>
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div>
+                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                      <Coins size={16} className="text-indigo-600" />
+                      Allocate Group Budget Limits
+                    </h3>
+                    <p className="text-[10px] text-slate-500 font-medium">Ministry Budget Control & baseline reserve allocation</p>
                   </div>
+                  <span className="text-[9px] font-mono font-bold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                    FY {activeYear}
+                  </span>
+                </div>
 
-                  {/* Backdrop for click outside */}
-                  {isGroupDropdownOpen && (
-                    <div className="fixed inset-0 z-30" onClick={() => setIsGroupDropdownOpen(false)} />
-                  )}
+                <form onSubmit={handleAllocateBudget} className="space-y-4">
+                  <div className="space-y-2 relative">
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Select Group / Ministry</label>
+                    
+                    <div className="relative">
+                      <input
+                        disabled={yearStatus === "CLOSED" && currentUser?.role !== UserRole.SUPER_ADMIN}
+                        type="text"
+                        placeholder="Type to search church groups/ministries..."
+                        value={groupSearchQuery}
+                        onChange={(e) => {
+                          setGroupSearchQuery(e.target.value);
+                          setSelectedGroupId(""); // Force re-selection
+                          setIsGroupDropdownOpen(true);
+                        }}
+                        onFocus={() => setIsGroupDropdownOpen(true)}
+                        className="w-full px-4 py-3 bg-slate-550/5 border border-slate-200 rounded-xl text-xs font-bold focus:border-indigo-600 outline-none transition-all placeholder:text-slate-400"
+                      />
+                      {groupSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGroupSearchQuery("");
+                            setSelectedGroupId("");
+                          }}
+                          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 p-1 hover:bg-slate-200/50 rounded-full"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
 
-                  {/* Autocomplete Dropdown List */}
-                  <AnimatePresence>
+                    {/* Backdrop for click outside */}
                     {isGroupDropdownOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -8 }}
-                        transition={{ duration: 0.15 }}
-                        className="absolute z-40 w-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-150"
-                      >
-                        {filteredGroups.length > 0 ? (
-                          filteredGroups.map(cg => {
-                            // Check if this group already has a budget allocation for activeYear
-                            const activeAllocation = projects.find(p => p.groupId === cg.name && p.fiscalYear === activeYear);
-                            const hasActiveAllocation = activeAllocation && activeAllocation.allocatedBudget > 0;
-                            
-                            return (
+                      <div className="fixed inset-0 z-30" onClick={() => setIsGroupDropdownOpen(false)} />
+                    )}
+
+                    {/* Autocomplete Dropdown List */}
+                    <AnimatePresence>
+                      {isGroupDropdownOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -8 }}
+                          transition={{ duration: 0.15 }}
+                          className="absolute z-40 w-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-150"
+                        >
+                          {filteredGroups.length > 0 ? (
+                            filteredGroups.map(cg => {
+                              // Check if this group already has a budget allocation for activeYear
+                              const activeAllocation = projects.find(p => p.groupId === cg.name && p.fiscalYear === activeYear);
+                              const hasActiveAllocation = activeAllocation && activeAllocation.allocatedBudget > 0;
+                              
+                              return (
+                                <button
+                                  key={cg.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedGroupId(cg.name);
+                                    setGroupSearchQuery(cg.name);
+                                    setIsGroupDropdownOpen(false);
+
+                                    // Suggest a default unique accounting code
+                                    const existingProjectWithCode = projects.find(p => p.groupId === cg.name && p.accountNumber);
+                                    if (existingProjectWithCode) {
+                                      setAllocationAccountNumber(existingProjectWithCode.accountNumber || "");
+                                    } else {
+                                      const defCode = getAccountingCode(cg.name).code;
+                                      let finalCode = defCode;
+                                      let suffix = 1;
+                                      while (projects.some(p => p.accountNumber === finalCode)) {
+                                        finalCode = `${defCode}-${suffix}`;
+                                        suffix++;
+                                      }
+                                      setAllocationAccountNumber(finalCode);
+                                    }
+                                  }}
+                                  className={cn(
+                                    "w-full px-4 py-3 text-left hover:bg-slate-550/5 hover:text-indigo-600 transition-colors flex flex-col gap-0.5",
+                                    selectedGroupId === cg.name && "bg-indigo-50/50"
+                                  )}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-xs font-black text-slate-800 uppercase tracking-tight">{cg.name}</span>
+                                    {hasActiveAllocation ? (
+                                      <span className="text-[7px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-250">
+                                        KES {activeAllocation.allocatedBudget.toLocaleString()} Alloc
+                                      </span>
+                                    ) : (
+                                      <span className="text-[7px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                                        No current limit
+                                      </span>
+                                    )}
+                                  </div>
+                                  {cg.description && (
+                                    <span className="text-[9px] text-slate-500 font-medium line-clamp-1">{cg.description}</span>
+                                  )}
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <div className="p-4 text-center space-y-2">
+                              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide">No church groups found matching "{groupSearchQuery}"</p>
                               <button
-                                key={cg.id}
                                 type="button"
                                 onClick={() => {
-                                  setSelectedGroupId(cg.name);
-                                  setGroupSearchQuery(cg.name);
+                                  setSelectedGroupId(groupSearchQuery);
                                   setIsGroupDropdownOpen(false);
 
-                                  // Suggest a default unique accounting code
-                                  const existingProjectWithCode = projects.find(p => p.groupId === cg.name && p.accountNumber);
+                                  const existingProjectWithCode = projects.find(p => p.groupId === groupSearchQuery && p.accountNumber);
                                   if (existingProjectWithCode) {
                                     setAllocationAccountNumber(existingProjectWithCode.accountNumber || "");
                                   } else {
-                                    const defCode = getAccountingCode(cg.name).code;
+                                    const defCode = "4090";
                                     let finalCode = defCode;
                                     let suffix = 1;
                                     while (projects.some(p => p.accountNumber === finalCode)) {
@@ -2422,160 +2539,235 @@ export const FinanceLedgerPanel: React.FC = () => {
                                     setAllocationAccountNumber(finalCode);
                                   }
                                 }}
-                                className={cn(
-                                  "w-full px-4 py-3 text-left hover:bg-slate-550/5 hover:text-indigo-600 transition-colors flex flex-col gap-0.5",
-                                  selectedGroupId === cg.name && "bg-indigo-50/50"
-                                )}
+                                className="px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors rounded-lg text-[9px] font-black uppercase tracking-wider"
                               >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-xs font-black text-slate-800 uppercase tracking-tight">{cg.name}</span>
-                                  {hasActiveAllocation ? (
-                                    <span className="text-[7px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-250">
-                                      KES {activeAllocation.allocatedBudget.toLocaleString()} Alloc
-                                    </span>
-                                  ) : (
-                                    <span className="text-[7px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                                      No current limit
-                                    </span>
-                                  )}
-                                </div>
-                                {cg.description && (
-                                  <span className="text-[9px] text-slate-500 font-medium line-clamp-1">{cg.description}</span>
-                                )}
+                                Use "{groupSearchQuery}" as custom group name anyway
                               </button>
-                            );
-                          })
-                        ) : (
-                          <div className="p-4 text-center space-y-2">
-                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide">No church groups found matching "{groupSearchQuery}"</p>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedGroupId(groupSearchQuery);
-                                setIsGroupDropdownOpen(false);
+                            </div>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
-                                const existingProjectWithCode = projects.find(p => p.groupId === groupSearchQuery && p.accountNumber);
-                                if (existingProjectWithCode) {
-                                  setAllocationAccountNumber(existingProjectWithCode.accountNumber || "");
-                                } else {
-                                  const defCode = "4090";
-                                  let finalCode = defCode;
-                                  let suffix = 1;
-                                  while (projects.some(p => p.accountNumber === finalCode)) {
-                                    finalCode = `${defCode}-${suffix}`;
-                                    suffix++;
-                                  }
-                                  setAllocationAccountNumber(finalCode);
-                                }
-                              }}
-                              className="px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors rounded-lg text-[9px] font-black uppercase tracking-wider"
-                            >
-                              Use "{groupSearchQuery}" as custom group name anyway
-                            </button>
+                    {selectedGroupId && (
+                      <div className="flex flex-col gap-1.5 mt-2">
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="px-3 py-1.5 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-lg text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 self-start"
+                        >
+                          <CheckCircle2 size={12} className="text-emerald-600" />
+                          Selected: {selectedGroupId}
+                        </motion.div>
+
+                        {isDuplicateGroup && (
+                          <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-[10.5px] text-rose-800 font-black uppercase tracking-wide space-y-1">
+                            <p>⚠️ Duplicate Ministry Reserve Detected</p>
+                            <p className="text-[9.5px] font-medium text-rose-700 normal-case leading-relaxed">
+                              A budget reserve for "{selectedGroupId}" already exists for FY {activeYear}. Multiple direct lines for the same ministry group are blocked to preserve double-entry integrity. Please adjust the existing reserve limit below instead, or choose/type a unique group.
+                            </p>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {yearStatus === "CLOSED" && currentUser?.role === UserRole.SUPER_ADMIN && (
+                      <p className="text-[9px] text-amber-600 font-bold">⚠️ Warning: Fiscal Year books are CLOSED. Super Admin override enabled.</p>
+                    )}
+                  </div>
+
+                  {prevYearData && (
+                    <div className="grid grid-cols-2 gap-4 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+                      <div>
+                        <p className="text-[9px] font-black text-indigo-700 uppercase tracking-widest">FY {prevYear} Allocated</p>
+                        <p className="text-xs font-bold text-indigo-900">{formatCurrency(prevYearData.allocated)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-black text-indigo-700 uppercase tracking-widest">FY {prevYear} Used</p>
+                        <p className="text-xs font-bold text-indigo-900">{formatCurrency(prevYearData.used)}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Unique Account Number</label>
+                    <input
+                      disabled={yearStatus === "CLOSED" && currentUser?.role !== UserRole.SUPER_ADMIN}
+                      type="text"
+                      placeholder="e.g. 4010-B or 4022"
+                      value={allocationAccountNumber}
+                      onChange={(e) => setAllocationAccountNumber(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:border-indigo-600 outline-none transition-colors"
+                    />
+                    {allocationAccountNumber && !isDuplicateAccountNumber && (
+                      <p className="text-[9.5px] text-emerald-700 font-bold ml-1">
+                        ✅ Custom Account Code "{allocationAccountNumber}" is unique and available.
+                      </p>
+                    )}
+                    {isDuplicateAccountNumber && (
+                      <p className="text-rose-500 text-[9.5px] font-black uppercase tracking-wide ml-1">
+                        ⚠️ Duplicate Account Code: "{allocationAccountNumber}" is already assigned to another ministry group reserve!
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Allocation Limit (KES)</label>
+                    <input
+                      disabled={yearStatus === "CLOSED" && currentUser?.role !== UserRole.SUPER_ADMIN}
+                      type="text"
+                      placeholder="e.g. 500,000"
+                      value={allocationAmount}
+                      onChange={handleAmountChange}
+                      className="w-full px-4 py-3 bg-slate-550/5 border border-slate-200 rounded-xl text-xs font-bold focus:border-indigo-600 outline-none transition-colors font-mono"
+                    />
+                    {allocationAmount && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] text-slate-500 font-medium flex items-start gap-2 animate-fadeIn"
+                      >
+                        <Sparkles size={12} className="text-amber-500 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5">
+                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Amount in Words</span>
+                          <p className="font-bold text-slate-700 italic">
+                            {numberToWords(allocationAmount)}
+                          </p>
+                        </div>
                       </motion.div>
                     )}
-                  </AnimatePresence>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isAllocating || isDuplicateGroup || isDuplicateAccountNumber || (yearStatus === "CLOSED" && currentUser?.role !== UserRole.SUPER_ADMIN)}
+                    className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3 flex items-center justify-center gap-2 text-xs font-black uppercase tracking-wider rounded-xl disabled:opacity-50 transition-colors cursor-pointer"
+                  >
+                    <Plus size={14} />
+                    {isAllocating ? "ALLOCATING..." : "SAVE BUDGET LIMIT"}
+                  </button>
+                </form>
+              </section>
 
-                  {selectedGroupId && (
-                    <div className="flex flex-col gap-1.5 mt-2">
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="px-3 py-1.5 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-lg text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 self-start"
-                      >
-                        <CheckCircle2 size={12} className="text-emerald-600" />
-                        Selected: {selectedGroupId}
-                      </motion.div>
+              {/* Fiscal Year Setup Card - Admin and Super Admin */}
+              {isAdminOrSuperAdmin && (
+                <section className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div className="space-y-0.5">
+                        <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                          <CalendarRange size={16} className="text-indigo-600" />
+                          Fiscal Year Setup
+                        </h3>
+                        <p className="text-[10px] text-slate-500 font-medium">Set start & end dates for financial periods</p>
+                      </div>
+                      <span className={cn(
+                        "text-[9px] font-black uppercase px-2 py-0.5 rounded-full border",
+                        yearStatus === "OPEN" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"
+                      )}>
+                        {yearStatus}
+                      </span>
+                    </div>
 
-                      {isDuplicateGroup && (
-                        <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-[10.5px] text-rose-800 font-black uppercase tracking-wide space-y-1">
-                          <p>⚠️ Duplicate Ministry Reserve Detected</p>
-                          <p className="text-[9.5px] font-medium text-rose-700 normal-case leading-relaxed">
-                            A budget reserve for "{selectedGroupId}" already exists for FY {activeYear}. Multiple direct lines for the same ministry group are blocked to preserve double-entry integrity. Please adjust the existing reserve limit below instead, or choose/type a unique group.
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Target Fiscal Year</label>
+                        <select
+                          value={targetFiscalYearForDates}
+                          onChange={(e) => {
+                            const selectedYear = parseInt(e.target.value);
+                            setTargetFiscalYearForDates(selectedYear);
+                          }}
+                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:border-indigo-600 outline-none transition-colors font-mono cursor-pointer"
+                        >
+                          {fiscalYears.length > 0 ? (
+                            fiscalYears.map(fy => (
+                              <option key={fy.id} value={fy.year}>
+                                FY {fy.year} ({fy.label || `Year ${fy.year}`}) {fy.year === activeYear ? "• Active" : ""}
+                              </option>
+                            ))
+                          ) : (
+                            <option value={activeYear}>FY {activeYear} • Active</option>
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-1">
+                            <Calendar size={11} className="text-indigo-500" /> Start Date
+                          </label>
+                          <input
+                            type="date"
+                            value={fyStartDate}
+                            onChange={(e) => setFyStartDate(e.target.value)}
+                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold font-mono focus:border-indigo-600 outline-none transition-colors"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-1">
+                            <Calendar size={11} className="text-indigo-500" /> End Date
+                          </label>
+                          <input
+                            type="date"
+                            value={fyEndDate}
+                            onChange={(e) => setFyEndDate(e.target.value)}
+                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold font-mono focus:border-indigo-600 outline-none transition-colors"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider shrink-0">Quick Presets:</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFyStartDate(`${targetFiscalYearForDates}-01-01`);
+                            setFyEndDate(`${targetFiscalYearForDates}-12-31`);
+                          }}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[9px] font-bold transition-colors cursor-pointer"
+                        >
+                          Jan 1 – Dec 31
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFyStartDate(`${targetFiscalYearForDates}-07-01`);
+                            setFyEndDate(`${targetFiscalYearForDates + 1}-06-30`);
+                          }}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[9px] font-bold transition-colors cursor-pointer"
+                        >
+                          Jul 1 – Jun 30
+                        </button>
+                      </div>
+
+                      {fyStartDate && fyEndDate && (
+                        <div className="p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl text-[10px] text-indigo-900 font-medium space-y-1">
+                          <div className="flex items-center justify-between font-bold">
+                            <span>Cycle Duration:</span>
+                            <span className="font-mono text-indigo-700">
+                              {Math.max(0, Math.round((new Date(fyEndDate).getTime() - new Date(fyStartDate).getTime()) / (1000 * 60 * 60 * 24)) + 1)} Days
+                            </span>
+                          </div>
+                          <p className="text-[9px] text-indigo-700/80">
+                            Effective: {new Date(fyStartDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} – {new Date(fyEndDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                           </p>
                         </div>
                       )}
                     </div>
-                  )}
-
-                  {yearStatus === "CLOSED" && currentUser?.role === UserRole.SUPER_ADMIN && (
-                    <p className="text-[9px] text-amber-600 font-bold">⚠️ Warning: Fiscal Year books are CLOSED. Super Admin override enabled.</p>
-                  )}
-                </div>
-
-                {prevYearData && (
-                  <div className="grid grid-cols-2 gap-4 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
-                    <div>
-                      <p className="text-[9px] font-black text-indigo-700 uppercase tracking-widest">FY {prevYear} Allocated</p>
-                      <p className="text-xs font-bold text-indigo-900">{formatCurrency(prevYearData.allocated)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] font-black text-indigo-700 uppercase tracking-widest">FY {prevYear} Used</p>
-                      <p className="text-xs font-bold text-indigo-900">{formatCurrency(prevYearData.used)}</p>
-                    </div>
                   </div>
-                )}
 
-                <div className="space-y-2">
-                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Unique Account Number</label>
-                  <input
-                    disabled={yearStatus === "CLOSED" && currentUser?.role !== UserRole.SUPER_ADMIN}
-                    type="text"
-                    placeholder="e.g. 4010-B or 4022"
-                    value={allocationAccountNumber}
-                    onChange={(e) => setAllocationAccountNumber(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:border-indigo-600 outline-none transition-colors"
-                  />
-                  {allocationAccountNumber && !isDuplicateAccountNumber && (
-                    <p className="text-[9.5px] text-emerald-700 font-bold ml-1">
-                      ✅ Custom Account Code "{allocationAccountNumber}" is unique and available.
-                    </p>
-                  )}
-                  {isDuplicateAccountNumber && (
-                    <p className="text-rose-500 text-[9.5px] font-black uppercase tracking-wide ml-1">
-                      ⚠️ Duplicate Account Code: "{allocationAccountNumber}" is already assigned to another ministry group reserve!
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Allocation Limit (KES)</label>
-                  <input
-                    disabled={yearStatus === "CLOSED" && currentUser?.role !== UserRole.SUPER_ADMIN}
-                    type="text"
-                    placeholder="e.g. 500,000"
-                    value={allocationAmount}
-                    onChange={handleAmountChange}
-                    className="w-full px-4 py-3 bg-slate-550/5 border border-slate-200 rounded-xl text-xs font-bold focus:border-indigo-600 outline-none transition-colors font-mono"
-                  />
-                  {allocationAmount && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] text-slate-500 font-medium flex items-start gap-2 animate-fadeIn"
-                    >
-                      <Sparkles size={12} className="text-amber-500 shrink-0 mt-0.5" />
-                      <div className="space-y-0.5">
-                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Amount in Words</span>
-                        <p className="font-bold text-slate-700 italic">
-                          {numberToWords(allocationAmount)}
-                        </p>
-                      </div>
-                    </motion.div>
-                  )}
-                </div>
-                <button
-                  type="submit"
-                  disabled={isAllocating || isDuplicateGroup || isDuplicateAccountNumber || (yearStatus === "CLOSED" && currentUser?.role !== UserRole.SUPER_ADMIN)}
-                  className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3 flex items-center justify-center gap-2 text-xs font-black uppercase tracking-wider rounded-xl disabled:opacity-50 transition-colors"
-                >
-                  <Plus size={14} />
-                  {isAllocating ? "ALLOCATING..." : "SAVE BUDGET LIMIT"}
-                </button>
-              </form>
-            </section>
+                  <button
+                    type="button"
+                    onClick={handleSaveFiscalDates}
+                    disabled={isSavingDates || !fyStartDate || !fyEndDate}
+                    className="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 text-white py-3 flex items-center justify-center gap-2 text-xs font-black uppercase tracking-wider rounded-xl disabled:opacity-50 transition-colors cursor-pointer shadow-sm shadow-indigo-200"
+                  >
+                    <Save size={14} />
+                    {isSavingDates ? "SAVING DATES..." : "SAVE FISCAL YEAR DATES"}
+                  </button>
+                </section>
+              )}
+            </div>
           )}
 
           {/* 7. Active progress dashboard */}

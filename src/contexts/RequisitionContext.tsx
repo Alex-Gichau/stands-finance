@@ -580,6 +580,7 @@ interface RequisitionContextType {
   syncRealDisbursedTransactions: () => Promise<number>;
   fiscalYears: FiscalYear[];
   createFiscalYear: (year: number, label: string, status: "OPEN" | "CLOSED" | "ARCHIVED", notes?: string) => Promise<void>;
+  updateFiscalYearDates: (year: number, startDate: string, endDate: string) => Promise<void>;
   toggleFiscalYearStatus: (id: string, status: "OPEN" | "CLOSED" | "ARCHIVED") => Promise<void>;
   setActiveFiscalYear: (year: number) => Promise<void>;
   cloneFiscalYearBudgets: (
@@ -1398,6 +1399,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         label,
         status,
         createdAt: new Date().toISOString(),
+        startDate: `${year}-01-01`,
+        endDate: `${year}-12-31`,
         notes: notes || ""
       };
       
@@ -1409,6 +1412,36 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       handleFirestoreError(err, OperationType.CREATE, `fiscal_years/${year}`);
     }
   }, [currentUser, db, addSystemLog, triggerToast]);
+
+  const updateFiscalYearDates = useCallback(async (year: number, startDate: string, endDate: string) => {
+    if (!currentUser) throw new Error("Authentication required");
+    if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.SUPER_ADMIN) {
+      throw new Error("Unauthorized: Only Admins and Super Admins can update fiscal year dates.");
+    }
+
+    try {
+      const yearId = year.toString();
+      await setDoc(doc(db, "fiscal_years", yearId), {
+        id: yearId,
+        year,
+        startDate,
+        endDate,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      if (systemSettings.currentFiscalYear === year || !systemSettings.currentFiscalYear) {
+        await updateSystemSettings({
+          fiscalYearStartDate: startDate,
+          fiscalYearEndDate: endDate
+        });
+      }
+
+      await addSystemLog("FISCAL_YEAR_DATES_UPDATED", `Updated start and end dates for FY ${year}: ${startDate} to ${endDate}`, { year, startDate, endDate });
+      triggerToast({ type: "SYSTEM_INFO", message: `Fiscal Year ${year} dates updated (${startDate} to ${endDate}).`, severity: "LOW", timestamp: new Date().toISOString() });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `fiscal_years/${year}`);
+    }
+  }, [currentUser, db, systemSettings, updateSystemSettings, addSystemLog, triggerToast]);
 
   const toggleFiscalYearStatus = useCallback(async (id: string, status: "OPEN" | "CLOSED" | "ARCHIVED") => {
     if (!currentUser) throw new Error("Authentication required");
@@ -4601,6 +4634,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       syncRealDisbursedTransactions,
       fiscalYears: uniqueFiscalYears,
       createFiscalYear,
+      updateFiscalYearDates,
       toggleFiscalYearStatus,
       setActiveFiscalYear,
       cloneFiscalYearBudgets,

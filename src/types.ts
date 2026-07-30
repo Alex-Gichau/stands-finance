@@ -121,6 +121,8 @@ export interface FiscalYear {
   label: string;
   status: "OPEN" | "CLOSED" | "ARCHIVED";
   createdAt: string;
+  startDate?: string;
+  endDate?: string;
   notes?: string;
 }
 
@@ -303,6 +305,8 @@ export interface SystemSettings {
   isSystemOffline?: boolean;
   currentFiscalYear?: number;
   fiscalYearStatus?: "OPEN" | "CLOSED" | "ARCHIVED";
+  fiscalYearStartDate?: string;
+  fiscalYearEndDate?: string;
   notificationEmail?: string;
   centralVaultLiquidity?: number;
   announcementMessage?: string;
