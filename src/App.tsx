@@ -652,18 +652,6 @@ function AppContent() {
   const { resetTimer: resetIdleTimer } = useIdleTimeout(
     () => {
       if (currentUser) {
-        const userName = currentUser.name || currentUser.email;
-        sendSlackNotification({
-          action: "User Session Timeout",
-          details: `${userName} was automatically signed out due to inactivity after ${idleMinutes} minutes.`,
-          performedBy: "SYSTEM_IDLE_MONITOR",
-          level: "normal",
-          metadata: {
-            userId: currentUser.id,
-            userEmail: currentUser.email,
-            timeoutPolicy: `${idleMinutes}_MINUTES_IDLE`
-          }
-        });
         setShowIdleWarning(false);
         handleLogout(true);
       }
@@ -682,36 +670,16 @@ function AppContent() {
     60 * 1000                                // Warning window of 60 seconds before actual logout trigger
   );
 
-  // Global Interaction Tracking for Slack Alerts (Batched every 5 mins)
+  // Global Interaction Tracking (Buffered internally)
   const userActivityBuffer = useRef<{ type: string; detail: string; timestamp: number }[]>([]);
 
   useEffect(() => {
     if (!currentUser) return;
 
-    // Timer to send summaries every 5 minutes
+    // Timer to reset/maintain buffer
     const summaryInterval = setInterval(() => {
       if (userActivityBuffer.current.length === 0) return;
-
-      const activities = [...userActivityBuffer.current];
-      userActivityBuffer.current = []; // Clear buffer
-
-      const navigationCount = activities.filter(a => a.type === "NAV").length;
-      const buttonCount = activities.filter(a => a.type === "BTN").length;
-      
-      const details = activities
-        .slice(0, 10) // Show first 10 for brevity
-        .map(a => `・ ${a.detail}`)
-        .join("\n");
-
-      sendSlackNotification({
-        action: "User Activity Summary (5min)",
-        details: `Batched activity for ${currentUser.name || currentUser.email}:\n- Navigations: ${navigationCount}\n- Button Interactions: ${buttonCount}\n\nRecent Actions:\n${details}${activities.length > 10 ? `\n...and ${activities.length - 10} more` : ""}`,
-        performedBy: "SYSTEM_ACTIVITY_MONITOR",
-        metadata: {
-          totalActions: activities.length,
-          userId: currentUser.id
-        }
-      });
+      userActivityBuffer.current = []; // Clear buffer without dispatching Slack notifications
     }, 5 * 60 * 1000);
 
     const handleGlobalClick = (e: MouseEvent) => {

@@ -14,11 +14,13 @@ import {
   Clock,
   ArrowRight,
   Database,
-  Activity
+  Activity,
+  Zap,
+  CheckCircle2
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { SystemLog, UserRole } from "../types";
-import { cn, sendSlackNotification } from "../lib/utils";
+import { cn } from "../lib/utils";
 import { getTimeUntilMidnightPT } from "../lib/errorMonitor";
 import { getFirestoreWriteCount } from "../lib/quotaMonitor";
 import { AuditSummaryWidget } from "./AuditSummaryWidget";
@@ -28,7 +30,9 @@ export const AuditLogsPanel: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedActionFilter, setSelectedActionFilter] = useState("ALL");
   const [selectedLevelFilter, setSelectedLevelFilter] = useState("ALL");
+  const [dateRangeFilter, setDateRangeFilter] = useState<'ALL' | 'TODAY' | '7DAYS' | '30DAYS'>('ALL');
   const [activeTab, setActiveTab] = useState<'LOGS' | 'EMAILS'>('LOGS');
+  const [showQuotaModal, setShowQuotaModal] = useState(false);
 
   const uniqueActions = useMemo(() => {
     const actions = new Set(systemLogs.map(log => log.action));
@@ -36,6 +40,9 @@ export const AuditLogsPanel: React.FC = () => {
   }, [systemLogs]);
 
   const filteredLogs = useMemo(() => {
+    const now = new Date().getTime();
+    const oneDayMs = 24 * 60 * 60 * 1000;
+
     return systemLogs.filter(log => {
       const matchesSearch = 
         log.details.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -45,9 +52,21 @@ export const AuditLogsPanel: React.FC = () => {
       const matchesAction = selectedActionFilter === "ALL" || log.action === selectedActionFilter;
       const matchesLevel = selectedLevelFilter === "ALL" || (log.metadata?.level === selectedLevelFilter);
 
-      return matchesSearch && matchesAction && matchesLevel;
+      let matchesDate = true;
+      const logTime = new Date(log.timestamp).getTime();
+      if (!isNaN(logTime)) {
+        if (dateRangeFilter === 'TODAY') {
+          matchesDate = (now - logTime) <= oneDayMs;
+        } else if (dateRangeFilter === '7DAYS') {
+          matchesDate = (now - logTime) <= 7 * oneDayMs;
+        } else if (dateRangeFilter === '30DAYS') {
+          matchesDate = (now - logTime) <= 30 * oneDayMs;
+        }
+      }
+
+      return matchesSearch && matchesAction && matchesLevel && matchesDate;
     }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [systemLogs, searchTerm, selectedActionFilter, selectedLevelFilter]);
+  }, [systemLogs, searchTerm, selectedActionFilter, selectedLevelFilter, dateRangeFilter]);
 
   if (currentUser?.role !== UserRole.SUPER_ADMIN) {
     return (
@@ -84,32 +103,6 @@ export const AuditLogsPanel: React.FC = () => {
     return <Info size={18} className="text-slate-400" />;
   };
 
-  const [isSendingQuota, setIsSendingQuota] = useState(false);
-
-  const sendQuotaMonitorNotification = async () => {
-    setIsSendingQuota(true);
-    try {
-      const resetTime = getTimeUntilMidnightPT();
-      const readUsage = Math.floor(Math.random() * 15000) + 30000; // Simulated
-      const writeUsage = getFirestoreWriteCount(); // Actual tracked
-      
-      const payload = `📊 *SYSTEM QUOTA MONITOR REPORT* 📊\n\n*Current Daily Usage:*\nReads: ~${readUsage.toLocaleString()} / 50,000 (Simulated)\nWrites: ${writeUsage.toLocaleString()} / 20,000 (Tracked Locally)\n\n*Estimated Reset Time:*\n${resetTime}\n\n*Historical Trend:*\nLast 7 Days Average: ~35k Reads, ~12k Writes\n\n_Note: Write counts are tracked locally for this browser session. For global exact usage, check the database console._`;
-
-      await sendSlackNotification({
-        action: "QUOTA_MONITOR_REPORT",
-        details: payload,
-        performedBy: currentUser?.name || "System Monitor",
-        level: "normal"
-      });
-      alert("Quota Monitor Report sent to Slack successfully!");
-    } catch (e) {
-      console.error(e);
-      alert("Failed to send Quota Monitor Report.");
-    } finally {
-      setIsSendingQuota(false);
-    }
-  };
-
   return (
     <div className="space-y-8 pb-20">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -118,19 +111,19 @@ export const AuditLogsPanel: React.FC = () => {
             <ShieldAlert className="text-primary w-6 h-6" />
             <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight uppercase">System Audit Trail</h1>
           </div>
-          <p className="text-slate-500 text-[11px] font-bold uppercase tracking-widest pl-8">Incorruptible ledger of all system transactions & security events</p>
+          <p className="text-slate-500 text-[11px] font-bold uppercase tracking-widest pl-8">Optimized real-time ledger of system transactions & security events</p>
         </div>
         
         <div className="flex bg-slate-100 p-1.5 rounded-2xl">
           <button 
             onClick={() => setActiveTab('LOGS')}
-            className={cn("px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all", activeTab === 'LOGS' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900")}
+            className={cn("px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer", activeTab === 'LOGS' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900")}
           >
             System Logs
           </button>
           <button 
             onClick={() => setActiveTab('EMAILS')}
-            className={cn("px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all", activeTab === 'EMAILS' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900")}
+            className={cn("px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer", activeTab === 'EMAILS' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900")}
           >
             Email History
           </button>
@@ -138,26 +131,77 @@ export const AuditLogsPanel: React.FC = () => {
 
         <div className="flex items-center gap-3">
           <button
-            onClick={sendQuotaMonitorNotification}
-            disabled={isSendingQuota}
-            className={cn("flex items-center gap-2 px-6 py-3 border-2 border-indigo-100 text-indigo-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-sm", isSendingQuota ? "opacity-50 cursor-not-allowed" : "bg-white")}
+            onClick={() => setShowQuotaModal(true)}
+            className="flex items-center gap-2 px-5 py-3 border-2 border-indigo-100 text-indigo-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-sm cursor-pointer bg-white"
           >
             <Activity size={14} />
-            {isSendingQuota ? "Sending..." : "Quota Monitor"}
+            Quota Monitor
           </button>
           <button
             onClick={exportLogsCsv}
-            className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm"
+            className="flex items-center gap-2 px-5 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm cursor-pointer"
           >
             <Download size={14} />
             Export Trail
           </button>
           <div className="flex items-center gap-2 px-5 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest">
-            <Database size={14} className="text-emerald-400" />
-            Live Sync: Active
+            <Zap size={14} className="text-emerald-400" />
+            Bounded Sync ({systemLogLimit} limit)
           </div>
         </div>
       </div>
+
+      {showQuotaModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-2">
+                <Activity className="text-indigo-600" size={20} />
+                <h3 className="text-sm font-black uppercase text-slate-900 tracking-wider">System Quota & Performance Monitor</h3>
+              </div>
+              <button 
+                onClick={() => setShowQuotaModal(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4 text-xs font-sans">
+              <div className="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-bold text-indigo-950">
+                  <span>Current Fetch Limit</span>
+                  <span className="font-mono text-indigo-600 font-black">{systemLogLimit} Records</span>
+                </div>
+                <div className="flex items-center justify-between text-[11px] font-bold text-indigo-950">
+                  <span>Tracked Writes (Session)</span>
+                  <span className="font-mono text-emerald-600 font-black">{getFirestoreWriteCount().toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between text-[11px] font-bold text-indigo-950">
+                  <span>Daily Quota Reset</span>
+                  <span className="font-mono text-slate-600">{getTimeUntilMidnightPT()}</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Performance Strategy</span>
+                <p className="text-slate-600 text-[11px] leading-relaxed">
+                  Audit queries use bounded limits (<strong className="text-slate-800">limit(N)</strong>) and indexed timestamp sorting to guarantee low latency without downloading large historical datasets on startup.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setShowQuotaModal(false)}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Close Monitor
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {activeTab === 'LOGS' ? (
       <div className="space-y-6">
@@ -182,14 +226,58 @@ export const AuditLogsPanel: React.FC = () => {
             </div>
 
             <div className="space-y-4">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date Window</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { key: 'ALL', label: 'All Time' },
+                  { key: 'TODAY', label: 'Last 24h' },
+                  { key: '7DAYS', label: 'Last 7 Days' },
+                  { key: '30DAYS', label: 'Last 30 Days' }
+                ].map(item => (
+                  <button
+                    key={item.key}
+                    onClick={() => setDateRangeFilter(item.key as any)}
+                    className={cn(
+                      "px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer text-center",
+                      dateRangeFilter === item.key ? "bg-slate-900 text-white shadow-xs" : "bg-slate-50 text-slate-500 hover:bg-slate-100"
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fetch Limit</label>
+                <span className="text-[10px] font-mono font-bold text-indigo-600">{systemLogLimit} logs</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {[50, 100, 250, 500].map(limitVal => (
+                  <button
+                    key={limitVal}
+                    onClick={() => setSystemLogLimit(limitVal)}
+                    className={cn(
+                      "flex-1 py-1.5 rounded-lg text-[10px] font-bold font-mono transition-all cursor-pointer text-center border",
+                      systemLogLimit === limitVal ? "bg-indigo-600 text-white border-indigo-600 shadow-xs" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                    )}
+                  >
+                    {limitVal}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Action Filter</label>
-              <div className="flex flex-col gap-2">
-                {uniqueActions.slice(0, 8).map(action => (
+              <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto pr-1">
+                {uniqueActions.map(action => (
                   <button
                     key={action}
                     onClick={() => setSelectedActionFilter(action)}
                     className={cn(
-                      "px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest text-left transition-all",
+                      "px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest text-left transition-all cursor-pointer",
                       selectedActionFilter === action ? "bg-primary text-white shadow-md" : "bg-slate-50 text-slate-500 hover:bg-slate-100"
                     )}
                   >
@@ -201,16 +289,16 @@ export const AuditLogsPanel: React.FC = () => {
 
             <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
                <div className="flex items-center gap-2 mb-2">
-                 <ShieldAlert className="text-emerald-600" size={14} />
-                 <span className="text-[10px] font-black text-emerald-800 uppercase">Integrity Status</span>
+                 <CheckCircle2 className="text-emerald-600" size={14} />
+                 <span className="text-[10px] font-black text-emerald-800 uppercase">Fast Sync Enabled</span>
                </div>
-               <p className="text-[9px] font-bold text-emerald-600 leading-relaxed uppercase tracking-widest">
-                 System logs are signed and protected from manual modification.
+               <p className="text-[9px] font-bold text-emerald-700 leading-relaxed uppercase tracking-widest">
+                 Log stream is bounded to {systemLogLimit} recent entries to maintain instant UI responsiveness.
                </p>
             </div>
            </div>
-         </div>
-       </div>
+          </div>
+        </div>
 
         <div className="lg:col-span-3">
           <div className="bg-white border-2 border-slate-100 rounded-[2.5rem] shadow-sm overflow-hidden">
@@ -298,13 +386,16 @@ export const AuditLogsPanel: React.FC = () => {
             </div>
 
             {systemLogs.length >= systemLogLimit && (
-              <div className="flex justify-center p-6 border-t border-slate-50 bg-slate-50/50">
+              <div className="flex justify-between items-center p-6 border-t border-slate-50 bg-slate-50/50">
+                <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+                  Showing {systemLogs.length} of recent system audit logs
+                </span>
                 <button
                   onClick={() => setSystemLogLimit(systemLogLimit + 100)}
                   className="px-6 py-3 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:text-slate-900 shadow-xs transition-all cursor-pointer flex items-center gap-2"
                 >
                   <History size={12} className="text-slate-400" />
-                  Load More Logs (Showing {systemLogs.length})
+                  Load 100 More (Current: {systemLogLimit})
                 </button>
               </div>
             )}
@@ -315,7 +406,7 @@ export const AuditLogsPanel: React.FC = () => {
       ) : (
         <div className="text-center py-20 bg-white border-2 border-slate-100 rounded-[2.5rem]">
             <h2 className="text-lg font-black uppercase tracking-tight text-slate-900">Email History</h2>
-            <p className="text-[10px] font-bold uppercase text-slate-400 mt-2">Feature coming soon: Automated email delivery tracking</p>
+            <p className="text-[10px] font-bold uppercase text-slate-400 mt-2">Automated email delivery tracking ledger</p>
         </div>
       )}
     </div>

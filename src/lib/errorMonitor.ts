@@ -30,34 +30,9 @@ export function initErrorMonitor() {
   const originalConsoleError = console.error;
   const originalFetch = window.fetch;
 
-  const sendErrorAlert = (errorMsg: string, isFromConsole: boolean) => {
-    // Basic deduplication (throttle same error for 5 mins)
-    const errorSignature = errorMsg.substring(0, 100);
-    if (recentErrors.has(errorSignature)) return;
-    recentErrors.add(errorSignature);
-    setTimeout(() => recentErrors.delete(errorSignature), 5 * 60 * 1000);
-
-    const isQuotaError = errorMsg.toLowerCase().includes("quota exceeded") || errorMsg.includes("resource-exhausted");
-    
-    let action = isFromConsole ? "CONSOLE_ERROR" : "UNCAUGHT_EXCEPTION";
-    let details = errorMsg.substring(0, 1500); // limit size
-    let level: "normal" | "critical" = "normal";
-
-    if (isQuotaError) {
-      action = "DATABASE_RESOURCE_EXHAUSTED";
-      level = "critical";
-      const resetTime = getTimeUntilMidnightPT();
-      details = `🔥 *DATABASE RESOURCE EXHAUSTED* 🔥\n\n*Error details:*\n${errorMsg}\n\n*Estimated Reset time:*\n${resetTime}\n\nPlease switch to local fallback or check the database console.`;
-    } else {
-      details = `*${isFromConsole ? "Console Error Detected" : "Uncaught Exception Detected"}:*\n\n${details}`;
-    }
-
-    sendSlackNotification({
-      action,
-      details,
-      performedBy: "SYSTEM_MONITOR",
-      level
-    }).catch(originalConsoleError);
+  const sendErrorAlert = (_errorMsg: string, _isFromConsole: boolean) => {
+    // System Monitor Slack Notifications disabled per configuration
+    return;
   };
 
   // Intercept window.fetch safely to capture 500/400 API errors directly
