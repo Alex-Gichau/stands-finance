@@ -36,7 +36,9 @@ import {
   Download,
   Calendar,
   CalendarRange,
-  Save
+  Save,
+  Settings,
+  Trash2
 } from "lucide-react";
 import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition, Project } from "../types";
@@ -126,6 +128,7 @@ export const FinanceLedgerPanel: React.FC = () => {
     fiscalYears,
     createFiscalYear,
     updateFiscalYearDates,
+    deleteFiscalYear,
     toggleFiscalYearStatus,
     setActiveFiscalYear,
     cloneFiscalYearBudgets,
@@ -165,6 +168,19 @@ export const FinanceLedgerPanel: React.FC = () => {
       ['BUDGET_ALLOCATED', 'BUDGET_CREATED', 'BUDGET_ADJUSTMENT'].includes(log.action)
     ).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [systemLogs]);
+
+  const [budgetHistoryPage, setBudgetHistoryPage] = React.useState(1);
+  const totalBudgetHistoryPages = Math.ceil(budgetLogs.length / 15);
+  const paginatedBudgetLogs = useMemo(() => {
+    const startIndex = (budgetHistoryPage - 1) * 15;
+    return budgetLogs.slice(startIndex, startIndex + 15);
+  }, [budgetLogs, budgetHistoryPage]);
+
+  React.useEffect(() => {
+    if (budgetHistoryPage > totalBudgetHistoryPages && totalBudgetHistoryPages > 0) {
+      setBudgetHistoryPage(totalBudgetHistoryPages);
+    }
+  }, [totalBudgetHistoryPages, budgetHistoryPage]);
 
    // Budget allocation & closing books state
   const activeYear = getActiveFiscalYear();
@@ -212,8 +228,18 @@ export const FinanceLedgerPanel: React.FC = () => {
   const [newFyLabel, setNewFyLabel] = React.useState("");
   const [newFyStatus, setNewFyStatus] = React.useState<"OPEN" | "CLOSED">("OPEN");
   const [newFyNotes, setNewFyNotes] = React.useState("");
+  const [newFyStartDate, setNewFyStartDate] = React.useState("");
+  const [newFyEndDate, setNewFyEndDate] = React.useState("");
   const [showAddFY, setShowAddFY] = React.useState(false);
   const [isCreatingFY, setIsCreatingFY] = React.useState(false);
+
+  // Fiscal Year Editing / Management Modal States
+  const [managingFy, setManagingFy] = React.useState<any | null>(null);
+  const [editFyLabel, setEditFyLabel] = React.useState("");
+  const [editFyStartDate, setEditFyStartDate] = React.useState("");
+  const [editFyEndDate, setEditFyEndDate] = React.useState("");
+  const [editFyNotes, setEditFyNotes] = React.useState("");
+  const [isSavingEditFy, setIsSavingEditFy] = React.useState(false);
 
   // Background refresh hook usage
   useBackgroundRefresh(60000);
@@ -392,10 +418,19 @@ export const FinanceLedgerPanel: React.FC = () => {
 
     setIsCreatingFY(true);
     try {
-      await createFiscalYear(yr, newFyLabel.trim(), newFyStatus, newFyNotes.trim());
+      await createFiscalYear(
+        yr, 
+        newFyLabel.trim(), 
+        newFyStatus, 
+        newFyNotes.trim(), 
+        newFyStartDate || undefined, 
+        newFyEndDate || undefined
+      );
       setNewFyYear("");
       setNewFyLabel("");
       setNewFyNotes("");
+      setNewFyStartDate("");
+      setNewFyEndDate("");
       setShowAddFY(false);
       alert(`Financial Year ${yr} successfully defined and logged.`);
     } catch (err: any) {
@@ -1302,10 +1337,31 @@ export const FinanceLedgerPanel: React.FC = () => {
                   />
                 </div>
 
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black text-muted uppercase tracking-widest">Start Date (Optional)</label>
+                    <input
+                      type="date"
+                      value={newFyStartDate}
+                      onChange={(e) => setNewFyStartDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-[11px] font-bold font-mono outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black text-muted uppercase tracking-widest">End Date (Optional)</label>
+                    <input
+                      type="date"
+                      value={newFyEndDate}
+                      onChange={(e) => setNewFyEndDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-[11px] font-bold font-mono outline-none"
+                    />
+                  </div>
+                </div>
+
                 <button
                   type="submit"
                   disabled={isCreatingFY}
-                  className="w-full py-2 bg-primary hover:bg-primary/95 text-primary-foreground rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors"
+                  className="w-full py-2 bg-primary hover:bg-primary/95 text-primary-foreground rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors cursor-pointer"
                 >
                   {isCreatingFY ? "DEFINING..." : "REGISTER NEW FISCAL PERIOD"}
                 </button>
@@ -1346,9 +1402,30 @@ export const FinanceLedgerPanel: React.FC = () => {
                           </div>
                           <p className="text-[9px] text-foreground font-bold truncate">{fy.label}</p>
                           {fy.notes && <p className="text-[8px] text-muted truncate italic mt-0.5">{fy.notes}</p>}
+                          {fy.startDate && fy.endDate && (
+                            <p className="text-[8px] text-slate-500 font-medium font-mono mt-0.5">
+                              📅 {new Date(fy.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} – {new Date(fy.endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </p>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            title="Edit settings, start and end dates"
+                            onClick={() => {
+                              setManagingFy(fy);
+                              setEditFyLabel(fy.label || "");
+                              setEditFyStartDate(fy.startDate || "");
+                              setEditFyEndDate(fy.endDate || "");
+                              setEditFyNotes(fy.notes || "");
+                            }}
+                            className="p-1 px-1.5 border border-border rounded-lg text-[8px] font-black text-indigo-600 dark:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors uppercase flex items-center gap-1 cursor-pointer"
+                          >
+                            <Settings size={10} />
+                            Settings
+                          </button>
+
                           {fy.status !== "ARCHIVED" ? (
                             <button
                               type="button"
@@ -2395,14 +2472,11 @@ export const FinanceLedgerPanel: React.FC = () => {
             </section>
           )}
 
-          {/* Budget allocation form & Fiscal Year Setup */}
+          {/* Budget allocation form */}
           {isFinanceOrAdmin && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Ministry Budget Controls */}
-              <section className={cn(
-                "bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4",
-                isAdminOrSuperAdmin ? "lg:col-span-7" : "lg:col-span-12"
-              )}>
+              <section className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 lg:col-span-12">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <div>
                     <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
@@ -2647,126 +2721,6 @@ export const FinanceLedgerPanel: React.FC = () => {
                   </button>
                 </form>
               </section>
-
-              {/* Fiscal Year Setup Card - Admin and Super Admin */}
-              {isAdminOrSuperAdmin && (
-                <section className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between">
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <div className="space-y-0.5">
-                        <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                          <CalendarRange size={16} className="text-indigo-600" />
-                          Fiscal Year Setup
-                        </h3>
-                        <p className="text-[10px] text-slate-500 font-medium">Set start & end dates for financial periods</p>
-                      </div>
-                      <span className={cn(
-                        "text-[9px] font-black uppercase px-2 py-0.5 rounded-full border",
-                        yearStatus === "OPEN" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"
-                      )}>
-                        {yearStatus}
-                      </span>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Target Fiscal Year</label>
-                        <select
-                          value={targetFiscalYearForDates}
-                          onChange={(e) => {
-                            const selectedYear = parseInt(e.target.value);
-                            setTargetFiscalYearForDates(selectedYear);
-                          }}
-                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:border-indigo-600 outline-none transition-colors font-mono cursor-pointer"
-                        >
-                          {fiscalYears.length > 0 ? (
-                            fiscalYears.map(fy => (
-                              <option key={fy.id} value={fy.year}>
-                                FY {fy.year} ({fy.label || `Year ${fy.year}`}) {fy.year === activeYear ? "• Active" : ""}
-                              </option>
-                            ))
-                          ) : (
-                            <option value={activeYear}>FY {activeYear} • Active</option>
-                          )}
-                        </select>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-1">
-                            <Calendar size={11} className="text-indigo-500" /> Start Date
-                          </label>
-                          <input
-                            type="date"
-                            value={fyStartDate}
-                            onChange={(e) => setFyStartDate(e.target.value)}
-                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold font-mono focus:border-indigo-600 outline-none transition-colors"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-1">
-                            <Calendar size={11} className="text-indigo-500" /> End Date
-                          </label>
-                          <input
-                            type="date"
-                            value={fyEndDate}
-                            onChange={(e) => setFyEndDate(e.target.value)}
-                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold font-mono focus:border-indigo-600 outline-none transition-colors"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 pt-1 flex-wrap">
-                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider shrink-0">Quick Presets:</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFyStartDate(`${targetFiscalYearForDates}-01-01`);
-                            setFyEndDate(`${targetFiscalYearForDates}-12-31`);
-                          }}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[9px] font-bold transition-colors cursor-pointer"
-                        >
-                          Jan 1 – Dec 31
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFyStartDate(`${targetFiscalYearForDates}-07-01`);
-                            setFyEndDate(`${targetFiscalYearForDates + 1}-06-30`);
-                          }}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[9px] font-bold transition-colors cursor-pointer"
-                        >
-                          Jul 1 – Jun 30
-                        </button>
-                      </div>
-
-                      {fyStartDate && fyEndDate && (
-                        <div className="p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl text-[10px] text-indigo-900 font-medium space-y-1">
-                          <div className="flex items-center justify-between font-bold">
-                            <span>Cycle Duration:</span>
-                            <span className="font-mono text-indigo-700">
-                              {Math.max(0, Math.round((new Date(fyEndDate).getTime() - new Date(fyStartDate).getTime()) / (1000 * 60 * 60 * 24)) + 1)} Days
-                            </span>
-                          </div>
-                          <p className="text-[9px] text-indigo-700/80">
-                            Effective: {new Date(fyStartDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} – {new Date(fyEndDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleSaveFiscalDates}
-                    disabled={isSavingDates || !fyStartDate || !fyEndDate}
-                    className="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 text-white py-3 flex items-center justify-center gap-2 text-xs font-black uppercase tracking-wider rounded-xl disabled:opacity-50 transition-colors cursor-pointer shadow-sm shadow-indigo-200"
-                  >
-                    <Save size={14} />
-                    {isSavingDates ? "SAVING DATES..." : "SAVE FISCAL YEAR DATES"}
-                  </button>
-                </section>
-              )}
             </div>
           )}
 
@@ -2951,6 +2905,9 @@ export const FinanceLedgerPanel: React.FC = () => {
             </div>
           </div>
 
+          {/* Yearly Budgeting & Fiscal Books section */}
+          {renderYearlyBudgetingAndFiscalBooks()}
+
           {/* 9. Budget Change History */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-6">
               <div className="px-6 py-4 border-b border-slate-100">
@@ -2968,7 +2925,7 @@ export const FinanceLedgerPanel: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {budgetLogs.map((log, idx) => (
+                    {paginatedBudgetLogs.map((log, idx) => (
                       <tr key={`budget-log-${log.id || idx}-${idx}`} className="hover:bg-slate-50/50">
                         <td className="py-3 px-6">{formatDate(log.timestamp)}</td>
                         <td className="py-3 px-4 font-bold text-slate-900">{log.action === 'BUDGET_ADJUSTMENT' ? 'ADJUSTMENT' : log.action}</td>
@@ -2979,10 +2936,33 @@ export const FinanceLedgerPanel: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+              {totalBudgetHistoryPages > 1 && (
+                <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    Showing {paginatedBudgetLogs.length} of {budgetLogs.length} logs
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <button
+                      disabled={budgetHistoryPage === 1}
+                      onClick={() => setBudgetHistoryPage(p => Math.max(p - 1, 1))}
+                      className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg text-[10px] tracking-wider uppercase disabled:opacity-50 transition-colors cursor-pointer text-slate-600 font-bold"
+                    >
+                      Prev
+                    </button>
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                      Page {budgetHistoryPage} of {totalBudgetHistoryPages}
+                    </span>
+                    <button
+                      disabled={budgetHistoryPage === totalBudgetHistoryPages}
+                      onClick={() => setBudgetHistoryPage(p => Math.min(p + 1, totalBudgetHistoryPages))}
+                      className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg text-[10px] tracking-wider uppercase disabled:opacity-50 transition-colors cursor-pointer text-slate-600 font-bold"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
           </div>
-
-          {/* Yearly Budgeting & Financial Books Closing section moved to the bottom */}
-          {renderYearlyBudgetingAndFiscalBooks()}
 
         </div>
       )}
@@ -3192,6 +3172,135 @@ export const FinanceLedgerPanel: React.FC = () => {
                   </button>
                 </div>
 
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 10. MODAL: Manage Fiscal Year Settings */}
+      <AnimatePresence>
+        {managingFy && (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 sm:p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-none md:rounded-2xl shadow-xl border-t md:border border-slate-200 h-full md:h-auto max-w-sm w-full overflow-hidden flex flex-col text-slate-800"
+            >
+              <div className="bg-slate-900 text-white p-5 sticky top-0 z-10 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Settings size={18} />
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-widest text-slate-200">Manage FY {managingFy.year}</h3>
+                    <p className="text-[10px] text-slate-400">Configure boundaries, labels, and planning notes</p>
+                  </div>
+                </div>
+                <button onClick={() => setManagingFy(null)} className="p-2 hover:bg-slate-850 rounded-full transition-all text-slate-400 hover:text-white cursor-pointer">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setIsSavingEditFy(true);
+                try {
+                  await updateFiscalYearDates(
+                    managingFy.year,
+                    editFyStartDate || undefined,
+                    editFyEndDate || undefined,
+                    editFyLabel.trim(),
+                    editFyNotes.trim()
+                  );
+                  alert(`Fiscal Year ${managingFy.year} updated successfully.`);
+                  setManagingFy(null);
+                } catch (err: any) {
+                  alert(err.message || "Failed to update fiscal year settings.");
+                } finally {
+                  setIsSavingEditFy(false);
+                }
+              }} className="p-5 space-y-4 flex-1 overflow-y-auto">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Descriptor Label</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. FY 2027 Outreach Plan"
+                    value={editFyLabel}
+                    onChange={(e) => setEditFyLabel(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Start Date</label>
+                    <input
+                      type="date"
+                      value={editFyStartDate}
+                      onChange={(e) => setEditFyStartDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">End Date</label>
+                    <input
+                      type="date"
+                      value={editFyEndDate}
+                      onChange={(e) => setEditFyEndDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Planning Notes / Objectives</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Provide description..."
+                    value={editFyNotes}
+                    onChange={(e) => setEditFyNotes(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2.5 pt-2">
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setManagingFy(null)}
+                      className="flex-1 py-2.5 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:bg-slate-50 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSavingEditFy}
+                      className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1 disabled:opacity-50 shadow-md"
+                    >
+                      {isSavingEditFy ? "Saving..." : "Save Settings"}
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (window.confirm(`⚠️ CRITICAL ACTION:\nAre you sure you want to permanently DELETE Fiscal Year ${managingFy.year}?\nThis will erase the definition block and cannot be undone.`)) {
+                        try {
+                          await deleteFiscalYear(managingFy.id);
+                          alert(`Fiscal Year ${managingFy.year} has been permanently deleted.`);
+                          setManagingFy(null);
+                        } catch (err: any) {
+                          alert(err.message || "Failed to delete fiscal year.");
+                        }
+                      }
+                    }}
+                    className="w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1"
+                  >
+                    <Trash2 size={11} />
+                    Delete Fiscal Year
+                  </button>
+                </div>
               </form>
             </motion.div>
           </div>

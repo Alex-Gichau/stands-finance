@@ -4599,6 +4599,247 @@ async function startServer() {
     }
   });
 
+  // ==========================================
+  // SYSTEM HEALTH DATA SLACK ALERT SCHEDULER
+  // ==========================================
+
+  const healthSlackConfigPath = path.join(process.cwd(), "data", "system_health_slack_config.json");
+
+  const getHealthSlackConfig = () => {
+    const dirPath = path.dirname(healthSlackConfigPath);
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+    if (!fs.existsSync(healthSlackConfigPath)) {
+      return { enabled: true, lastSentTimestamp: null };
+    }
+    try {
+      return JSON.parse(fs.readFileSync(healthSlackConfigPath, "utf-8"));
+    } catch (e) {
+      return { enabled: true, lastSentTimestamp: null };
+    }
+  };
+
+  const saveHealthSlackConfig = (config: any) => {
+    const dirPath = path.dirname(healthSlackConfigPath);
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+    fs.writeFileSync(healthSlackConfigPath, JSON.stringify(config, null, 2), "utf-8");
+  };
+
+  const isHealthAlertDue = (config: any) => {
+    if (!config || config.enabled === false) return false;
+    const now = new Date();
+    
+    // Check if current hour is 4 AM
+    if (now.getHours() !== 4) return false;
+
+    const lastSent = config.lastSentTimestamp ? new Date(config.lastSentTimestamp) : null;
+    if (!lastSent) return true;
+
+    // Has at least 5 days elapsed?
+    const diffTime = now.getTime() - lastSent.getTime();
+    const fiveDaysInMs = 5 * 24 * 60 * 60 * 1000;
+    return diffTime >= fiveDaysInMs;
+  };
+
+  const getSystemHealthMetrics = () => {
+    const requisitions = readJsonCollection("requisitions");
+    const projects = readJsonCollection("projects");
+    const users = readJsonCollection("users");
+    const systemLogs = readJsonCollection("system_logs");
+    const alerts = readJsonCollection("alerts");
+
+    const totalReqs = requisitions.length;
+    const approvedReqs = requisitions.filter(r => r.status === "APPROVED" || r.status === "DISBURSED").length;
+    const pendingReqs = requisitions.filter(r => r.status === "PENDING" || r.status === "SUBMITTED").length;
+    const rejectedReqs = requisitions.filter(r => r.status === "REJECTED").length;
+
+    const totalBudgetKES = requisitions.reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
+    const activeProjects = projects.filter(p => p.isActive !== false).length;
+
+    // Memory & platform
+    const memory = process.memoryUsage();
+    const heapUsedMB = (memory.heapUsed / 1024 / 1024).toFixed(2);
+    const heapTotalMB = (memory.heapTotal / 1024 / 1024).toFixed(2);
+    const rssMB = (memory.rss / 1024 / 1024).toFixed(2);
+
+    const uptimeSec = process.uptime();
+    const uptimeDays = Math.floor(uptimeSec / (3600 * 24));
+    const uptimeHours = Math.floor((uptimeSec % (3600 * 24)) / 3600);
+    const uptimeMin = Math.floor((uptimeSec % 3600) / 60);
+
+    return {
+      requisitions: {
+        total: totalReqs,
+        approved: approvedReqs,
+        pending: pendingReqs,
+        rejected: rejectedReqs,
+        totalRequestedAmount: totalBudgetKES
+      },
+      projects: {
+        total: projects.length,
+        active: activeProjects
+      },
+      users: {
+        total: users.length
+      },
+      system: {
+        totalLogs: systemLogs.length,
+        totalAlerts: alerts.length,
+        uptime: `${uptimeDays}d ${uptimeHours}h ${uptimeMin}m`,
+        heapUsed: `${heapUsedMB} MB`,
+        heapTotal: `${heapTotalMB} MB`,
+        rss: `${rssMB} MB`,
+        nodeVersion: process.version,
+        platform: process.platform
+      }
+    };
+  };
+
+  const buildSlackHealthAlertPayload = (metrics: any) => {
+    return {
+      text: "🟢 *STANDS eRequisitions System Health Data Slack Alert*",
+      attachments: [
+        {
+          color: "#10b981", // Emerald Green
+          blocks: [
+            {
+              type: "header",
+              text: {
+                type: "plain_text",
+                text: "📊 System Health & Activity Metrics Report",
+                emoji: true
+              }
+            },
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: `*Interval:* Scheduled Alert (Every 5 days at 4:00 AM)\n*Generated At:* \`${new Date().toLocaleString('en-GB')}\``
+              }
+            },
+            {
+              type: "divider"
+            },
+            {
+              type: "section",
+              fields: [
+                {
+                  type: "mrkdwn",
+                  text: `*📂 Requisition Summary:*\n• Total: *${metrics.requisitions.total}*\n• Approved: *${metrics.requisitions.approved}*\n• Pending: *${metrics.requisitions.pending}*\n• Rejected: *${metrics.requisitions.rejected}*`
+                },
+                {
+                  type: "mrkdwn",
+                  text: `*💼 Project Registry:*\n• Total Projects: *${metrics.projects.total}*\n• Active Projects: *${metrics.projects.active}*\n• Registered Users: *${metrics.users.total}*`
+                }
+              ]
+            },
+            {
+              type: "section",
+              fields: [
+                {
+                  type: "mrkdwn",
+                  text: `*⚙️ System Metrics:*\n• Logs Count: *${metrics.system.totalLogs}*\n• Total Alerts: *${metrics.system.totalAlerts}*\n• Uptime: *${metrics.system.uptime}*`
+                },
+                {
+                  type: "mrkdwn",
+                  text: `*⚡ Resource Usage:*\n• Heap Used: *${metrics.system.heapUsed}* / *${metrics.system.heapTotal}*\n• RSS Memory: *${metrics.system.rss}*\n• Node Version: *${metrics.system.nodeVersion}*`
+                }
+              ]
+            },
+            {
+              type: "context",
+              elements: [
+                {
+                  type: "mrkdwn",
+                  text: `ℹ️ _Platform: ${metrics.system.platform} | Autogenerated by PCEA St. Andrews eRequisitions System Health Checker_`
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+  };
+
+  const executeHealthSlackAlertDispatch = async () => {
+    const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+    const metricsObj = getSystemHealthMetrics();
+    const slackBody = buildSlackHealthAlertPayload(metricsObj);
+
+    console.log("[Health Slack Alert] Dispatched report payload:", JSON.stringify(slackBody));
+
+    if (!webhookUrl) {
+      console.warn("[Health Slack Alert] SLACK_WEBHOOK_URL not configured. Health alert simulated successfully.");
+      return { success: true, simulated: true, payload: slackBody };
+    }
+
+    try {
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(slackBody)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Slack responded with status ${response.status}`);
+      }
+
+      return { success: true, simulated: false, payload: slackBody };
+    } catch (error: any) {
+      console.error("[Health Slack Alert] Failed to send Slack message:", error);
+      throw error;
+    }
+  };
+
+  // POST /api/slack/trigger-health-alert (manual trigger)
+  app.post("/api/slack/trigger-health-alert", async (req, res) => {
+    try {
+      const result = await executeHealthSlackAlertDispatch();
+      const config = getHealthSlackConfig();
+      config.lastSentTimestamp = new Date().toISOString();
+      saveHealthSlackConfig(config);
+
+      res.json({ success: true, simulated: result.simulated, payload: result.payload });
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to trigger Slack Health Alert", message: error.message });
+    }
+  });
+
+  // GET /api/slack/health-alert-status
+  app.get("/api/slack/health-alert-status", (req, res) => {
+    try {
+      const config = getHealthSlackConfig();
+      const metricsObj = getSystemHealthMetrics();
+      res.json({
+        enabled: config.enabled,
+        lastSentTimestamp: config.lastSentTimestamp,
+        isDueNow: isHealthAlertDue(config),
+        metrics: metricsObj
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to read health alert status", message: error.message });
+    }
+  });
+
+  // Run automated 5-day 04:00 AM Health check every 15 minutes
+  setInterval(async () => {
+    try {
+      const config = getHealthSlackConfig();
+      if (isHealthAlertDue(config)) {
+        console.log("[Health Slack Alert] 5-day 04:00 AM automated alert is due. Triggering dispatch...");
+        await executeHealthSlackAlertDispatch();
+        config.lastSentTimestamp = new Date().toISOString();
+        saveHealthSlackConfig(config);
+        console.log("[Health Slack Alert] Successfully dispatched and updated config.");
+      }
+    } catch (e) {
+      console.error("[Health Slack Alert Scheduler Error]:", e);
+    }
+  }, 15 * 60 * 1000);
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
