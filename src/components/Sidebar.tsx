@@ -131,11 +131,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <>
       <div id="sidebar-nav-container" className={cn(
-        "hidden md:flex flex-col h-full bg-slate-900 border-r border-slate-800 transition-all duration-500 relative z-30 shadow-2xl shrink-0",
+        "hidden md:flex flex-col h-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-500 relative z-30 shrink-0",
         isCollapsed ? "w-20" : "w-64"
       )}>
       {/* Brand Header */}
-      <div className="h-20 flex items-center px-6 border-b border-white/5 relative overflow-hidden">
+      <div className="h-20 flex items-center px-6 border-b border-slate-100 dark:border-white/5 relative overflow-hidden">
         <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
           <Zap size={60} className="text-primary" />
         </div>
@@ -143,7 +143,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex items-center gap-3 relative z-10 w-full">
           <motion.div 
             whileHover={{ scale: 1.05 }}
-            className="w-10 h-10 bg-slate-800 border border-slate-700 rounded-xl flex items-center justify-center shrink-0 shadow-lg p-1.5 overflow-hidden"
+            className="w-10 h-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex items-center justify-center shrink-0 shadow-lg p-1.5 overflow-hidden"
           >
             <img src="/pcea.svg" alt="PCEA Logo" className="w-full h-full object-contain" />
           </motion.div>
@@ -156,7 +156,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 exit={{ opacity: 0, x: -10 }}
                 className="overflow-hidden"
               >
-                <h1 className="font-black text-white text-md tracking-tighter uppercase whitespace-nowrap">
+                <h1 className="font-black text-slate-900 dark:text-white text-md tracking-tighter uppercase whitespace-nowrap">
                   St Andrews
                 </h1>
                 <p className="text-[9px] text-primary font-black uppercase tracking-[0.2em] leading-tight">
@@ -171,7 +171,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Collapse Toggle */}
       <button 
         onClick={toggleCollapse}
-        className="absolute -right-3 top-24 w-6 h-6 bg-slate-800 border border-slate-700 rounded-full flex items-center justify-center text-slate-400 hover:text-white transition-all shadow-xl hover:scale-110 z-50 cursor-pointer"
+        className="absolute -right-3 top-24 w-6 h-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all shadow-md dark:shadow-xl hover:scale-110 z-50 cursor-pointer"
       >
         {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
       </button>
@@ -179,7 +179,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Navigation */}
       <nav className="flex-1 px-4 py-8 space-y-2 overflow-y-auto no-scrollbar">
         {!isCollapsed && (
-          <div className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 ml-2">
+          <div className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 ml-2">
             Operations Cluster
           </div>
         )}
@@ -197,19 +197,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 isCollapsed ? "justify-center p-3" : "gap-4 px-4 py-3.5",
                 isActive 
                   ? "bg-primary text-white shadow-lg shadow-primary/20" 
-                  : "hover:bg-white/5 text-slate-400 hover:text-slate-100",
+                  : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100",
                 item.desktopOnly ? "hidden lg:flex" : ""
               )}
             >
-              <Icon size={18} className={cn("shrink-0", isActive ? "text-white" : "text-slate-500 group-hover:text-slate-300")} />
+              <Icon size={18} className={cn("shrink-0", isActive ? "text-white" : "text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300")} />
               {!isCollapsed && <span>{item.label}</span>}
               {!isCollapsed && item.id === "notifications" && notificationsCount > 0 && (
-                <span className="ml-auto bg-rose-500 text-white font-black text-[9px] px-2 py-0.5 rounded-full ring-2 ring-slate-900 leading-none">
+                <span className="ml-auto bg-rose-500 text-white font-black text-[9px] px-2 py-0.5 rounded-full ring-2 ring-white dark:ring-slate-900 leading-none">
                   {notificationsCount}
                 </span>
               )}
               {isCollapsed && item.id === "notifications" && notificationsCount > 0 && (
-                <span className="absolute top-1 right-1 bg-rose-500 text-white font-black text-[8px] w-4.5 h-4.5 rounded-full flex items-center justify-center ring-2 ring-slate-900">
+                <span className="absolute top-1 right-1 bg-rose-500 text-white font-black text-[8px] w-4.5 h-4.5 rounded-full flex items-center justify-center ring-2 ring-white dark:ring-slate-900">
                   {notificationsCount}
                 </span>
               )}
@@ -226,13 +226,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       {/* Footer Profile */}
-      <div className="p-4 border-t border-white/5">
+      <div className="p-4 border-t border-slate-100 dark:border-white/5">
         <div className={cn(
-          "bg-white/5 rounded-2xl p-3 transition-all",
+          "bg-slate-50 dark:bg-white/5 rounded-2xl p-3 transition-all",
           isCollapsed ? "flex flex-col items-center gap-4" : "flex items-center gap-4 px-4"
         )}>
            <div className="relative">
-            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-white/10 overflow-hidden flex items-center justify-center text-primary font-bold shadow-inner">
+            <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 overflow-hidden flex items-center justify-center text-primary font-bold shadow-inner">
               {currentUser?.photoURL ? (
                 <img 
                   src={currentUser.photoURL} 
@@ -244,12 +244,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 currentUser?.name?.charAt(0) || "U"
               )}
             </div>
-            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-slate-900 rounded-full animate-pulse" />
+            
           </div>
 
           {!isCollapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-black text-white truncate uppercase tracking-tight">{currentUser?.name}</p>
+              <p className="text-[11px] font-black text-slate-950 dark:text-white truncate uppercase tracking-tight">{currentUser?.name}</p>
               <p className="text-[9px] text-primary font-bold truncate uppercase tracking-widest mt-0.5">
                 {currentUser?.role?.replace("_", " ") || "USER"}
               </p>
@@ -259,7 +259,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {!isCollapsed && (
             <button 
               onClick={handleLogoutClick}
-              className="p-2 text-slate-500 hover:text-rose-400 transition-colors hover:bg-rose-400/10 rounded-lg cursor-pointer"
+              className="p-2 text-slate-400 dark:text-slate-500 hover:text-rose-550 dark:hover:text-rose-400 transition-colors hover:bg-rose-500/10 rounded-lg cursor-pointer"
               title="Terminate Session"
             >
               <LogOut size={16} />
@@ -270,7 +270,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {isCollapsed && (
            <button 
             onClick={handleLogoutClick}
-            className="w-full mt-4 flex justify-center py-2 text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
+            className="w-full mt-4 flex justify-center py-2 text-slate-400 dark:text-slate-500 hover:text-rose-550 dark:hover:text-rose-400 transition-colors cursor-pointer"
           >
             <LogOut size={18} />
           </button>
@@ -280,7 +280,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     {/* Sticky Mobile Navbar with More Dropdown */}
     {!hasActiveModal && (
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 border-t border-white/10 md:hidden z-[60] backdrop-blur-md shadow-[0_-10px_40px_rgba(0,0,0,0.3)]">
+      <div className="fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-900/95 border-t border-slate-200 dark:border-white/10 md:hidden z-[60] backdrop-blur-md shadow-[0_-10px_40px_rgba(0,0,0,0.05)] dark:shadow-[0_-10px_40px_rgba(0,0,0,0.3)]">
       <div className="flex items-center justify-around h-16 relative px-2">
         {(() => {
           // Identify primary items for the bar
@@ -302,7 +302,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     }}
                     className={cn(
                       "flex flex-col items-center justify-center flex-1 h-full gap-1 transition-all duration-300 relative",
-                      isActive ? "text-primary scale-110" : "text-slate-500 hover:text-slate-300"
+                      isActive ? "text-primary scale-110" : "text-slate-500 dark:text-slate-400 hover:text-slate-850 dark:hover:text-slate-200"
                     )}
                   >
                     {isActive && (
@@ -314,7 +314,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <div className="relative">
                       <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
                       {item.id === "notifications" && notificationsCount > 0 && (
-                        <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white font-black text-[8px] h-4 w-4 rounded-full flex items-center justify-center ring-2 ring-slate-900 group-hover:scale-110 transition-transform">
+                        <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white font-black text-[8px] h-4 w-4 rounded-full flex items-center justify-center ring-2 ring-white dark:ring-slate-900 group-hover:scale-110 transition-transform">
                           {notificationsCount}
                         </span>
                       )}
@@ -329,7 +329,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 className={cn(
                   "flex flex-col items-center justify-center flex-1 h-full gap-1 transition-all duration-300",
-                  isMobileMenuOpen ? "text-primary scale-110" : "text-slate-500 hover:text-slate-300"
+                  isMobileMenuOpen ? "text-primary scale-110" : "text-slate-500 dark:text-slate-400 hover:text-slate-850 dark:hover:text-slate-200"
                 )}
               >
                 <MoreHorizontal size={20} strokeWidth={isMobileMenuOpen ? 2.5 : 2} />
@@ -351,7 +351,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       initial={{ opacity: 0, y: 100, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 100, scale: 0.95 }}
-                      className="absolute bottom-[4.5rem] right-4 bg-slate-800 border border-white/10 rounded-3xl p-4 shadow-2xl w-[280px] grid grid-cols-2 gap-2 z-50 overflow-hidden"
+                      className="absolute bottom-[4.5rem] right-4 bg-white dark:bg-slate-850 border border-slate-200 dark:border-white/10 rounded-3xl p-4 shadow-2xl w-[280px] grid grid-cols-2 gap-2 z-50 overflow-hidden"
                     >
                       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-blue-400 opacity-50" />
                       
@@ -369,7 +369,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               "flex flex-col items-center p-3 rounded-2xl gap-2 transition-all",
                               isActive
                                 ? "bg-primary text-white shadow-lg shadow-primary/20"
-                                : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white"
+                                : "bg-slate-50 dark:bg-white/5 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white"
                             )}
                           >
                             <Icon size={18} />
@@ -395,7 +395,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               "flex flex-col items-center p-3 rounded-2xl gap-2 transition-all",
                               isActive
                                 ? "bg-primary text-white shadow-lg shadow-primary/20"
-                                : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white"
+                                : "bg-slate-50 dark:bg-white/5 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white"
                             )}
                           >
                             <Icon size={18} />

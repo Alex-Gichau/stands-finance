@@ -470,10 +470,17 @@ function AppContent() {
     }
   }, [currentUser?.theme]);
 
+  const hasRedirectedRef = useRef(false);
+
   // Redirect to dashboard upon successful login
   useEffect(() => {
     if (currentUser) {
-      setCurrentView("dashboard");
+      if (!hasRedirectedRef.current) {
+        setCurrentView("dashboard");
+        hasRedirectedRef.current = true;
+      }
+    } else {
+      hasRedirectedRef.current = false;
     }
   }, [currentUser]);
 
@@ -1069,7 +1076,7 @@ function AppContent() {
               <div className="w-16 h-16 bg-slate-800/80 rounded-2xl flex items-center justify-center border border-slate-700/50 backdrop-blur-sm p-2 shadow-xl">
                 <img src="/pcea.svg" alt="PCEA Logo" className="w-full h-full object-contain" />
               </div>
-              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-slate-900 animate-pulse" />
+              
             </div>
             
             <div className="space-y-1">
@@ -1167,11 +1174,11 @@ function AppContent() {
           <div className="pt-6 border-t border-slate-800 flex justify-center gap-6">
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">Core_Active</span>
+              <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">Active</span>
             </div>
             <div className="flex items-center gap-2">
               <Lock size={10} className="text-slate-600" />
-              <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">SSL_Encrypted</span>
+              <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">Secure</span>
             </div>
           </div>
         </motion.div>
