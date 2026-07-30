@@ -573,19 +573,26 @@ const PdfDocumentViewer = ({
         </div>
       </div>
 
-      {/* Embedded Standard Native PDF Viewer Container - Full Width & Height */}
-      <div className="flex-1 bg-slate-950 p-1 sm:p-2 flex items-center justify-center relative min-h-[600px] w-full">
-        <object
-          data={pdfSourceUrl}
-          type="application/pdf"
-          className="w-full h-full min-h-[75vh] md:min-h-[82vh] rounded-2xl overflow-hidden border border-slate-800 shadow-inner"
+      {/* Visual placeholder requesting to open in a new tab */}
+      <div className="flex-1 bg-slate-950 p-6 flex flex-col items-center justify-center gap-4 text-center w-full min-h-[450px]">
+        <div className="w-20 h-20 bg-rose-500/10 border border-rose-500/20 text-rose-500 rounded-3xl flex items-center justify-center shadow-lg">
+          <FileText size={40} />
+        </div>
+        <div className="space-y-1.5 max-w-md">
+          <h3 className="text-lg font-bold text-slate-100">PDF Document Ready</h3>
+          <p className="text-xs text-slate-400">
+            For secure, full-resolution viewing, this PDF document is opened directly in a new browser tab.
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            window.open(pdfSourceUrl, "_blank", "noopener,noreferrer");
+          }}
+          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer flex items-center gap-2 shadow-lg shadow-indigo-950/40"
         >
-          <iframe
-            src={pdfSourceUrl}
-            title={docProps.name}
-            className="w-full h-full min-h-[75vh] md:min-h-[82vh] border-0 rounded-2xl bg-slate-900"
-          />
-        </object>
+          <ExternalLink size={14} />
+          <span>Open PDF in New Tab</span>
+        </button>
       </div>
     </div>
   );
@@ -971,8 +978,12 @@ const DocumentPreviewModal = ({
                       whileHover={{ scale: 1.02, y: -2 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => {
-                        setCurrentIndex(idx);
-                        setViewMode("detail");
+                        if (props.isPdf) {
+                          window.open(props.url, '_blank', 'noopener,noreferrer');
+                        } else {
+                          setCurrentIndex(idx);
+                          setViewMode("detail");
+                        }
                       }}
                       className={`cursor-pointer rounded-2xl border transition-all overflow-hidden flex flex-col h-36 relative group shadow-lg ${
                         isCur 
@@ -990,17 +1001,13 @@ const DocumentPreviewModal = ({
                             referrerPolicy="no-referrer"
                           />
                         ) : props.isPdf ? (
-                          <div className="w-full h-full relative overflow-hidden flex items-center justify-center bg-slate-900 group">
-                            <iframe 
-                              src={`${props.url}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-                              title={props.name}
-                              className="w-[200%] h-[200%] absolute origin-top-left scale-[0.5] pointer-events-none border-0 opacity-80 group-hover:opacity-100 transition-opacity"
-                            />
-                            {/* Accent indicator of PDF */}
-                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/90 to-transparent p-1.5 pt-6 flex items-center justify-center gap-1 z-10">
-                              <FileText size={10} className="text-rose-500" />
-                              <span className="text-[8px] font-black tracking-widest text-rose-400">PDF PREVIEW</span>
-                            </div>
+                          <div className="flex flex-col items-center justify-center">
+                            <span className="text-rose-500 group-hover:text-rose-400 transition-colors">
+                              <FileText size={32} />
+                            </span>
+                            <span className="text-[8px] font-black text-rose-400 uppercase tracking-widest font-mono mt-1.5">
+                              PDF Document
+                            </span>
                           </div>
                         ) : (
                           <div className="flex flex-col items-center justify-center">
@@ -1099,8 +1106,12 @@ const DocumentPreviewModal = ({
                       <div 
                         key={`strip-doc-${idx}`} 
                         onClick={() => {
-                          setZoomScale(1);
-                          setCurrentIndex(idx);
+                          if (props.isPdf) {
+                            window.open(props.url, '_blank', 'noopener,noreferrer');
+                          } else {
+                            setZoomScale(1);
+                            setCurrentIndex(idx);
+                          }
                         }}
                         className={`w-12 h-12 rounded-lg cursor-pointer overflow-hidden border-2 shrink-0 transition-all ${
                           isCur 
@@ -1116,16 +1127,11 @@ const DocumentPreviewModal = ({
                             referrerPolicy="no-referrer"
                           />
                         ) : props.isPdf ? (
-                          <div className="w-full h-full relative overflow-hidden bg-slate-900 flex items-center justify-center">
-                            <iframe 
-                              src={`${props.url}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-                              title={props.name}
-                              className="w-[300%] h-[300%] absolute origin-top-left scale-[0.33] pointer-events-none border-0"
-                            />
-                            {/* Mini label */}
-                            <div className="absolute inset-0 bg-rose-950/20 flex items-center justify-center">
-                              <span className="text-[6px] font-black bg-rose-600 text-white px-0.5 rounded uppercase leading-none font-sans">PDF</span>
-                            </div>
+                          <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center border border-rose-950/40">
+                            <FileText size={16} className="text-rose-500" />
+                            <span className="text-[7px] font-black text-rose-400 font-mono scale-90">
+                              PDF
+                            </span>
                           </div>
                         ) : (
                           <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center">
@@ -3091,7 +3097,13 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                      return (
                     <div 
                       key={`doc-${i}`} 
-                      onClick={() => setPreviewIndex(i)}
+                      onClick={() => {
+                        if (isPdf) {
+                          window.open(url, '_blank', 'noopener,noreferrer');
+                        } else {
+                          setPreviewIndex(i);
+                        }
+                      }}
                       className="w-20 h-20 md:w-24 md:h-24 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl hover:border-primary/40 hover:shadow-md transition-all cursor-pointer group flex flex-col items-center justify-center overflow-hidden relative shadow-sm shrink-0"
                       title={name}
                     >
@@ -3103,17 +3115,13 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                           referrerPolicy="no-referrer"
                         />
                       ) : isPdf ? (
-                        <div className="w-full h-full relative overflow-hidden flex items-center justify-center bg-slate-900 group">
-                          <iframe 
-                            src={`${url}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-                            title={name}
-                            className="w-[200%] h-[200%] absolute origin-top-left scale-[0.5] pointer-events-none border-0 opacity-85 group-hover:opacity-100 transition-opacity"
-                          />
-                          {/* A beautiful visual indicator that it is a PDF */}
-                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/95 to-transparent p-1 pt-4 flex items-center justify-center gap-1 z-10">
-                            <FileText size={10} className="text-rose-500" />
-                            <span className="text-[7.5px] font-black tracking-widest text-rose-400 font-sans">PDF</span>
+                        <div className="flex flex-col items-center justify-center p-1.5 text-center w-full h-full">
+                          <div className="text-rose-500 group-hover:text-rose-400 transition-colors mb-1">
+                            <FileText size={20} />
                           </div>
+                          <span className="text-[7.5px] font-black text-rose-500 dark:text-rose-400 truncate w-full px-1.5 uppercase tracking-wider font-mono">
+                            PDF
+                          </span>
                         </div>
                       ) : (
                         <div className="flex flex-col items-center justify-center p-1.5 text-center w-full h-full">
@@ -3127,7 +3135,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                       )}
                       <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/20 transition-all flex items-center justify-center">
                         <span className="text-[7.5px] font-black tracking-widest uppercase bg-white/95 dark:bg-slate-900/90 text-slate-800 dark:text-slate-100 px-1.5 py-1 rounded-xl shadow border border-slate-100 dark:border-slate-800 opacity-0 group-hover:opacity-100 transition-opacity transform translateY(15px) group-hover:translateY(0)">
-                          View
+                          {isPdf ? "Open" : "View"}
                         </span>
                       </div>
                     </div>
