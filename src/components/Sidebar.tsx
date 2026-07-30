@@ -142,10 +142,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         
         <div className="flex items-center gap-3 relative z-10 w-full">
           <motion.div 
-            whileHover={{ scale: 1.1, rotate: 5 }}
-            className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-primary/20"
+            whileHover={{ scale: 1.05 }}
+            className="w-10 h-10 bg-slate-800 border border-slate-700 rounded-xl flex items-center justify-center shrink-0 shadow-lg p-1.5 overflow-hidden"
           >
-            <ShieldCheck size={24} />
+            <img src="/pcea.svg" alt="PCEA Logo" className="w-full h-full object-contain" />
           </motion.div>
           
           <AnimatePresence>

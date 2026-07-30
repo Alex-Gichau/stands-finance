@@ -188,7 +188,7 @@ export function generatePrintableLogsHtml(
 <body>
   <div class="header">
     <div class="brand">
-      <div class="brand-logo">✝</div>
+      <div class="brand-logo"><img src="/pcea.svg" style="width:100%;height:100%;object-fit:contain;" /></div>
       <div class="title-area">
         <h1 class="title">St. Andrews Church</h1>
         <p class="subtitle">System Audit Management Ledger</p>
@@ -552,7 +552,7 @@ export function generatePrintableHtml(
 <body>
   <div class="header">
     <div class="brand">
-      <div class="brand-logo">✝</div>
+      <div class="brand-logo"><img src="/pcea.svg" style="width:100%;height:100%;object-fit:contain;" /></div>
       <div class="title-area">
         <h1 class="title">St. Andrews Church</h1>
         <p class="subtitle">Official Fiscal Requisitions Register</p>
@@ -1120,13 +1120,11 @@ export function generateReceiptHtml(req: Requisition): string {
       width: 44px;
       height: 44px;
       background: #0f172a;
-      color: #ffffff;
       border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: 900;
-      font-size: 22px;
+      padding: 4px;
     }
     .church-info h1 {
       font-size: 20px;
@@ -1348,7 +1346,7 @@ export function generateReceiptHtml(req: Requisition): string {
       <div>
         <div class="header">
           <div class="brand">
-            <div class="brand-logo">✝</div>
+            <div class="brand-logo"><img src="/pcea.svg" style="width:100%;height:100%;object-fit:contain;" /></div>
             <div class="church-info">
               <h1>St. Andrews</h1>
               <p>Expenditure Receipt</p>

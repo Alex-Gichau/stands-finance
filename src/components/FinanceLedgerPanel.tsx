@@ -7,6 +7,7 @@ import React, { useState, useMemo } from "react";
 import { 
   Coins,
   BookOpen,
+  Building2,
   Wand2,
   Banknote, 
   Wallet,
@@ -247,26 +248,6 @@ export const FinanceLedgerPanel: React.FC = () => {
     setWizardTitle(`FY ${activeYear + 1} Budget Baseline`);
     setWizardNotes(`Cloned allocations dynamically from ${activeYear}`);
   }, [activeYear]);
-
-  const handleEditVault = async () => {
-    if (!isFinanceOrAdmin) {
-      alert("Unauthorized: Only Finance/Admins can modify the Central Vault Liquidity.");
-      return;
-    }
-    const val = prompt("Enter new Central Vault Base Liquidity (KES):", STARTING_RESERVE.toString());
-    if (val === null) return;
-    const parsed = parseFloat(val);
-    if (isNaN(parsed) || parsed < 0) {
-      alert("Invalid amount.");
-      return;
-    }
-    try {
-      await updateSystemSettings({ centralVaultLiquidity: parsed });
-      triggerToast({ type: 'SYSTEM_INFO', severity: 'MEDIUM', message: `Central Vault updated to KES ${parsed.toLocaleString()}`, timestamp: new Date().toISOString() });
-    } catch (e: any) {
-      alert("Failed to update vault: " + e.message);
-    }
-  };
 
   const handleEditProjectBudget = async (project: Project) => {
     if (!isFinanceOrAdmin) {
@@ -691,9 +672,6 @@ export const FinanceLedgerPanel: React.FC = () => {
   const [payoutNotes, setPayoutNotes] = useState("");
   const [isCommitingPayout, setIsCommitingPayout] = useState(false);
 
-  // Constants
-  const STARTING_RESERVE = systemSettings?.centralVaultLiquidity ?? 25000000; // Diocesan Base Liquidity
-
   // Mapping ministry groups to chart/category codes for double-entry tracking
   const getAccountingCode = (groupId: string): { code: string; name: string } => {
     const formatted = (groupId || "").toLowerCase();
@@ -725,16 +703,18 @@ export const FinanceLedgerPanel: React.FC = () => {
       .filter(r => r.status === RequisitionStatus.APPROVED_L2)
       .reduce((acc, r) => acc + r.amount, 0);
 
-    const totalActiveBudget = projects.reduce((acc, p) => acc + p.allocatedBudget, 0);
-    const totalRemainingBudget = projects.reduce((acc, p) => {
+    const activeProjects = projects.filter(p => p.fiscalYear === activeYear || (!p.fiscalYear && activeYear === 2026));
+    const totalActiveBudget = activeProjects.length > 0
+      ? activeProjects.reduce((acc, p) => acc + (p.allocatedBudget || 0), 0)
+      : projects.reduce((acc, p) => acc + (p.allocatedBudget || 0), 0);
+
+    const totalRemainingBudget = (activeProjects.length > 0 ? activeProjects : projects).reduce((acc, p) => {
       const projectReqs = getProjectRequisitions(p, requisitions);
       const usedAmount = projectReqs
         .filter(r => [RequisitionStatus.SUBMITTED, RequisitionStatus.APPROVED_L1, RequisitionStatus.ESCALATED, RequisitionStatus.APPROVED_L2, RequisitionStatus.DISBURSED].includes(r.status))
         .reduce((sum, r) => sum + r.amount, 0);
       return acc + (p.allocatedBudget - usedAmount);
     }, 0);
-
-    const availableReserve = STARTING_RESERVE - totalDisbursed;
 
     // Disbursement efficiency: simulated speed
     const approvedRequisitions = requisitions.filter(
@@ -743,7 +723,6 @@ export const FinanceLedgerPanel: React.FC = () => {
     const averageTimeMinutes = approvedRequisitions.length > 0 ? 320 : 0; // Simulated stable speed in system
 
     return {
-      availableReserve,
       totalDisbursed,
       pendingDisbursalCount,
       totalCommittedPending,
@@ -751,7 +730,7 @@ export const FinanceLedgerPanel: React.FC = () => {
       totalRemainingBudget,
       averageTimeMinutes
     };
-  }, [requisitions, projects]);
+  }, [requisitions, projects, activeYear]);
 
   // Calculate transaction totals by last week, this week, this month, and this year
   const timeBasedMetrics = useMemo(() => {
@@ -1601,20 +1580,17 @@ export const FinanceLedgerPanel: React.FC = () => {
       {/* 2. Fiscal Analytics Deck */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        <div className="bg-slate-900 p-5 rounded-2xl text-white border border-slate-800 shadow-md relative overflow-hidden group">
+        <div id="metric-total-allocated-budget-card" className="bg-slate-900 p-5 rounded-2xl text-white border border-slate-800 shadow-md relative overflow-hidden group">
           <div className="absolute right-[-10px] top-[-10px] opacity-10 group-hover:scale-125 transition-all text-indigo-400">
-            <Wallet size={80} />
+            <Building2 size={80} />
           </div>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center justify-between">
-            Central Vault Liquidity
-            {isFinanceOrAdmin && (
-              <Wand2 size={12} className="cursor-pointer hover:text-white" onClick={handleEditVault} />
-            )}
+            Total Allocated Ministry Group Budget
           </p>
-          <h2 className="text-xl font-bold leading-none mb-2">{formatCurrency(metrics.availableReserve)}</h2>
+          <h2 className="text-xl font-bold leading-none mb-2">{formatCurrency(metrics.totalActiveBudget)}</h2>
           <div className="flex items-center gap-1.5 text-[9px] font-semibold text-emerald-400">
-            <ArrowUpRight size={10} />
-            <span>Vault Base: {formatCurrency(STARTING_RESERVE)}</span>
+            <Building2 size={10} />
+            <span>Sum of All Ministry Allocations (FY {activeYear})</span>
           </div>
         </div>
 

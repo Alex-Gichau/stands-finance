@@ -1068,9 +1068,9 @@ function AppContent() {
             <div className="relative inline-block">
               <motion.div 
                 whileHover={{ scale: 1.05, rotate: 5 }}
-                className="w-16 h-16 bg-slate-800/50 rounded-2xl flex items-center justify-center border border-slate-700/50 backdrop-blur-sm"
+                className="w-16 h-16 bg-slate-800/80 rounded-2xl flex items-center justify-center border border-slate-700/50 backdrop-blur-sm p-2 shadow-xl"
               >
-                <Layers className="text-primary" size={32} />
+                <img src="/pcea.svg" alt="PCEA Logo" className="w-full h-full object-contain" />
               </motion.div>
               <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-slate-900 animate-pulse" />
             </div>

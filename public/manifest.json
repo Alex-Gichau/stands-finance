@@ -4,15 +4,9 @@
   "description": "A premium requisition management platform for church group funding, multi-level approvals, and financial oversight.",
   "icons": [
     {
-      "src": "favicon.png",
-      "sizes": "32x32 48x48 96x96 128x128 192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
+      "src": "/pcea.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
       "purpose": "any maskable"
     }
   ],
