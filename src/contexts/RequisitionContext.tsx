@@ -4266,7 +4266,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [db, skipFirestore, addSystemLog, triggerToast, withDbLoading]);
 
   const syncRealDisbursedTransactions = useCallback(async (): Promise<number> => {
-    return withDbLoading("Storing real disbursed funds transactions on website...", async () => {
+    return withDbLoading("Storing disbursed funds transactions on website...", async () => {
       try {
         const disbursedReqs = requisitions.filter(r => r.status === RequisitionStatus.DISBURSED);
         const realTxs: Transaction[] = disbursedReqs.map(req => {
@@ -4301,18 +4301,18 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
         setTransactions(realTxs);
 
-        await addSystemLog("REAL_TRANSACTIONS_STORED", `Stored ${realTxs.length} real disbursed funds transaction details on the website.`, { count: realTxs.length });
+        await addSystemLog("REAL_TRANSACTIONS_STORED", `Stored ${realTxs.length} disbursed funds transaction details on the website.`, { count: realTxs.length });
 
         triggerToast({
           type: "FINANCE_DISBURSEMENT",
           severity: "LOW",
-          message: `Successfully synchronized and stored ${realTxs.length} real disbursed funds transaction detail(s).`,
+          message: `Successfully synchronized and stored ${realTxs.length} disbursed funds transaction detail(s).`,
           timestamp: new Date().toISOString()
         });
 
         return realTxs.length;
       } catch (err) {
-        console.error("Error syncing real disbursed transactions:", err);
+        console.error("Error syncing disbursed transactions:", err);
         return 0;
       }
     });

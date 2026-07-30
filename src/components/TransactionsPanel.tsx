@@ -141,10 +141,10 @@ const TransactionsPanel: React.FC = () => {
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sky-400 text-xs font-bold uppercase tracking-widest">
               <Database className="w-4 h-4" />
-              <span>PCE St. Andrews Disbursed Treasury Ledger</span>
+              <span>PCEA St. Andrew's Disbursed Ledger</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
-              Real Disbursed Funds & Transactions
+              Disbursed Funds & Transactions
             </h1>
             <p className="text-sm text-slate-300 max-w-2xl font-normal">
               Official ledger of all verified, settled, and disbursed treasury funds. Transactions are automatically created and updated in real-time as disbursements occur.
@@ -281,7 +281,7 @@ const TransactionsPanel: React.FC = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/40">
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Disbursement / Reference</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Disbursements</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ministry / Group</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Type</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Amount (KES)</th>
@@ -310,7 +310,7 @@ const TransactionsPanel: React.FC = () => {
                             <span>{tx.description}</span>
                             {isReal && (
                               <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase rounded-md border border-emerald-200 shrink-0">
-                                Real Disbursed
+                                Disbursed
                               </span>
                             )}
                           </span>
@@ -443,7 +443,7 @@ const TransactionsPanel: React.FC = () => {
               </div>
 
               <p className="text-xs text-slate-600 leading-relaxed">
-                This action will remove current simulated web transactions from the database ledger view. Official real disbursed funds transactions can be re-synchronized and stored at any time using the <strong>Store Real Disbursed Funds</strong> action.
+                This action will remove current simulated web transactions from the database ledger view. Official disbursed funds transactions can be re-synchronized and stored at any time using the <strong>Store Disbursed Funds</strong> action.
               </p>
 
               <div className="flex items-center justify-end gap-3 pt-2">
