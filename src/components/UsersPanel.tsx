@@ -1147,14 +1147,16 @@ export const UsersPanel: React.FC = () => {
                           setSelectedRequisitionId(reqId);
                           const req = requisitions.find(r => r.id === reqId);
                           if (req) {
-                             setEmailContent(prev => prev + `\n\n--- Requisition Details ---\nID: ${req.id}\nProject ID: ${req.projectId}\nAmount: ${req.amount}\nStatus: ${req.status}\nDescription: ${req.description}\n`);
+                             setEmailContent(prev => prev + `\n\n--- Requisition Details ---\nTitle: ${req.title}\nID: ${req.id}\nGroup: ${req.groupName || "N/A"}\nAmount: KES ${req.amount.toLocaleString()}\nStatus: ${req.status}\nDescription: ${req.description}\n`);
                           }
                       }}
-                      className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-xl text-sm focus:border-primary/40 focus:ring-4 focus:ring-primary/5 outline-none transition-all"
+                      className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-xl text-sm focus:border-primary/40 focus:ring-4 focus:ring-primary/5 outline-none transition-all cursor-pointer"
                     >
                       <option value="">Select a requisition...</option>
-                      {requisitions.slice(0, 10).map(r => (
-                        <option key={r.id} value={r.id}>{r.id} - {r.projectId || "No Project ID"}</option>
+                      {requisitions.map(r => (
+                        <option key={r.id} value={r.id}>
+                          {r.title || r.id} (KES {r.amount.toLocaleString()})
+                        </option>
                       ))}
                     </select>
                   </div>

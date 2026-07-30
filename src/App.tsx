@@ -37,6 +37,7 @@ import { FeedbackModal } from "./components/FeedbackModal";
 import TransactionsPanel from "./components/TransactionsPanel";
 import { BugReportModal } from "./components/BugReportModal";
 import { ContactFinanceModal } from "./components/ContactFinanceModal";
+import { getRecentSearches, saveRecentSearchTerm, removeRecentSearchTerm, clearAllRecentSearchTerms } from "./lib/searchHistory";
 import { UserRole, BudgetAlert, SearchFilter, PermissionConfig } from "./types";
 import { 
   Bell, 
@@ -792,36 +793,7 @@ function AppContent() {
   };
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("recent_searches");
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) {
-            const now = Date.now();
-            const normalized = parsed.map(item => {
-              if (typeof item === "string") {
-                return { term: item, timestamp: new Date().toISOString() };
-              } else if (item && typeof item === "object" && typeof item.term === "string") {
-                return { term: item.term, timestamp: item.timestamp || new Date().toISOString() };
-              }
-              return null;
-            }).filter((item): item is { term: string, timestamp: string } => item !== null);
-
-            const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
-            const validItems = normalized.filter(item => {
-              const itemTime = new Date(item.timestamp).getTime();
-              return !isNaN(itemTime) && itemTime >= thirtyDaysAgo;
-            });
-
-            localStorage.setItem("recent_searches", JSON.stringify(validItems));
-            setRecentSearches(validItems.map(item => item.term).slice(0, 5));
-          }
-        } catch (e) {
-          console.error("Failed to parse recent searches", e);
-        }
-      }
-    }
+    setRecentSearches(getRecentSearches());
   }, []);
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -890,36 +862,8 @@ function AppContent() {
     const trimmed = term.trim();
     if (!trimmed) return;
     
-    setRecentSearches(prev => {
-      const filtered = prev.filter(s => s.toLowerCase() !== trimmed.toLowerCase());
-      const updated = [trimmed, ...filtered].slice(0, 5);
-      if (typeof window !== "undefined") {
-        let currentStored: { term: string, timestamp: string }[] = [];
-        const saved = localStorage.getItem("recent_searches");
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed)) {
-              currentStored = parsed.map(item => {
-                if (typeof item === "string") return { term: item, timestamp: new Date().toISOString() };
-                return item;
-              }).filter(item => item && typeof item.term === "string");
-            }
-          } catch (e) {
-            console.error("Failed to parse stored searches", e);
-          }
-        }
-
-        const restStored = currentStored.filter(item => item.term.toLowerCase() !== trimmed.toLowerCase());
-        const newStored = [{ term: trimmed, timestamp: new Date().toISOString() }, ...restStored].slice(0, 100);
-
-        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-        const finalStored = newStored.filter(item => new Date(item.timestamp).getTime() >= thirtyDaysAgo);
-
-        localStorage.setItem("recent_searches", JSON.stringify(finalStored));
-      }
-      return updated;
-    });
+    const updated = saveRecentSearchTerm(trimmed);
+    setRecentSearches(updated);
 
     // Log query to backend
     fetch("/api/search-logs", {
@@ -937,35 +881,14 @@ function AppContent() {
 
   const removeRecentSearch = (termToRemove: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setRecentSearches(prev => {
-      const updated = prev.filter(s => s !== termToRemove);
-      if (typeof window !== "undefined") {
-        const saved = localStorage.getItem("recent_searches");
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed)) {
-              const filtered = parsed.filter(item => {
-                const term = typeof item === "string" ? item : item?.term;
-                return term !== termToRemove;
-              });
-              localStorage.setItem("recent_searches", JSON.stringify(filtered));
-            }
-          } catch (e) {
-            console.error("Failed to parse stored searches on remove", e);
-          }
-        }
-      }
-      return updated;
-    });
+    const updated = removeRecentSearchTerm(termToRemove);
+    setRecentSearches(updated);
   };
 
   const clearAllRecentSearches = (e: React.MouseEvent) => {
     e.stopPropagation();
+    clearAllRecentSearchTerms();
     setRecentSearches([]);
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("recent_searches");
-    }
   };
 
   const handleForgotPassword = async () => {
