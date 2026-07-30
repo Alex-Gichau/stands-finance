@@ -412,7 +412,7 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({ onPlayTour }) => {
           <section id="doc-sandbox" className="scroll-mt-6 space-y-6">
             <div className="border-b border-slate-200 dark:border-slate-800 pb-2 flex items-center justify-between">
               <h2 className="text-sm font-black text-slate-900 dark:text-white tracking-wider uppercase flex items-center gap-2">
-                <span className="text-indigo-600 dark:text-indigo-400 font-mono">3.0</span> Try the System (Sandbox)
+                <span className="text-indigo-600 dark:text-indigo-400 font-mono">3.0</span> Try the System
               </h2>
               <span className="text-[9px] font-mono font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
                 Playground
