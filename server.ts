@@ -4094,6 +4094,70 @@ async function startServer() {
   const backupEmailLogsPath = path.join(process.cwd(), "data", "backup_email_logs.json");
   const backupEmailConfigPath = path.join(process.cwd(), "data", "backup_email_config.json");
 
+  const isBackupDueServer = (config: any) => {
+    if (!config || config.enabled === false) return false;
+    const now = new Date();
+    const lastSent = config.lastSentTimestamp ? new Date(config.lastSentTimestamp) : null;
+    const freq = config.frequency || "WEEKLY";
+
+    if (freq === "5-HOURS") {
+      if (!lastSent) return true;
+      return (now.getTime() - lastSent.getTime()) >= 5 * 60 * 60 * 1000;
+    }
+
+    if (freq === "DAILY") {
+      if (!lastSent) return true;
+      return (now.getTime() - lastSent.getTime()) >= 24 * 60 * 60 * 1000;
+    }
+
+    // WEEKLY: Every Friday at 04:00 AM
+    const currentDay = now.getDay(); // 0 = Sun, 1 = Mon, ..., 5 = Fri, 6 = Sat
+    let daysSinceFriday = currentDay >= 5 ? currentDay - 5 : currentDay + 2;
+
+    const lastFriday4AM = new Date(now);
+    lastFriday4AM.setDate(now.getDate() - daysSinceFriday);
+    lastFriday4AM.setHours(4, 0, 0, 0);
+
+    if (currentDay === 5 && now.getHours() < 4) {
+      lastFriday4AM.setDate(lastFriday4AM.getDate() - 7);
+    }
+
+    if (!lastSent || new Date(lastSent).getTime() < lastFriday4AM.getTime()) {
+      if (now.getTime() >= lastFriday4AM.getTime()) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  const getNextScheduledRunServer = (config: any) => {
+    const now = new Date();
+    const freq = config?.frequency || "WEEKLY";
+    const lastSent = config?.lastSentTimestamp ? new Date(config.lastSentTimestamp) : null;
+
+    if (freq === "5-HOURS") {
+      const base = lastSent || now;
+      return new Date(base.getTime() + 5 * 60 * 60 * 1000).toISOString();
+    }
+
+    if (freq === "DAILY") {
+      const base = lastSent || now;
+      return new Date(base.getTime() + 24 * 60 * 60 * 1000).toISOString();
+    }
+
+    // WEEKLY: Every Friday at 04:00 AM
+    const currentDay = now.getDay();
+    let daysUntilFriday = (5 - currentDay + 7) % 7;
+    if (daysUntilFriday === 0 && now.getHours() >= 4) {
+      daysUntilFriday = 7;
+    }
+    const nextFriday = new Date(now);
+    nextFriday.setDate(now.getDate() + daysUntilFriday);
+    nextFriday.setHours(4, 0, 0, 0);
+    return nextFriday.toISOString();
+  };
+
   const getBackupEmailLogs = () => {
     try {
       if (fs.existsSync(backupEmailLogsPath)) {
@@ -4118,13 +4182,21 @@ async function startServer() {
   const getBackupEmailConfig = () => {
     try {
       if (fs.existsSync(backupEmailConfigPath)) {
-        return JSON.parse(fs.readFileSync(backupEmailConfigPath, "utf-8"));
+        const parsed = JSON.parse(fs.readFileSync(backupEmailConfigPath, "utf-8"));
+        return {
+          targetEmail: "geeshau.standsmedia@gmail.com",
+          enabled: true,
+          frequency: "WEEKLY",
+          lastSentTimestamp: null,
+          totalBackupsSent: 0,
+          ...parsed
+        };
       }
     } catch (e) {}
     return {
       targetEmail: "geeshau.standsmedia@gmail.com",
       enabled: true,
-      frequency: "5-HOURS",
+      frequency: "WEEKLY",
       lastSentTimestamp: null,
       totalBackupsSent: 0
     };
@@ -4140,16 +4212,193 @@ async function startServer() {
     }
   };
 
+  const executeAutomatedBackupDispatch = async (triggerType = "SCHEDULED_WEEKLY") => {
+    try {
+      const config = getBackupEmailConfig();
+      if (!config.enabled) return;
+
+      const targetEmail = (config.targetEmail || "geeshau.standsmedia@gmail.com").trim();
+      const requisitions = readJsonCollection("requisitions") || [];
+      const users = readJsonCollection("users") || [];
+      const projects = readJsonCollection("projects") || [];
+      const churchGroups = readJsonCollection("church_groups") || [];
+      const ledgerBooks = readJsonCollection("ledger_books") || [];
+      const systemLogs = readJsonCollection("system_logs") || [];
+      const customCalendarEvents = readJsonCollection("custom_calendar_events") || [];
+
+      const timestamp = new Date().toISOString();
+      const dateStr = timestamp.replace(/[:.]/g, "-").slice(0, 16);
+      const fileName = `STANDS_eReqs_WeeklyBackup_${dateStr}.json`;
+
+      const backupPayload = {
+        timestamp,
+        targetAccount: targetEmail,
+        version: "4.2.0",
+        schedulePolicy: "Weekly End of Week (Friday 04:00 AM)",
+        systemSettings: readJsonCollection("settings") || {},
+        users,
+        requisitions,
+        projects,
+        churchGroups,
+        ledgerBooks,
+        systemLogs,
+        customCalendarEvents,
+        summary: {
+          totalRequisitions: requisitions.length,
+          totalUsers: users.length,
+          totalProjects: projects.length,
+          totalGroups: churchGroups.length,
+          totalLedgers: ledgerBooks.length
+        }
+      };
+
+      const jsonContent = JSON.stringify(backupPayload, null, 2);
+      const jsonBuffer = Buffer.from(jsonContent, "utf-8");
+      const sizeKb = Math.round(jsonBuffer.length / 1024);
+
+      const subject = `[WEEKLY BACKUP - FRIDAY 04:00 AM] STANDS Database Snapshot (${dateStr})`;
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 620px; padding: 24px; color: #1e293b; background: #f8fafc; border-radius: 16px; border: 1px solid #e2e8f0; margin: 0 auto;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <div style="display: inline-block; background: #4f46e5; color: white; padding: 8px 18px; border-radius: 20px; font-weight: bold; font-size: 12px; letter-spacing: 1px; text-transform: uppercase;">
+              🛡️ STANDS eRequisitions Weekly Friday 04:00 AM Backup
+            </div>
+          </div>
+          <h2 style="color: #0f172a; margin-top: 0; font-size: 20px; text-align: center; font-weight: 800;">
+            End of Week Database Snapshot Attached
+          </h2>
+          <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+            Hello Super Administrator,
+          </p>
+          <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+            Your scheduled end of week (Friday 04:00 AM) system database snapshot has been compiled and attached as a JSON file for recipient <strong>${targetEmail}</strong>.
+          </p>
+
+          <div style="background: white; padding: 20px; border-radius: 12px; border: 1px solid #cbd5e1; margin: 20px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <h4 style="margin: 0 0 14px 0; font-size: 12px; text-transform: uppercase; color: #64748b; letter-spacing: 1px; font-weight: 800;">
+              Snapshot Metrics Summary
+            </h4>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px 0; color: #64748b;">Schedule Cycle:</td>
+                <td style="padding: 8px 0; font-weight: bold; color: #10b981; text-align: right;">Weekly (Friday 04:00 AM)</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px 0; color: #64748b;">Recipient Email:</td>
+                <td style="padding: 8px 0; font-weight: bold; color: #4f46e5; text-align: right;">${targetEmail}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px 0; color: #64748b;">File Attachment:</td>
+                <td style="padding: 8px 0; font-weight: bold; font-family: monospace; text-align: right;">${fileName}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px 0; color: #64748b;">Snapshot Size:</td>
+                <td style="padding: 8px 0; font-weight: bold; text-align: right;">${sizeKb} KB</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px 0; color: #64748b;">Total Requisitions:</td>
+                <td style="padding: 8px 0; font-weight: bold; text-align: right;">${backupPayload.summary.totalRequisitions}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px 0; color: #64748b;">Registered Users:</td>
+                <td style="padding: 8px 0; font-weight: bold; text-align: right;">${backupPayload.summary.totalUsers}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px 0; color: #64748b;">Church Groups/Ministries:</td>
+                <td style="padding: 8px 0; font-weight: bold; text-align: right;">${backupPayload.summary.totalGroups}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #64748b;">Dispatched Timestamp:</td>
+                <td style="padding: 8px 0; font-weight: bold; text-align: right;">${new Date(timestamp).toLocaleString()}</td>
+              </tr>
+            </table>
+          </div>
+
+          <p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 24px; border-top: 1px solid #e2e8f0; pt-16px;">
+            This is an automated system security backup dispatch from PCEA St. Andrews STANDS eRequisitions.
+          </p>
+        </div>
+      `;
+
+      let emailStatus = "DELIVERED";
+      let warning = null;
+
+      try {
+        await transporter.sendMail({
+          from: `"STANDS eRequisitions AutoBackup" <${process.env.SMTP_USER || "ict.team@pceastandrews.org"}>`,
+          to: targetEmail,
+          subject,
+          html,
+          attachments: [
+            {
+              filename: fileName,
+              content: jsonBuffer,
+              contentType: "application/json"
+            }
+          ]
+        });
+      } catch (mailErr: any) {
+        console.warn("[Autosend Backup Email] Mailer notice:", mailErr.message || mailErr);
+        emailStatus = "SIMULATED_LOCAL_STORE";
+        warning = mailErr.message || "SMTP dispatch queued or offline simulation";
+      }
+
+      const backupDir = path.join(process.cwd(), "data", "email_json_backups");
+      if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+      fs.writeFileSync(path.join(backupDir, fileName), jsonContent, "utf-8");
+
+      config.lastSentTimestamp = timestamp;
+      config.totalBackupsSent = (config.totalBackupsSent || 0) + 1;
+      saveBackupEmailConfig(config);
+
+      const logEntry = {
+        id: `embak-${Date.now()}`,
+        timestamp,
+        targetEmail,
+        fileName,
+        sizeKb,
+        status: emailStatus,
+        warning,
+        summary: backupPayload.summary,
+        triggerType
+      };
+
+      saveBackupEmailLogs([logEntry, ...getBackupEmailLogs()]);
+      console.log(`[Autosend Backup Service] Automated backup email executed for ${targetEmail}`);
+    } catch (err: any) {
+      console.error("[Autosend Backup Automated Error]:", err);
+    }
+  };
+
+  // Run automated Friday 04:00 AM check every 15 minutes
+  setInterval(() => {
+    try {
+      const config = getBackupEmailConfig();
+      if (isBackupDueServer(config)) {
+        console.log("[Autosend Backup Cron] Scheduled Friday 04:00 AM weekly backup is due. Triggering dispatch...");
+        executeAutomatedBackupDispatch("SCHEDULED_WEEKLY");
+      }
+    } catch (e) {
+      console.error("[Autosend Backup Scheduler Error]:", e);
+    }
+  }, 15 * 60 * 1000);
+
   // GET /api/backup-email-status
   app.get("/api/backup-email-status", async (req, res) => {
     try {
       const config = getBackupEmailConfig();
       const logs = getBackupEmailLogs();
+      const nextScheduledRun = getNextScheduledRunServer(config);
+      const isDueNow = isBackupDueServer(config);
+
       res.json({
         success: true,
         config,
         logs,
-        totalLogs: logs.length
+        totalLogs: logs.length,
+        nextScheduledRun,
+        scheduleDescription: "Every End of Week (Friday 04:00 AM)",
+        isDueNow
       });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });

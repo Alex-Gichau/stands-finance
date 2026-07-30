@@ -42,6 +42,7 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ onSelectRequis
     alerts,
     readNoticeIds,
     toggleNoticeRead,
+    markAllNoticesRead,
     triggerToast,
     deleteAlert
   } = useRequisitions();
@@ -248,6 +249,25 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ onSelectRequis
     });
   }, [notificationItems, filterType, readNoticeIds]);
 
+  const unreadCount = React.useMemo(() => {
+    return notificationItems.filter(item => !readNoticeIds.includes(item.id)).length;
+  }, [notificationItems, readNoticeIds]);
+
+  const handleMarkAllRead = () => {
+    const unreadIds = notificationItems
+      .filter(item => !readNoticeIds.includes(item.id))
+      .map(item => item.id);
+    if (unreadIds.length > 0) {
+      markAllNoticesRead(unreadIds);
+      triggerToast({
+        type: "SYSTEM_INFO",
+        severity: "LOW",
+        message: `Marked ${unreadIds.length} notification${unreadIds.length > 1 ? 's' : ''} as read`,
+        timestamp: new Date().toISOString()
+      });
+    }
+  };
+
   const getNoticeStyling = (type: string) => {
     switch (type) {
       case "MEMBER_APPROVAL":
@@ -296,35 +316,48 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ onSelectRequis
           <p className="text-sm text-slate-500">Live operational ledger logs & immediate action queue.</p>
         </div>
         
-        {/* Statistics or Status bar */}
-        <div className="flex gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
-          <button 
-            onClick={() => setFilterType("ALL")}
-            className={cn(
-              "px-4 py-2 rounded-xl text-xs font-bold transition-all uppercase tracking-wider cursor-pointer",
-              filterType === "ALL" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:text-slate-800"
-            )}
-          >
-            All Logs ({notificationItems.length})
-          </button>
-          <button 
-            onClick={() => setFilterType("ACTIONS")}
-            className={cn(
-              "px-4 py-2 rounded-xl text-xs font-bold transition-all uppercase tracking-wider cursor-pointer",
-              filterType === "ACTIONS" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-800"
-            )}
-          >
-            Actions ({notificationItems.filter(i => i.type !== "BUDGET_ALERT").length})
-          </button>
-          <button 
-            onClick={() => setFilterType("ALERTS")}
-            className={cn(
-              "px-4 py-2 rounded-xl text-xs font-bold transition-all uppercase tracking-wider cursor-pointer",
-              filterType === "ALERTS" ? "bg-amber-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-800"
-            )}
-          >
-            Alerts ({notificationItems.filter(i => i.type === "BUDGET_ALERT").length})
-          </button>
+        {/* Statistics, Mark All as Read, or Status bar */}
+        <div className="flex flex-wrap items-center gap-3">
+          {unreadCount > 0 && (
+            <button 
+              type="button"
+              onClick={handleMarkAllRead}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 shadow-sm cursor-pointer hover:shadow-indigo-100"
+            >
+              <CheckCircle2 size={14} />
+              <span>Mark All as Read ({unreadCount})</span>
+            </button>
+          )}
+
+          <div className="flex gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
+            <button 
+              onClick={() => setFilterType("ALL")}
+              className={cn(
+                "px-4 py-2 rounded-xl text-xs font-bold transition-all uppercase tracking-wider cursor-pointer",
+                filterType === "ALL" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:text-slate-800"
+              )}
+            >
+              All Logs ({notificationItems.length})
+            </button>
+            <button 
+              onClick={() => setFilterType("ACTIONS")}
+              className={cn(
+                "px-4 py-2 rounded-xl text-xs font-bold transition-all uppercase tracking-wider cursor-pointer",
+                filterType === "ACTIONS" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-800"
+              )}
+            >
+              Actions ({notificationItems.filter(i => i.type !== "BUDGET_ALERT").length})
+            </button>
+            <button 
+              onClick={() => setFilterType("ALERTS")}
+              className={cn(
+                "px-4 py-2 rounded-xl text-xs font-bold transition-all uppercase tracking-wider cursor-pointer",
+                filterType === "ALERTS" ? "bg-amber-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-800"
+              )}
+            >
+              Alerts ({notificationItems.filter(i => i.type === "BUDGET_ALERT").length})
+            </button>
+          </div>
         </div>
       </div>
 

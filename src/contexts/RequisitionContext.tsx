@@ -33,7 +33,7 @@ import {
 import { getProjectRequisitions } from "../utils/budgetUtils";
 import { databaseService } from "../lib/databaseService";
 import { uploadAttachmentsToLocalServer } from "../lib/utils";
-import { triggerAutosendBackupEmail, AUTOSEND_DEFAULT_EMAIL } from "../services/autosendBackupService";
+import { triggerAutosendBackupEmail, AUTOSEND_DEFAULT_EMAIL, getLocalAutosendConfig } from "../services/autosendBackupService";
 import { initializeApp as initFirebaseApp } from "firebase/app";
 import { 
   getAuth, 
@@ -253,23 +253,64 @@ const getDoc = async (docRef: any) => {
 
 export function safeNormalizeAttachments(attachments: any): string[] {
   if (!attachments) return [];
+
+  const parseSingleItem = (item: any): string | null => {
+    if (!item) return null;
+    if (typeof item === 'string') {
+      const trimmed = item.trim();
+      if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (typeof parsed === 'string') return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) return parseSingleItem(parsed[0]);
+          if (parsed && typeof parsed === 'object') {
+            const firstKey = Object.keys(parsed)[0];
+            const val = parsed.url || parsed.dataUrl || parsed.link || (firstKey ? parsed[firstKey] : null);
+            const name = parsed.name || parsed.fileName || parsed.title;
+            if (typeof val === 'string' && name && !val.includes('::')) return `${name}::${val}`;
+            if (typeof val === 'string') return val;
+          }
+        } catch (e) {
+          // not valid json string, use trimmed
+        }
+      }
+      return trimmed;
+    }
+    if (typeof item === 'object') {
+      const firstKey = Object.keys(item)[0];
+      const val = item.url || item.dataUrl || item.link || (firstKey ? item[firstKey] : null);
+      const name = item.name || item.fileName || item.title;
+      if (typeof val === 'string' && name && !val.includes('::')) return `${name}::${val}`;
+      if (typeof val === 'string') return val;
+      return JSON.stringify(item);
+    }
+    return String(item);
+  };
+
   if (Array.isArray(attachments)) {
-    return attachments.filter((x: any) => typeof x === 'string' || (x && typeof x === 'object')).map((x: any) => typeof x === 'string' ? x : JSON.stringify(x));
+    return attachments.map(parseSingleItem).filter((x): x is string => Boolean(x));
+  }
+  if (typeof attachments === 'object') {
+    return Object.values(attachments).map(parseSingleItem).filter((x): x is string => Boolean(x));
   }
   if (typeof attachments === 'string') {
     const trimmed = attachments.trim();
-    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
       try {
         const parsed = JSON.parse(trimmed);
         if (Array.isArray(parsed)) {
-          return parsed.map((x: any) => typeof x === 'string' ? x : JSON.stringify(x));
+          return parsed.map(parseSingleItem).filter((x): x is string => Boolean(x));
+        }
+        if (parsed && typeof parsed === 'object') {
+          return Object.values(parsed).map(parseSingleItem).filter((x): x is string => Boolean(x));
         }
       } catch (e) {
-        console.error("Failed to parse stringified attachments array:", e);
+        console.error("Failed to parse stringified attachments:", e);
       }
     }
     if (trimmed.length > 0) {
-      return [trimmed];
+      const res = parseSingleItem(trimmed);
+      return res ? [res] : [];
     }
   }
   return [];
@@ -2959,19 +3000,49 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             console.log("[Google Drive Auto-Backup] 5-hour backup completed successfully for ict.team@pceastandrews.org.");
           }
 
-          // Trigger Autosend Backup Email to geeshau.standsmedia@gmail.com
-          triggerAutosendBackupEmail(AUTOSEND_DEFAULT_EMAIL, {
-            systemSettings,
-            requisitions,
-            users,
-            projects,
-            churchGroups,
-            ledgerBooks,
-            systemLogs,
-            customCalendarEvents
-          }, "SCHEDULED").catch(err => {
-            console.warn("[Autosend Email Backup] Auto-dispatch attempt failed:", err);
-          });
+          // Trigger Autosend Backup Email based on schedule frequency (default Weekly Friday 04:00 AM)
+          const cfg = getLocalAutosendConfig();
+          if (cfg.enabled) {
+            let isEmailBackupDue = false;
+            const lastSent = cfg.lastSentTimestamp ? new Date(cfg.lastSentTimestamp) : null;
+            const now = new Date();
+
+            if (cfg.frequency === "5-HOURS") {
+              isEmailBackupDue = !lastSent || (now.getTime() - lastSent.getTime()) >= 5 * 60 * 60 * 1000;
+            } else if (cfg.frequency === "DAILY") {
+              isEmailBackupDue = !lastSent || (now.getTime() - lastSent.getTime()) >= 24 * 60 * 60 * 1000;
+            } else {
+              // WEEKLY: Friday 04:00 AM
+              const currentDay = now.getDay();
+              let daysSinceFriday = currentDay >= 5 ? currentDay - 5 : currentDay + 2;
+              const lastFriday4AM = new Date(now);
+              lastFriday4AM.setDate(now.getDate() - daysSinceFriday);
+              lastFriday4AM.setHours(4, 0, 0, 0);
+              if (currentDay === 5 && now.getHours() < 4) {
+                lastFriday4AM.setDate(lastFriday4AM.getDate() - 7);
+              }
+              if (!lastSent || lastSent.getTime() < lastFriday4AM.getTime()) {
+                if (now.getTime() >= lastFriday4AM.getTime()) {
+                  isEmailBackupDue = true;
+                }
+              }
+            }
+
+            if (isEmailBackupDue) {
+              triggerAutosendBackupEmail(cfg.targetEmail || AUTOSEND_DEFAULT_EMAIL, {
+                systemSettings,
+                requisitions,
+                users,
+                projects,
+                churchGroups,
+                ledgerBooks,
+                systemLogs,
+                customCalendarEvents
+              }, "SCHEDULED").catch(err => {
+                console.warn("[Autosend Email Backup] Scheduled auto-dispatch attempt failed:", err);
+              });
+            }
+          }
         } catch (e) {
           console.warn("[Google Drive Auto-Backup] Scheduled backup check failed:", e);
         }

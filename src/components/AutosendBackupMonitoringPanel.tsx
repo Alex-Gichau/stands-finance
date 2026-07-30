@@ -6,7 +6,8 @@ import {
   AutosendConfig, 
   fetchAutosendStatus, 
   updateAutosendConfigOnServer, 
-  triggerAutosendBackupEmail 
+  triggerAutosendBackupEmail,
+  getNextBackupScheduledDate
 } from "../services/autosendBackupService";
 import { downloadBackupLocally, generateBackupPayload } from "../services/googleDriveBackupService";
 import { 
@@ -34,7 +35,7 @@ export const AutosendBackupMonitoringPanel: React.FC = () => {
   const [config, setConfig] = useState<AutosendConfig>({
     targetEmail: AUTOSEND_DEFAULT_EMAIL,
     enabled: true,
-    frequency: "5-HOURS",
+    frequency: "WEEKLY",
     lastSentTimestamp: null,
     totalBackupsSent: 0
   });
@@ -233,22 +234,27 @@ export const AutosendBackupMonitoringPanel: React.FC = () => {
           </div>
 
           <div className="lg:col-span-5 space-y-2">
-            <label className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
-              <Clock size={14} className="text-indigo-600 dark:text-indigo-400" />
-              <span>Autosend Interval Frequency</span>
+            <label className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Clock size={14} className="text-indigo-600 dark:text-indigo-400" />
+                <span>Autosend Interval Frequency</span>
+              </span>
+              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                {config.frequency === "WEEKLY" ? "Friday 04:00 AM" : config.frequency === "DAILY" ? "Every 24h" : "Every 5h"}
+              </span>
             </label>
             <div className="grid grid-cols-3 gap-1.5 p-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-[10px] font-black uppercase tracking-wider">
-              {(["5-HOURS", "DAILY", "WEEKLY"] as const).map((freq) => (
+              {(["WEEKLY", "DAILY", "5-HOURS"] as const).map((freq) => (
                 <button
                   key={freq}
                   onClick={() => handleFrequencyChange(freq)}
-                  className={`py-2 rounded-xl transition-all cursor-pointer text-center ${
+                  className={`py-2 px-1 rounded-xl transition-all cursor-pointer text-center ${
                     config.frequency === freq
                       ? "bg-indigo-600 text-white shadow-sm"
                       : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                   }`}
                 >
-                  {freq === "5-HOURS" ? "5 Hours" : freq === "DAILY" ? "24 Hours" : "Weekly"}
+                  {freq === "WEEKLY" ? "Weekly (Fri 04AM)" : freq === "DAILY" ? "Daily (24h)" : "5 Hours"}
                 </button>
               ))}
             </div>
@@ -274,13 +280,13 @@ export const AutosendBackupMonitoringPanel: React.FC = () => {
         <div className="p-5 bg-card border border-border rounded-2xl space-y-1">
           <div className="text-[10px] font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
             <Clock size={13} className="text-blue-500" />
-            <span>Last Dispatched</span>
+            <span>Schedule & Next Run</span>
           </div>
-          <div className="text-xs font-black text-foreground">
-            {config.lastSentTimestamp ? new Date(config.lastSentTimestamp).toLocaleString() : "Pending First Run"}
+          <div className="text-xs font-black text-foreground truncate" title={getNextBackupScheduledDate(config).toLocaleString()}>
+            {getNextBackupScheduledDate(config).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </div>
-          <div className="text-[10px] text-muted-foreground font-mono">
-            Cycle: {config.frequency}
+          <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1">
+            <Sparkles size={11} /> {config.frequency === "WEEKLY" ? "Weekly End of Week (Fri 04AM)" : `Cycle: ${config.frequency}`}
           </div>
         </div>
 

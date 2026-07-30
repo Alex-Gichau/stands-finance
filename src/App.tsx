@@ -2662,7 +2662,7 @@ function AppContent() {
                           }}
                           className="text-[9px] font-bold text-primary uppercase tracking-tight hover:underline cursor-pointer"
                         >
-                          Clear All
+                          Mark all as read
                         </button>
                       )}
                     </div>

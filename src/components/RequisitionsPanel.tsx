@@ -460,8 +460,8 @@ const PdfDocumentViewer = ({
 }) => {
   const [fileSizeText, setFileSizeText] = useState<string>("Calculating...");
 
-  const isRealPdfUrl = !docProps.isSimulated && (
-    docProps.url.startsWith("data:application/pdf") ||
+  const isRealPdfUrl = (
+    docProps.url.startsWith("data:") ||
     docProps.url.startsWith("blob:") ||
     docProps.url.startsWith("http://") ||
     docProps.url.startsWith("https://") ||
@@ -860,10 +860,10 @@ const DocumentPreviewModal = ({
   // Helper to parse individual doc properties
   const getDocProps = (doc: any) => {
     if (!doc) return { 
-      name: "Unknown", 
+      name: "Unknown Document", 
       url: "", 
       ext: "DOC", 
-      isSimulated: true,
+      isSimulated: false,
       isImage: false, 
       isPdf: false, 
       isWord: false, 
@@ -874,44 +874,82 @@ const DocumentPreviewModal = ({
       isText: false 
     };
     
+    let rawItem = doc;
+    
+    // Unwrap stringified JSON if needed
+    if (typeof rawItem === "string") {
+      const trimmed = rawItem.trim();
+      if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (typeof parsed === "string") {
+            rawItem = parsed;
+          } else if (Array.isArray(parsed) && parsed.length > 0) {
+            rawItem = parsed[0];
+          } else if (parsed && typeof parsed === "object") {
+            const firstKey = Object.keys(parsed)[0];
+            const candidate = parsed.url || parsed.dataUrl || parsed.link || (firstKey ? parsed[firstKey] : null);
+            const nameCandidate = parsed.name || parsed.fileName || parsed.title;
+            if (typeof candidate === "string" && nameCandidate && !candidate.includes("::")) {
+              rawItem = `${nameCandidate}::${candidate}`;
+            } else if (typeof candidate === "string") {
+              rawItem = candidate;
+            }
+          }
+        } catch (e) {
+          // not valid json string
+        }
+      }
+    }
+
     let dName = "";
     let dUrl = "";
-    let isSimulated = false;
-    
-    if (typeof doc === "string") {
-      dName = doc;
-      dUrl = doc;
-      if (doc.includes("::")) {
-        const parts = doc.split("::");
-        dName = parts[0];
-        dUrl = parts[1];
-      } else if (doc.toLowerCase().includes("simulated") || !/^(https?:\/\/|data:|blob:|\/)/i.test(doc)) {
-        isSimulated = true;
-        dName = doc;
-        dUrl = doc;
-      }
-    } else if (typeof doc === "object") {
-      dName = doc.name || doc.title || "Attachment";
-      dUrl = doc.url || doc.link || "";
-      if (!/^(https?:\/\/|data:|blob:|\/)/i.test(dUrl)) {
-        isSimulated = true;
-      }
-    } else {
-      dName = String(doc);
-      dUrl = String(doc);
-      isSimulated = true;
-    }
-    
-    dUrl = normalizeAttachmentUrl(dUrl);
-    
-    let filenameNoSim = dName.replace(" (Simulated)", "").trim();
 
-    // If filename is just a URL, try to extract a plausible filename from it
-    if (filenameNoSim.startsWith("http") || filenameNoSim.startsWith("/")) {
-      const urlParts = filenameNoSim.split("/");
+    if (typeof rawItem === "string") {
+      dName = rawItem;
+      dUrl = rawItem;
+      if (rawItem.includes("::")) {
+        const parts = rawItem.split("::");
+        dName = parts[0];
+        dUrl = parts.slice(1).join("::");
+      }
+    } else if (typeof rawItem === "object" && rawItem !== null) {
+      dName = rawItem.name || rawItem.fileName || rawItem.title || "Attachment";
+      dUrl = rawItem.url || rawItem.dataUrl || rawItem.link || "";
+    } else {
+      dName = String(rawItem);
+      dUrl = String(rawItem);
+    }
+
+    // Clean up JSON syntax leftovers from dName if any (e.g., {"0":"PRINTER TONNERS...)
+    dName = dName
+      .replace(/^\{"0":"/, "")
+      .replace(/^\{\s*"\d+"\s*:\s*"/, "")
+      .replace(/^"/, "")
+      .replace(/"$/, "")
+      .replace(" (Simulated)", "")
+      .trim();
+
+    // If dUrl was missing but dName contains a URL, swap
+    if (!dUrl && (dName.startsWith("data:") || dName.startsWith("http") || dName.startsWith("blob:") || dName.startsWith("/"))) {
+      dUrl = dName;
+    }
+
+    // Check if dUrl looks like raw base64 without data prefix
+    if (dUrl.startsWith("JVBERi")) {
+      dUrl = `data:application/pdf;base64,${dUrl}`;
+    } else {
+      dUrl = normalizeAttachmentUrl(dUrl);
+    }
+
+    // Extract filename if dName is just a URL
+    if (dName.startsWith("http") || dName.startsWith("/") || dName.startsWith("data:")) {
+      const urlParts = dName.split("/");
       const lastPart = urlParts[urlParts.length - 1];
       if (lastPart && lastPart.includes(".")) {
-        filenameNoSim = lastPart.split("?")[0].split("#")[0];
+        dName = lastPart.split("?")[0].split("#")[0];
+      } else {
+        dName = "Attachment.pdf";
       }
     }
 
@@ -921,25 +959,24 @@ const DocumentPreviewModal = ({
       if (driveMatch && driveMatch[1]) {
         const fileId = driveMatch[1];
         dUrl = `/api/attachments/${fileId}`;
-        isSimulated = false;
       }
     }
 
-    const ext = filenameNoSim.split('.').pop()?.toUpperCase() || "DOC";
+    const ext = (dName.split('.').pop() || "PDF").toUpperCase();
     
-    const isImg = /\.(jpg|jpeg|png|gif|webp)$/i.test(filenameNoSim) || dUrl.startsWith('blob:') || dUrl.startsWith('data:image/');
-    const isPf = /\.(pdf)$/i.test(filenameNoSim) || dUrl.startsWith('data:application/pdf') || dUrl.includes('/api/attachments/');
-    const isWord = /\.(docx)$/i.test(filenameNoSim) || dUrl.startsWith('data:application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    const isLegacyWord = /\.(doc)$/i.test(filenameNoSim) || dUrl.startsWith('data:application/msword');
-    const isExcel = /\.(xlsx)$/i.test(filenameNoSim) || dUrl.startsWith('data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    const isLegacyExcel = /\.(xls)$/i.test(filenameNoSim) || dUrl.startsWith('data:application/vnd.ms-excel');
-    const isCsv = /\.(csv)$/i.test(filenameNoSim) || dUrl.startsWith('data:text/csv');
-    const isText = /\.(txt|md|json|xml|log|yaml|yml|js|ts|html|css)$/i.test(filenameNoSim) || dUrl.startsWith('data:text/plain');
+    const isImg = /\.(jpg|jpeg|png|gif|webp)$/i.test(dName) || dUrl.startsWith('blob:') || dUrl.startsWith('data:image/');
+    const isPf = /\.(pdf)$/i.test(dName) || dUrl.startsWith('data:application/pdf') || dUrl.includes('/api/attachments/') || ext === "PDF";
+    const isWord = /\.(docx)$/i.test(dName) || dUrl.startsWith('data:application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    const isLegacyWord = /\.(doc)$/i.test(dName) || dUrl.startsWith('data:application/msword');
+    const isExcel = /\.(xlsx)$/i.test(dName) || dUrl.startsWith('data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    const isLegacyExcel = /\.(xls)$/i.test(dName) || dUrl.startsWith('data:application/vnd.ms-excel');
+    const isCsv = /\.(csv)$/i.test(dName) || dUrl.startsWith('data:text/csv');
+    const isText = /\.(txt|md|json|xml|log|yaml|yml|js|ts|html|css)$/i.test(dName) || dUrl.startsWith('data:text/plain');
     
     return { 
-      name: filenameNoSim, 
+      name: dName, 
       url: dUrl, 
-      isSimulated,
+      isSimulated: false,
       isImage: isImg, 
       isPdf: isPf, 
       isWord, 

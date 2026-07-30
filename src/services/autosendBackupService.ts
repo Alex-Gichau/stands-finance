@@ -44,10 +44,37 @@ export const getLocalAutosendConfig = (): AutosendConfig => {
   return {
     targetEmail: AUTOSEND_DEFAULT_EMAIL,
     enabled: true,
-    frequency: "5-HOURS",
+    frequency: "WEEKLY",
     lastSentTimestamp: null,
     totalBackupsSent: 0
   };
+};
+
+export const getNextBackupScheduledDate = (config?: Partial<AutosendConfig>): Date => {
+  const now = new Date();
+  const freq = config?.frequency || "WEEKLY";
+  const lastSent = config?.lastSentTimestamp ? new Date(config.lastSentTimestamp) : null;
+
+  if (freq === "5-HOURS") {
+    const base = lastSent || now;
+    return new Date(base.getTime() + 5 * 60 * 60 * 1000);
+  }
+
+  if (freq === "DAILY") {
+    const base = lastSent || now;
+    return new Date(base.getTime() + 24 * 60 * 60 * 1000);
+  }
+
+  // WEEKLY: Every Friday at 04:00 AM
+  const currentDay = now.getDay();
+  let daysUntilFriday = (5 - currentDay + 7) % 7;
+  if (daysUntilFriday === 0 && now.getHours() >= 4) {
+    daysUntilFriday = 7;
+  }
+  const nextFriday = new Date(now);
+  nextFriday.setDate(now.getDate() + daysUntilFriday);
+  nextFriday.setHours(4, 0, 0, 0);
+  return nextFriday;
 };
 
 export const saveLocalAutosendConfig = (config: AutosendConfig) => {
