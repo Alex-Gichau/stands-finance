@@ -2355,14 +2355,14 @@ export const RequisitionsPanel: React.FC = () => {
                 className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary-dark rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20 active:scale-95"
               >
                 <Printer size={16} />
-                Bulk Reports PDF
+                Download PDF Reports
               </button>
               <button
                 onClick={handleBulkExportCsv}
                 className="flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest active:scale-95 border border-white/5"
               >
                 <Download size={16} className="text-emerald-400" />
-                Table Export
+                Export Table
               </button>
               {canPerform('canDeleteRequisition') && (
                 <button
@@ -2370,7 +2370,7 @@ export const RequisitionsPanel: React.FC = () => {
                   className="flex items-center gap-2 px-5 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest active:scale-95"
                 >
                   <Trash2 size={16} />
-                  Purge Batch
+                  Delete Selected
                 </button>
               )}
             </div>

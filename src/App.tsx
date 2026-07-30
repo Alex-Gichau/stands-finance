@@ -6,10 +6,10 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 // @ts-ignore
 const db = {};
-const doc = (a: any, b: any, c?: any) => {};
+const doc = (a: any, b: any, c?: any) => { };
 const getDoc = async (a: any) => ({ exists: () => false, data: () => ({}), id: "123" });
 const auth = { currentUser: null };
-const sendPasswordResetEmail = async (a: any, b: any) => {};
+const sendPasswordResetEmail = async (a: any, b: any) => { };
 
 import { RequisitionProvider, useRequisitions } from "./contexts/RequisitionContext";
 import { cn } from "./lib/utils";
@@ -39,8 +39,8 @@ import { BugReportModal } from "./components/BugReportModal";
 import { ContactFinanceModal } from "./components/ContactFinanceModal";
 import { getRecentSearches, saveRecentSearchTerm, removeRecentSearchTerm, clearAllRecentSearchTerms } from "./lib/searchHistory";
 import { UserRole, BudgetAlert, SearchFilter, PermissionConfig } from "./types";
-import { 
-  Bell, 
+import {
+  Bell,
   ArrowRight,
   LogOut,
   AlertCircle,
@@ -119,15 +119,15 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, index, removeToast, setCur
   const getStyleParams = (toast: BudgetAlert, darkMode: boolean) => {
     const isError = toast.severity === "HIGH" || toast.type === "SECURITY_UPDATE";
     const isSuccess = toast.message?.toLowerCase().includes("success") || toast.message?.toLowerCase().includes("approved") || toast.message?.toLowerCase().includes("updated");
-    
+
     if (isError) {
       return {
         blobClass: darkMode ? "from-red-500/10 to-transparent" : "from-red-50 to-transparent",
         icon: (
           <div className={cn(
-            "flex items-center justify-center p-1 rounded-full border transition-all", 
-            darkMode 
-              ? "border-red-500/20 bg-red-500/10 text-red-400" 
+            "flex items-center justify-center p-1 rounded-full border transition-all",
+            darkMode
+              ? "border-red-500/20 bg-red-500/10 text-red-400"
               : "border-red-100 bg-red-50/50 text-red-500"
           )}>
             <AlertTriangle size={16} strokeWidth={2} />
@@ -139,9 +139,9 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, index, removeToast, setCur
         blobClass: darkMode ? "from-emerald-500/10 to-transparent" : "from-green-50 to-transparent",
         icon: (
           <div className={cn(
-            "flex items-center justify-center p-1 rounded-full border transition-all", 
-            darkMode 
-              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" 
+            "flex items-center justify-center p-1 rounded-full border transition-all",
+            darkMode
+              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
               : "border-green-100 bg-green-50/50 text-green-500"
           )}>
             <Check size={16} strokeWidth={2} />
@@ -153,9 +153,9 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, index, removeToast, setCur
         blobClass: darkMode ? "from-blue-500/10 to-transparent" : "from-sky-50 to-transparent",
         icon: (
           <div className={cn(
-            "flex items-center justify-center p-1 rounded-full border transition-all", 
-            darkMode 
-              ? "border-blue-500/20 bg-blue-500/10 text-blue-400" 
+            "flex items-center justify-center p-1 rounded-full border transition-all",
+            darkMode
+              ? "border-blue-500/20 bg-blue-500/10 text-blue-400"
               : "border-sky-100 bg-sky-50/50 text-sky-500"
           )}>
             <Info size={16} strokeWidth={2} />
@@ -171,18 +171,18 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, index, removeToast, setCur
     <motion.div
       layout
       initial={{ opacity: 0, x: 50, scale: 0.95, y: 15 }}
-      animate={{ 
-        opacity: 1, 
-        x: 0, 
-        scale: 1, 
+      animate={{
+        opacity: 1,
+        x: 0,
+        scale: 1,
         y: 0,
         transition: { type: "spring", stiffness: 400, damping: 30, delay: index * 0.05 }
       }}
       exit={{ opacity: 0, scale: 0.95, filter: "blur(2px)", transition: { duration: 0.2 } }}
       className={cn(
         "pointer-events-auto relative overflow-hidden rounded-[18px] max-w-[340px] w-full font-sans border flex items-start p-4 pr-3 min-h-[64px] transition-all duration-300 backdrop-blur-md",
-        darkMode 
-          ? "bg-slate-900/90 border-slate-800 text-slate-100 shadow-[0_12px_40px_rgba(0,0,0,0.4)]" 
+        darkMode
+          ? "bg-slate-900/90 border-slate-800 text-slate-100 shadow-[0_12px_40px_rgba(0,0,0,0.4)]"
           : "bg-white border-slate-100 text-slate-900 shadow-[0_12px_40px_rgba(0,0,0,0.06)]"
       )}
       style={{ zIndex: 100 - index }}
@@ -212,12 +212,12 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, index, removeToast, setCur
         </p>
       </div>
 
-      <button 
+      <button
         onClick={() => removeToast(toast.id!)}
         className={cn(
           "absolute top-3.5 right-3 p-1 rounded-full transition-colors",
-          darkMode 
-            ? "text-slate-500 hover:text-slate-300 hover:bg-slate-800" 
+          darkMode
+            ? "text-slate-500 hover:text-slate-300 hover:bg-slate-800"
             : "text-slate-300 hover:text-slate-500 hover:bg-slate-100"
         )}
       >
@@ -310,7 +310,7 @@ function AppContent() {
       try {
         const invite = JSON.parse(inviteStr);
         setPendingInvite(invite);
-      } catch (e) {}
+      } catch (e) { }
     }
   }, []);
 
@@ -325,11 +325,11 @@ function AppContent() {
   const [targetReqId, setTargetReqId] = useState<string | null>(null);
   const [checkingAccess, setCheckingAccess] = useState(false);
   const [accessDeniedReq, setAccessDeniedReq] = useState<{ id: string; title?: string; groupName?: string } | null>(null);
-  const { 
-    currentUser, 
-    login, 
-    loginWithEmail, 
-    signupWithEmail, 
+  const {
+    currentUser,
+    login,
+    loginWithEmail,
+    signupWithEmail,
     logout,
     systemSettings,
     updateSystemSettings,
@@ -410,7 +410,7 @@ function AppContent() {
           });
           const pendingCount = myRequisitions.filter(r => r.status && r.status.startsWith("PENDING")).length;
           const draftsCount = myRequisitions.filter(r => r.status === "DRAFT").length;
-          
+
           const recentDisbursed = myRequisitions
             .filter(r => r.status === "DISBURSED")
             .sort((a, b) => {
@@ -550,9 +550,9 @@ function AppContent() {
   // Targeted, on-demand data strategy: Only sync data required for the current view
   useEffect(() => {
     if (!currentUser) return;
-    
+
     setIsSyncingData(true);
-    
+
     switch (currentView) {
       case "dashboard":
         setSyncTargets(['requisitions', 'projects', 'supplementary_budget_requests', 'church_groups', 'ledger_books']);
@@ -737,15 +737,15 @@ function AppContent() {
 
   useEffect(() => {
     if (currentUser && (currentUser.isApproved || currentUser.role === UserRole.SUPER_ADMIN) && !currentUser.isSuspended) {
-       // Only show if preference is not NEVER and we haven't shown it this session
-       const isNever = currentUser.profilePromptPreference === "NEVER";
-       const sessionShown = sessionStorage.getItem(`profile_prompt_shown_${currentUser.id}`);
-       
-       if (!isNever && !sessionShown && !hasPromptBeenShown) {
-         setShowProfilePrompt(true);
-         setHasPromptBeenShown(true);
-         sessionStorage.setItem(`profile_prompt_shown_${currentUser.id}`, "true");
-       }
+      // Only show if preference is not NEVER and we haven't shown it this session
+      const isNever = currentUser.profilePromptPreference === "NEVER";
+      const sessionShown = sessionStorage.getItem(`profile_prompt_shown_${currentUser.id}`);
+
+      if (!isNever && !sessionShown && !hasPromptBeenShown) {
+        setShowProfilePrompt(true);
+        setHasPromptBeenShown(true);
+        sessionStorage.setItem(`profile_prompt_shown_${currentUser.id}`, "true");
+      }
     }
   }, [currentUser, hasPromptBeenShown]);
 
@@ -861,7 +861,7 @@ function AppContent() {
   const saveRecentSearch = (term: string) => {
     const trimmed = term.trim();
     if (!trimmed) return;
-    
+
     const updated = saveRecentSearchTerm(trimmed);
     setRecentSearches(updated);
 
@@ -898,7 +898,7 @@ function AppContent() {
       setError("Please input your email under 'YOUR EMAIL' first.");
       return;
     }
-    
+
     setIsSubmitting(true);
     try {
       await sendPasswordResetEmail(auth, email.trim());
@@ -914,7 +914,7 @@ function AppContent() {
     e.preventDefault();
     setError("");
     setSuccess("");
-    
+
     if (authMode === "EMAIL_SIGNUP" && (password.length < 8 || password.length > 15)) {
       setError("Password must be between 8 and 15 characters long.");
       return;
@@ -973,9 +973,9 @@ function AppContent() {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white">
         <motion.div
-           initial={{ opacity: 0, scale: 0.9 }}
-           animate={{ opacity: 1, scale: 1 }}
-           className="text-center"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center"
         >
           <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-6" />
           <h2 className="text-xl font-black uppercase tracking-widest text-primary/80">STANDS FINANCE</h2>
@@ -989,9 +989,9 @@ function AppContent() {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white">
         <motion.div
-           initial={{ opacity: 0, scale: 0.9 }}
-           animate={{ opacity: 1, scale: 1 }}
-           className="text-center"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center"
         >
           <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
           <h2 className="text-xl font-black uppercase tracking-widest">Ending Session...</h2>
@@ -1066,18 +1066,15 @@ function AppContent() {
             )}
 
             <div className="relative inline-block">
-              <motion.div 
-                whileHover={{ scale: 1.05, rotate: 5 }}
-                className="w-16 h-16 bg-slate-800/80 rounded-2xl flex items-center justify-center border border-slate-700/50 backdrop-blur-sm p-2 shadow-xl"
-              >
+              <div className="w-16 h-16 bg-slate-800/80 rounded-2xl flex items-center justify-center border border-slate-700/50 backdrop-blur-sm p-2 shadow-xl">
                 <img src="/pcea.svg" alt="PCEA Logo" className="w-full h-full object-contain" />
-              </motion.div>
+              </div>
               <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-slate-900 animate-pulse" />
             </div>
             
             <div className="space-y-1">
-              <h1 className="text-2xl font-black text-white uppercase tracking-tighter">St Andrew's</h1>
-              <p className="text-slate-400 text-[10px] font-bold uppercase tracking-[0.25em]">E-Requisition Platform</p>
+              <h1 className="text-2xl font-black text-white uppercase tracking-tighter">STANDS FINANCE</h1>
+              <p className="text-slate-400 text-[10px] font-bold uppercase tracking-[0.25em]">E-Requisition</p>
             </div>
           </div>
 
@@ -1178,7 +1175,7 @@ function AppContent() {
             </div>
           </div>
         </motion.div>
-        
+
         {/* Real-time Toast Notifications */}
         <div className="fixed bottom-12 right-6 z-[100] flex flex-col gap-3 w-80 pointer-events-none">
           <AnimatePresence mode="popLayout">
@@ -1204,21 +1201,21 @@ function AppContent() {
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-100 p-6 relative overflow-hidden">
         {/* Ambient warm warning backgrounds */}
         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_45%,#991b1b,transparent_60%)] opacity-20 pointer-events-none" />
-        
+
         <div className="relative z-10 max-w-md w-full text-center space-y-6 animate-in fade-in zoom-in-95 duration-500">
-          <motion.div 
+          <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             className="w-24 h-24 bg-rose-950/50 border border-rose-800/40 rounded-[2rem] flex items-center justify-center mx-auto shadow-2xl animate-pulse"
           >
             <Lock size={48} className="text-rose-500" />
           </motion.div>
-          
+
           <div className="space-y-2">
             <h1 className="text-3xl font-black uppercase tracking-tighter text-white">System Offline</h1>
             <p className="text-rose-500/85 text-[10px] font-black uppercase tracking-[0.25em]">Critical Sudo Maintenance</p>
           </div>
-          
+
           <p className="text-slate-400 text-xs font-semibold leading-relaxed max-w-sm mx-auto">
             The St Andrews E-REQUISITIONS portal is currently offline for scheduled maintenance or emergency configuration. Please check back later.
           </p>
@@ -1243,8 +1240,8 @@ function AppContent() {
                 Maintenance Mode Active
               </span>
             )}
-            
-            <button 
+
+            <button
               onClick={handleLogout}
               className="text-[9px] text-slate-500 hover:text-white uppercase tracking-widest font-black transition-colors mt-2"
             >
@@ -1288,8 +1285,8 @@ function AppContent() {
       )}>
         {/* Sidebar Skeleton (hidden on small screens like real sidebar) */}
         <div className={cn(
-           "hidden md:flex flex-col w-[260px] h-full p-5 border-r shrink-0 gap-8",
-           darkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-200"
+          "hidden md:flex flex-col w-[260px] h-full p-5 border-r shrink-0 gap-8",
+          darkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-200"
         )}>
           {/* Brand/Logo Skeleton */}
           <div className="flex items-center gap-3 px-2 mt-2">
@@ -1299,16 +1296,16 @@ function AppContent() {
               <div className={cn("h-2.5 w-16 rounded-md animate-pulse", darkMode ? "bg-slate-800/50" : "bg-slate-200/50")} />
             </div>
           </div>
-          
+
           {/* Navigation Skeleton */}
           <div className="flex flex-col gap-2 flex-1">
-             <div className={cn("h-11 w-full rounded-xl animate-pulse", darkMode ? "bg-slate-800" : "bg-slate-200")} />
-             <div className={cn("h-11 w-full rounded-xl animate-pulse", darkMode ? "bg-slate-800" : "bg-slate-200")} />
-             <div className={cn("h-11 w-full rounded-xl animate-pulse", darkMode ? "bg-slate-800" : "bg-slate-200")} />
-             <div className="mt-8 space-y-2">
-               <div className={cn("h-8 w-2/3 rounded-lg animate-pulse", darkMode ? "bg-slate-800/50" : "bg-slate-200/50")} />
-               <div className={cn("h-11 w-full rounded-xl animate-pulse", darkMode ? "bg-slate-800" : "bg-slate-200")} />
-             </div>
+            <div className={cn("h-11 w-full rounded-xl animate-pulse", darkMode ? "bg-slate-800" : "bg-slate-200")} />
+            <div className={cn("h-11 w-full rounded-xl animate-pulse", darkMode ? "bg-slate-800" : "bg-slate-200")} />
+            <div className={cn("h-11 w-full rounded-xl animate-pulse", darkMode ? "bg-slate-800" : "bg-slate-200")} />
+            <div className="mt-8 space-y-2">
+              <div className={cn("h-8 w-2/3 rounded-lg animate-pulse", darkMode ? "bg-slate-800/50" : "bg-slate-200/50")} />
+              <div className={cn("h-11 w-full rounded-xl animate-pulse", darkMode ? "bg-slate-800" : "bg-slate-200")} />
+            </div>
           </div>
 
           <div className={cn("h-14 w-full rounded-xl animate-pulse", darkMode ? "bg-slate-800" : "bg-slate-200")} />
@@ -1318,8 +1315,8 @@ function AppContent() {
         <div className="flex-1 p-4 md:p-8 space-y-6 md:space-y-8 overflow-y-auto">
           {/* Top Bar / Header Skeleton */}
           <div className={cn(
-             "flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-[2rem] border",
-             darkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200 shadow-sm"
+            "flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-[2rem] border",
+            darkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200 shadow-sm"
           )}>
             <div className="space-y-3">
               <div className={cn("h-7 w-64 rounded-lg animate-pulse", darkMode ? "bg-slate-800" : "bg-slate-200")} />
@@ -1339,11 +1336,11 @@ function AppContent() {
                 darkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200 shadow-sm",
                 i === 3 ? "hidden lg:flex" : "flex"
               )}>
-                 <div className="space-y-3 pt-2">
-                    <div className={cn("h-3 w-20 rounded-md animate-pulse", darkMode ? "bg-slate-800" : "bg-slate-200")} />
-                    <div className={cn("h-6 w-32 rounded-lg animate-pulse", darkMode ? "bg-slate-800" : "bg-slate-200")} />
-                 </div>
-                 <div className={cn("h-12 w-12 rounded-[1.2rem] animate-pulse", darkMode ? "bg-slate-800" : "bg-slate-200")} />
+                <div className="space-y-3 pt-2">
+                  <div className={cn("h-3 w-20 rounded-md animate-pulse", darkMode ? "bg-slate-800" : "bg-slate-200")} />
+                  <div className={cn("h-6 w-32 rounded-lg animate-pulse", darkMode ? "bg-slate-800" : "bg-slate-200")} />
+                </div>
+                <div className={cn("h-12 w-12 rounded-[1.2rem] animate-pulse", darkMode ? "bg-slate-800" : "bg-slate-200")} />
               </div>
             ))}
           </div>
@@ -1452,14 +1449,14 @@ function AppContent() {
       message: "Reconcile actual payouts vs project allocations and compile audited ledger report.",
       actionLabel: reportState === "SUCCESS" ? "Report Downloaded ✓" : reportState === "GENERATING" ? "Compiling..." : "Compile PDF Report",
       action: () => {
-         setReportState("GENERATING");
-         setTimeout(() => {
-           setReportState("SUCCESS");
-           setTimeout(() => {
-             setShowReportReminder(false);
-             setReportState("IDLE");
-           }, 2000);
-         }, 1500);
+        setReportState("GENERATING");
+        setTimeout(() => {
+          setReportState("SUCCESS");
+          setTimeout(() => {
+            setShowReportReminder(false);
+            setReportState("IDLE");
+          }, 2000);
+        }, 1500);
       }
     });
   }
@@ -1471,7 +1468,7 @@ function AppContent() {
           <div className="w-16 h-16 rounded-2xl bg-rose-50 dark:bg-rose-950/30 flex items-center justify-center text-rose-500 dark:text-rose-400 border border-rose-100 dark:border-rose-900/30 shadow-sm animate-pulse">
             <Lock size={28} />
           </div>
-          
+
           <div className="space-y-3">
             <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white uppercase">
               Compliance Restricted Ledger
@@ -1519,7 +1516,7 @@ function AppContent() {
                 // Remove reqId parameter from URL without page reload
                 const newUrl = window.location.pathname;
                 window.history.replaceState({}, document.title, newUrl);
-                
+
                 // Reset state parameters and direct recovery to dashboard
                 setAccessDeniedReq(null);
                 setTargetReqId(null);
@@ -1574,13 +1571,13 @@ function AppContent() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4"
-             onClick={() => setShowUpdatePasswordModal(false)}
+            onClick={() => setShowUpdatePasswordModal(false)}
           >
             <motion.div
               initial={{ scale: 0.95, y: 10 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 10 }}
-               onClick={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
               className="bg-card border border-border rounded-[2.5rem] max-w-sm md:max-w-md w-full p-8 md:p-10 space-y-6 shadow-2xl relative overflow-hidden"
             >
               {/* Visual icon container */}
@@ -1628,11 +1625,11 @@ function AppContent() {
                   </button>
                 </div>
               ) : (
-                <form 
+                <form
                   onSubmit={async (e) => {
                     e.preventDefault();
                     setPasswordError("");
-                    
+
                     if (!currentPassword) {
                       setPasswordError("Current password is required.");
                       return;
@@ -1755,7 +1752,7 @@ function AppContent() {
                     </div>
                   </div>
 
-                  <button 
+                  <button
                     type="submit"
                     disabled={isUpdatingPassword}
                     className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer text-center"
@@ -1827,7 +1824,7 @@ function AppContent() {
                     </span>
                   </div>
                 )}
-                
+
                 {/* Security Parameter checks */}
                 <div className="space-y-2 pt-1.5 text-left hidden">
                   <h4 className="text-[9px] font-black text-muted uppercase tracking-widest text-left">Active Safety Handshakes</h4>
@@ -1853,7 +1850,7 @@ function AppContent() {
                     Recent Actions
                   </span>
                 </div>
-                
+
                 <div className="bg-slate-100/60 dark:bg-slate-950/60 border border-border/40 rounded-2xl p-4 space-y-3 max-h-[180px] overflow-y-auto custom-scrollbar">
                   {userSessionLogs.length > 0 ? (
                     <div className="space-y-3">
@@ -1931,7 +1928,7 @@ function AppContent() {
             </motion.div>
           </motion.div>
         )}
-        
+
         {showIdleWarning && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -2010,7 +2007,7 @@ function AppContent() {
       </AnimatePresence>
 
       <Sidebar currentView={currentView} onViewChange={setCurrentView} notificationsCount={unreadNotificationsCount} onLogout={handleLogout} />
-      
+
       <main className="flex-1 flex flex-col min-w-0">
         <AnnouncementBanner />
         {!isOnline && (
@@ -2059,8 +2056,8 @@ function AppContent() {
               {currentUser.groups && currentUser.groups.length > 0
                 ? `: ${currentUser.groups.join(", ")}`
                 : currentUser.group
-                ? `: ${currentUser.group}`
-                : ""}
+                  ? `: ${currentUser.group}`
+                  : ""}
             </h1>
             <p className="text-[10px] text-muted hidden sm:flex items-center gap-2">
               {isSyncingData ? (
@@ -2078,10 +2075,10 @@ function AppContent() {
             <div className="relative pb-0.5">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" size={16} />
-                <input 
+                <input
                   ref={searchInputRef}
-                  type="text" 
-                  placeholder="Search requisitions by title or group..." 
+                  type="text"
+                  placeholder="Search requisitions by title or group..."
                   className="w-full pl-10 pr-16 py-2 bg-background border border-border rounded-lg text-xs focus:ring-2 focus:ring-primary/10 focus:border-primary outline-none transition-all placeholder:text-muted/50 text-foreground"
                   value={globalSearchTerm}
                   onChange={(e) => {
@@ -2102,25 +2099,24 @@ function AppContent() {
                   }}
                 />
                 {globalSearchTerm && (
-                  <button 
+                  <button
                     onClick={() => setGlobalSearchTerm("")}
                     className="absolute right-10 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                   >
                     <X size={14} />
                   </button>
                 )}
-                <button 
+                <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setAdvancedSearchActive(!advancedSearchActive);
                     setCurrentView("requisitions");
                   }}
-                  className={`absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-md transition-all cursor-pointer ${
-                    advancedSearchActive 
-                      ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400" 
+                  className={`absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-md transition-all cursor-pointer ${advancedSearchActive
+                      ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400"
                       : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                  }`}
+                    }`}
                   title="Advanced search criteria"
                 >
                   <Sliders size={14} />
@@ -2137,7 +2133,7 @@ function AppContent() {
                   >
                     <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
                       <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-white">Advanced Search Criteria</span>
-                      <button 
+                      <button
                         type="button"
                         onClick={() => {
                           setAdvancedDateRangePreset("ALL");
@@ -2232,7 +2228,7 @@ function AppContent() {
                         <div>
                           <div className="flex items-center justify-between px-2 py-1.5 border-b border-border/10 mb-1">
                             <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Recent Searches</span>
-                            <button 
+                            <button
                               onClick={clearAllRecentSearches}
                               className="text-[9px] font-bold text-rose-500 hover:text-rose-700 uppercase tracking-wider flex items-center gap-1 cursor-pointer bg-transparent border-none"
                             >
@@ -2369,8 +2365,8 @@ function AppContent() {
                   onClick={() => setSearchFilter(f.id as SearchFilter)}
                   className={cn(
                     "px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all",
-                    searchFilter === f.id 
-                      ? "bg-primary text-white shadow-sm ring-1 ring-primary/20" 
+                    searchFilter === f.id
+                      ? "bg-primary text-white shadow-sm ring-1 ring-primary/20"
                       : "bg-slate-500/5 dark:bg-white/5 text-muted hover:text-foreground border border-border/50"
                   )}
                 >
@@ -2379,7 +2375,7 @@ function AppContent() {
               ))}
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2 md:gap-4">
             <div className="flex items-center border-r border-slate-200 dark:border-slate-800/80 pr-4 mr-2">
               <button
@@ -2412,7 +2408,7 @@ function AppContent() {
                 className={cn(
                   "flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-tight transition-all",
                   (currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN)
-                    ? "bg-primary/5 text-primary border-primary/25 hover:bg-primary/10 cursor-pointer" 
+                    ? "bg-primary/5 text-primary border-primary/25 hover:bg-primary/10 cursor-pointer"
                     : "bg-slate-50 dark:bg-slate-900 border-border text-slate-500"
                 )}
               >
@@ -2514,9 +2510,9 @@ function AppContent() {
                 )}
               </AnimatePresence>
             </div>
-            
+
             <div id="notification-bell-trigger" className="relative" ref={notificationsRef}>
-              <button 
+              <button
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
                 className="relative p-2 text-muted hover:text-primary transition-colors cursor-pointer"
               >
@@ -2530,7 +2526,7 @@ function AppContent() {
 
               <AnimatePresence>
                 {isNotificationsOpen && (
-                  <motion.div 
+                  <motion.div
                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -2540,7 +2536,7 @@ function AppContent() {
                     <div className="px-4 py-3 bg-background/50 border-b border-border flex items-center justify-between">
                       <span className="text-xs font-bold text-foreground uppercase tracking-widest">Active Alerts ({unreadNotificationsCount})</span>
                       {unreadNotificationsCount > 0 && (
-                        <button 
+                        <button
                           onClick={() => {
                             const unreadIds = notificationItems
                               .filter(item => !readNoticeIds.includes(item.id))
@@ -2572,8 +2568,8 @@ function AppContent() {
                         return (
                           <>
                             {unread.map(item => (
-                              <div 
-                                key={`dropdown-unread-${item.id}`} 
+                              <div
+                                key={`dropdown-unread-${item.id}`}
                                 onClick={() => {
                                   if (item.requisition) {
                                     setSelectedReqForNoticeDetail(item.requisition);
@@ -2590,9 +2586,9 @@ function AppContent() {
                                   <span className={cn(
                                     "font-bold text-[8px] md:text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded",
                                     item.type === "MEMBER_APPROVAL" ? "bg-amber-100 text-amber-700" :
-                                    item.type === "REQ_RECEIVED" ? "bg-indigo-100 text-indigo-700" :
-                                    item.type === "REQ_APPROVED" ? "bg-emerald-100 text-emerald-700" :
-                                    "bg-rose-100 text-rose-700"
+                                      item.type === "REQ_RECEIVED" ? "bg-indigo-100 text-indigo-700" :
+                                        item.type === "REQ_APPROVED" ? "bg-emerald-100 text-emerald-700" :
+                                          "bg-rose-100 text-rose-700"
                                   )}>
                                     {item.title}
                                   </span>
@@ -2601,7 +2597,7 @@ function AppContent() {
                                   </span>
                                 </div>
                                 <p className="text-slate-600 leading-snug font-medium text-[10px] md:text-[11px]">{item.message}</p>
-                                <button 
+                                <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
                                     await item.action();
@@ -2623,8 +2619,8 @@ function AppContent() {
                             )}
 
                             {read.map(item => (
-                              <div 
-                                key={`dropdown-read-${item.id}`} 
+                              <div
+                                key={`dropdown-read-${item.id}`}
                                 onClick={() => {
                                   if (item.requisition) {
                                     setSelectedReqForNoticeDetail(item.requisition);
@@ -2643,7 +2639,7 @@ function AppContent() {
                                 </div>
                                 <p className="text-slate-500 leading-snug font-medium text-[10px] md:text-[11px]">{item.message}</p>
                                 <div className="flex gap-2">
-                                  <button 
+                                  <button
                                     onClick={async (e) => {
                                       e.stopPropagation();
                                       await item.action();
@@ -2652,7 +2648,7 @@ function AppContent() {
                                   >
                                     RE-ACTION
                                   </button>
-                                  <button 
+                                  <button
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       toggleNoticeRead(item.id, false);
@@ -2674,7 +2670,7 @@ function AppContent() {
             </div>
 
             <div id="profile-dropdown-trigger" className="relative h-10 flex items-center" ref={profileRef}>
-              <button 
+              <button
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
                 className="flex items-center gap-3 pl-4 pr-1 py-1 bg-slate-900 dark:bg-slate-900/90 rounded-full transition-all cursor-pointer group border border-slate-800 hover:border-primary/50 shadow-lg"
               >
@@ -2799,9 +2795,9 @@ function AppContent() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
             >
-               <PerformanceTracker currentView={currentView} isSyncingData={isSyncingData}>
-                 {renderView()}
-               </PerformanceTracker>
+              <PerformanceTracker currentView={currentView} isSyncingData={isSyncingData}>
+                {renderView()}
+              </PerformanceTracker>
             </motion.div>
           </AnimatePresence>
         </div>
@@ -2826,7 +2822,7 @@ function AppContent() {
       </div>
 
       {selectedReqForNoticeDetail && (
-        <RequisitionDetailModal 
+        <RequisitionDetailModal
           req={selectedReqForNoticeDetail}
           onClose={() => setSelectedReqForNoticeDetail(null)}
           onDelete={async () => {
@@ -2840,20 +2836,20 @@ function AppContent() {
       )}
 
       {isGeneratingReceiptFromHub && (
-        <ReceiptTemplateGenerator 
+        <ReceiptTemplateGenerator
           req={isGeneratingReceiptFromHub}
           onClose={() => setIsGeneratingReceiptFromHub(null)}
         />
       )}
 
-      <ProductTour 
-        isOpen={isTourOpen} 
-        onClose={() => setIsTourOpen(false)} 
-        currentView={currentView} 
-        onViewChange={setCurrentView} 
+      <ProductTour
+        isOpen={isTourOpen}
+        onClose={() => setIsTourOpen(false)}
+        currentView={currentView}
+        onViewChange={setCurrentView}
       />
 
-      <BugReportModal 
+      <BugReportModal
         isOpen={isBugReportOpen}
         onClose={() => setIsBugReportOpen(false)}
         currentUser={currentUser}
