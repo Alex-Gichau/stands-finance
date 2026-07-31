@@ -2613,6 +2613,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 additionalInfo: r?.additional_info || r?.additionalInfo || null,
                 attachments: safeNormalizeAttachments(r?.attachments),
                 receipts: safeNormalizeReceipts(r?.receipts),
+                notificationEmails: Array.isArray(r?.notification_emails) ? r.notification_emails : (Array.isArray(r?.notificationEmails) ? r.notificationEmails : []),
                 flaggedForAudit: Boolean(r?.flagged_for_audit || r?.flaggedForAudit),
                 inProcurement: Boolean(r?.in_procurement || r?.inProcurement),
                 requiresMoreInfo: Boolean(r?.requires_more_info || r?.requiresMoreInfo),
@@ -3717,6 +3718,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: targetEmail,
+          notificationEmails: req.notificationEmails || [],
           requesterName: req.requesterName || "Requester",
           requesterEmail: req.requesterEmail || targetEmail,
           amount: req.amount,

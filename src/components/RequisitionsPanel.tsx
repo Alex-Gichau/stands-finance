@@ -65,68 +65,6 @@ import { ReceiptGallery } from "./ReceiptGallery";
 import { CameraCapture } from "./CameraCapture";
 import { ConfirmationModal } from "./ConfirmationModal";
 
-const openPdfInNewTab = (url: string, name: string = "document.pdf") => {
-  if (!url) return;
-  
-  const normalizedUrl = url.startsWith("http://") && url.includes("/uploads/")
-    ? "/uploads/" + url.split("/uploads/")[1]
-    : url;
-
-  if (normalizedUrl.startsWith("data:application/pdf") || normalizedUrl.startsWith("data:")) {
-    try {
-      const parts = normalizedUrl.split(",");
-      const mime = parts[0].match(/:(.*?);/)?.[1] || "application/pdf";
-      const b64Data = parts[1];
-      const sliceSize = 512;
-      const byteCharacters = atob(b64Data);
-      const byteArrays = [];
-
-      for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
-        const slice = byteCharacters.slice(offset, offset + sliceSize);
-        const byteNumbers = new Array(slice.length);
-        for (let i = 0; i < slice.length; i++) {
-          byteNumbers[i] = slice.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        byteArrays.push(byteArray);
-      }
-
-      const blob = new Blob(byteArrays, { type: mime });
-      const blobUrl = URL.createObjectURL(blob);
-      
-      const newTab = window.open(blobUrl, "_blank");
-      if (newTab) {
-        newTab.focus();
-      } else {
-        const a = document.createElement("a");
-        a.href = blobUrl;
-        a.target = "_blank";
-        a.rel = "noopener noreferrer";
-        a.click();
-      }
-    } catch (e) {
-      console.error("Failed to open base64 PDF:", e);
-      const newTab = window.open(normalizedUrl, "_blank");
-      if (newTab) newTab.focus();
-    }
-  } else {
-    const absoluteUrl = normalizedUrl.startsWith("http")
-      ? normalizedUrl
-      : `${window.location.origin}${normalizedUrl.startsWith("/") ? "" : "/"}${normalizedUrl}`;
-      
-    const newTab = window.open(absoluteUrl, "_blank");
-    if (newTab) {
-      newTab.focus();
-    } else {
-      const a = document.createElement("a");
-      a.href = absoluteUrl;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      a.click();
-    }
-  }
-};
-
 const RichDocumentViewer = ({ 
   docProps 
 }: { 
@@ -621,7 +559,11 @@ const PdfDocumentViewer = ({
           </a>
           <button
             onClick={() => {
-              openPdfInNewTab(pdfSourceUrl, docProps.name);
+              const win = window.open(pdfSourceUrl, "_blank");
+              if (!win) {
+                const w = window.open();
+                if (w) w.document.write(`<iframe src="${pdfSourceUrl}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+              }
             }}
             className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
           >
@@ -644,7 +586,7 @@ const PdfDocumentViewer = ({
         </div>
         <button
           onClick={() => {
-            openPdfInNewTab(pdfSourceUrl, docProps.name);
+            window.open(pdfSourceUrl, "_blank", "noopener,noreferrer");
           }}
           className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer flex items-center gap-2 shadow-lg shadow-indigo-950/40"
         >
@@ -971,7 +913,7 @@ const DocumentPreviewModal = ({
             {currentProps.url && (
               <button
                 onClick={() => {
-                  openPdfInNewTab(currentProps.url, currentProps.name);
+                  window.open(currentProps.url, '_blank');
                 }}
                 className="p-2.5 bg-slate-850 border border-slate-700 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors cursor-pointer"
                 title="Open Document in New Tab"
@@ -1037,7 +979,7 @@ const DocumentPreviewModal = ({
                       whileTap={{ scale: 0.98 }}
                       onClick={() => {
                         if (props.isPdf) {
-                          openPdfInNewTab(props.url, props.name);
+                          window.open(props.url, '_blank', 'noopener,noreferrer');
                         } else {
                           setCurrentIndex(idx);
                           setViewMode("detail");
@@ -1165,7 +1107,7 @@ const DocumentPreviewModal = ({
                         key={`strip-doc-${idx}`} 
                         onClick={() => {
                           if (props.isPdf) {
-                            openPdfInNewTab(props.url, props.name);
+                            window.open(props.url, '_blank', 'noopener,noreferrer');
                           } else {
                             setZoomScale(1);
                             setCurrentIndex(idx);
@@ -3157,7 +3099,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                       key={`doc-${i}`} 
                       onClick={() => {
                         if (isPdf) {
-                          openPdfInNewTab(url, name);
+                          window.open(url, '_blank', 'noopener,noreferrer');
                         } else {
                           setPreviewIndex(i);
                         }

@@ -555,6 +555,7 @@ async function startServer() {
     additionalInfo: { type: String },
     attachments: { type: [mongoose.Schema.Types.Mixed], default: [] },
     receipts: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    notificationEmails: { type: [String], default: [] },
     flaggedForAudit: { type: Boolean, default: false },
     inProcurement: { type: Boolean, default: false },
     requiresMoreInfo: { type: Boolean, default: false },
@@ -1326,6 +1327,8 @@ async function startServer() {
   app.post("/api/send-email", async (req, res) => {
     const { 
       to, 
+      notificationEmails,
+      cc,
       requesterName, 
       requesterEmail,
       amount, 
@@ -1340,6 +1343,11 @@ async function startServer() {
       approverName,
       approvalReason
     } = req.body;
+
+    const rawCcList = Array.isArray(notificationEmails) ? notificationEmails : (Array.isArray(cc) ? cc : (typeof cc === "string" ? cc.split(",") : []));
+    const extraRecipients = rawCcList
+      .map((e: any) => (typeof e === "string" ? e.trim() : ""))
+      .filter((e: string) => e.length > 0 && e.toLowerCase() !== (to || "").trim().toLowerCase());
     
     if (!process.env.SMTP_PASS) {
       console.warn("SMTP_PASS is not configured. Email will be logged but not sent.");
@@ -1582,13 +1590,14 @@ async function startServer() {
       await transporter.sendMail({
         from: `"STANDS eRequisitions" <${process.env.SMTP_USER || "ict.team@pceastandrews.org"}>`,
         to,
+        cc: extraRecipients.length > 0 ? extraRecipients : undefined,
         subject,
         html: bodyHtml,
       });
 
       persistActivity({
         action: "EMAIL_DISPATCH",
-        details: `Notification Email (${status}) sent to ${requesterName} <${to}> regarding '${reqName}'`,
+        details: `Notification Email (${status}) sent to ${requesterName} <${to}>${extraRecipients.length > 0 ? ` (CC: ${extraRecipients.join(", ")})` : ""} regarding '${reqName}'`,
         performedBy: "SYSTEM_MAILER",
         timestamp: new Date().toISOString()
       });

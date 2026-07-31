@@ -7,7 +7,7 @@ import React, { useState, useEffect } from "react";
 import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionContext";
 import { numberToWords } from "../utils/numberUtils";
 import { formatCurrency, cn, uploadAttachmentsToLocalServer } from "../lib/utils";
-import { Upload, X, Paperclip, Loader2, DollarSign, FileText, Info, Repeat, Users, PlusCircle, Save, Camera } from "lucide-react";
+import { Upload, X, Paperclip, Loader2, DollarSign, FileText, Info, Repeat, Users, PlusCircle, Save, Camera, Mail, UserPlus, Check } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { RecurrenceType, UserRole } from "../types";
 import { CameraCapture } from "./CameraCapture";
@@ -19,7 +19,7 @@ interface NewRequisitionFormProps {
 }
 
 export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose }) => {
-  const { addRequisition, currentUser, projects, churchGroups, addChurchGroup, vendors, addVendor, triggerToast } = useRequisitions();
+  const { addRequisition, currentUser, users, projects, churchGroups, addChurchGroup, vendors, addVendor, triggerToast } = useRequisitions();
   const activeYear = getActiveFiscalYear();
   const [amount, setAmount] = useState<string>("");
   const [amountWords, setAmountWords] = useState<string>("");
@@ -30,6 +30,9 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
   const [loading, setLoading] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+
+  const [notificationEmails, setNotificationEmails] = useState<string[]>([]);
+  const [customNotifyEmail, setCustomNotifyEmail] = useState("");
 
   const [payableTo, setPayableTo] = useState<string>("");
   const [showAddVendorForm, setShowAddVendorForm] = useState(false);
@@ -93,6 +96,44 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
 
   const [isDraftRestored, setIsDraftRestored] = useState(false);
 
+  // Compute members assigned to the currently selected ministry group
+  const ministryMembers = React.useMemo(() => {
+    if (!selectedGroup || !users) return [];
+    const selGrp = selectedGroup.trim().toLowerCase();
+    return users.filter(u => {
+      if (!u.email) return false;
+      const uGrp = (u.group || "").trim().toLowerCase();
+      if (uGrp === selGrp) return true;
+      if (u.groups && Array.isArray(u.groups)) {
+        if (u.groups.some(g => (g || "").trim().toLowerCase() === selGrp)) return true;
+      }
+      if (u.department && (u.department || "").trim().toLowerCase() === selGrp) return true;
+      return false;
+    });
+  }, [users, selectedGroup]);
+
+  const toggleNotifyEmail = (email: string) => {
+    const norm = email.trim().toLowerCase();
+    if (!norm) return;
+    setNotificationEmails(prev =>
+      prev.includes(norm) ? prev.filter(e => e !== norm) : [...prev, norm]
+    );
+  };
+
+  const handleAddCustomNotifyEmail = (e?: React.FormEvent | React.MouseEvent) => {
+    if (e) e.preventDefault();
+    const norm = customNotifyEmail.trim().toLowerCase();
+    if (!norm) return;
+    if (!norm.includes("@") || !norm.includes(".")) {
+      alert("Please enter a valid email address.");
+      return;
+    }
+    if (!notificationEmails.includes(norm)) {
+      setNotificationEmails(prev => [...prev, norm]);
+    }
+    setCustomNotifyEmail("");
+  };
+
   // Load draft from localStorage on initial render
   useEffect(() => {
     if (!currentUser?.id) return;
@@ -111,6 +152,7 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
         if (draft.vendorLocation) setVendorLocation(draft.vendorLocation);
         if (draft.vendorOfferings) setVendorOfferings(draft.vendorOfferings);
         if (draft.showAddVendorForm !== undefined) setShowAddVendorForm(draft.showAddVendorForm);
+        if (Array.isArray(draft.notificationEmails)) setNotificationEmails(draft.notificationEmails);
         setIsDraftRestored(true);
       } catch (err) {
         console.error("Failed to restore draft:", err);
@@ -161,7 +203,8 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
       vendorContact,
       vendorLocation,
       vendorOfferings,
-      showAddVendorForm
+      showAddVendorForm,
+      notificationEmails
     };
     localStorage.setItem(draftKey, JSON.stringify(draftData));
   }, [
@@ -175,7 +218,8 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
     vendorContact,
     vendorLocation,
     vendorOfferings,
-    showAddVendorForm
+    showAddVendorForm,
+    notificationEmails
   ]);
 
   useEffect(() => {
@@ -326,6 +370,7 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
         requesterId: currentUser?.id || "u-anon",
         requesterName: currentUser?.name || "Anonymous",
         requesterEmail: currentUser?.email || "",
+        notificationEmails,
         attachments: [], // Usually draft doesn't need to parse attachments, keep simple
       });
       if (currentUser?.id) {
@@ -423,6 +468,7 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
         requesterId: currentUser?.id || "u-anon",
         requesterName: currentUser?.name || "Anonymous",
         requesterEmail: currentUser?.email || "",
+        notificationEmails,
         attachments: localUploadedAttachments,
       });
 
@@ -621,6 +667,134 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
                   <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest pl-1 font-mono flex items-center gap-1">
                     <span>⚡ Group Auto-filled: Requisition matches user church group securely</span>
                   </p>
+                </div>
+              )}
+            </div>
+
+            {/* Ministry Notification Recipients Section */}
+            <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-150 dark:border-slate-800">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-500/10 flex items-center justify-center shrink-0">
+                    <Mail size={14} className="text-indigo-600 dark:text-indigo-400" />
+                  </div>
+                  <div>
+                    <h5 className="text-[10px] md:text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest">
+                      Ministry Update Recipients
+                    </h5>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Select members assigned to <span className="font-bold text-indigo-600 dark:text-indigo-400">{selectedGroup || "this ministry"}</span> to receive email updates when submitted, approved, or disbursed.
+                    </p>
+                  </div>
+                </div>
+                {notificationEmails.length > 0 && (
+                  <span className="text-[10px] font-bold bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-full whitespace-nowrap">
+                    {notificationEmails.length} selected
+                  </span>
+                )}
+              </div>
+
+              {/* Assigned Ministry Members Quick Select Pills */}
+              {ministryMembers.length > 0 ? (
+                <div className="space-y-1.5 pt-1">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">
+                    Assigned Ministry Members ({ministryMembers.length})
+                  </label>
+                  <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl">
+                    {ministryMembers.map((member) => {
+                      const isSelected = notificationEmails.includes(member.email.toLowerCase());
+                      return (
+                        <button
+                          key={member.id}
+                          type="button"
+                          onClick={() => toggleNotifyEmail(member.email)}
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border text-left",
+                            isSelected
+                              ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                              : "bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700"
+                          )}
+                        >
+                          <div className={cn("w-4 h-4 rounded-full flex items-center justify-center text-[9px] shrink-0", isSelected ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-500")}>
+                            {isSelected ? <Check size={10} /> : <PlusCircle size={10} />}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-bold leading-none">{member.name || member.email}</span>
+                            <span className={cn("text-[9px] leading-tight opacity-80 mt-0.5", isSelected ? "text-indigo-100" : "text-slate-500 dark:text-slate-400")}>
+                              {member.email}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-2.5 bg-amber-500/5 border border-amber-500/10 rounded-xl text-[10px] text-amber-700 dark:text-amber-400 font-medium">
+                  No other users are currently assigned to "{selectedGroup}". You can manually add member emails below.
+                </div>
+              )}
+
+              {/* Custom Email Input */}
+              <div className="space-y-1.5 pt-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">
+                  Add Additional Ministry Member Email
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="email"
+                      value={customNotifyEmail}
+                      onChange={(e) => setCustomNotifyEmail(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddCustomNotifyEmail();
+                        }
+                      }}
+                      placeholder="e.g. member@pceastandrews.org"
+                      className="input-field pl-9 h-9 text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddCustomNotifyEmail}
+                    disabled={!customNotifyEmail.trim()}
+                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-wider rounded-xl flex items-center gap-1 transition-colors shrink-0"
+                  >
+                    <UserPlus size={12} />
+                    <span>Add Email</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Selected Recipients Display */}
+              {notificationEmails.length > 0 && (
+                <div className="space-y-1.5 pt-1 border-t border-slate-200 dark:border-slate-800/80">
+                  <label className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block">
+                    Active Email Update Recipients ({notificationEmails.length}):
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {notificationEmails.map((email) => {
+                      const matchedUser = users?.find(u => u.email.toLowerCase() === email.toLowerCase());
+                      return (
+                        <span
+                          key={email}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80 text-indigo-900 dark:text-indigo-200 shadow-sm"
+                        >
+                          <span>{matchedUser ? `${matchedUser.name} (${email})` : email}</span>
+                          <button
+                            type="button"
+                            onClick={() => toggleNotifyEmail(email)}
+                            className="hover:bg-indigo-200 dark:hover:bg-indigo-800 p-0.5 rounded transition-colors text-indigo-500 hover:text-rose-600"
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
