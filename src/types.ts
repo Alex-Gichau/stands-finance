@@ -108,6 +108,8 @@ export interface Requisition {
   attachments?: string[];
   receipts?: string[];
   notificationEmails?: string[];
+  isSharedRequisition?: boolean;
+  sharedGroups?: string[];
   flaggedForAudit?: boolean;
   inProcurement?: boolean;
   requiresMoreInfo?: boolean;

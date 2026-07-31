@@ -2614,6 +2614,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 attachments: safeNormalizeAttachments(r?.attachments),
                 receipts: safeNormalizeReceipts(r?.receipts),
                 notificationEmails: Array.isArray(r?.notification_emails) ? r.notification_emails : (Array.isArray(r?.notificationEmails) ? r.notificationEmails : []),
+                isSharedRequisition: Boolean(r?.is_shared_requisition || r?.isSharedRequisition),
+                sharedGroups: Array.isArray(r?.shared_groups) ? r.shared_groups : (Array.isArray(r?.sharedGroups) ? r.sharedGroups : []),
                 flaggedForAudit: Boolean(r?.flagged_for_audit || r?.flaggedForAudit),
                 inProcurement: Boolean(r?.in_procurement || r?.inProcurement),
                 requiresMoreInfo: Boolean(r?.requires_more_info || r?.requiresMoreInfo),
@@ -2622,7 +2624,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             }).filter(Boolean) as Requisition[];
 
             if (isGroupUser && parsedGroups.length > 0) {
-              data = data.filter(req => req && req.groupId && (parsedGroups.includes(req.groupId) || parsedGroups.includes(req.groupName)));
+              data = data.filter(req => req && ((req.groupId && (parsedGroups.includes(req.groupId) || parsedGroups.includes(req.groupName))) || (req.sharedGroups && Array.isArray(req.sharedGroups) && req.sharedGroups.some(sg => parsedGroups.includes(sg)))));
             }
             if (hidePrototype) {
               data = data.filter(req => req && req.id && !req.id.startsWith("req-seed-"));

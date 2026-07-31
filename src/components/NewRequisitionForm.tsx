@@ -7,7 +7,7 @@ import React, { useState, useEffect } from "react";
 import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionContext";
 import { numberToWords } from "../utils/numberUtils";
 import { formatCurrency, cn, uploadAttachmentsToLocalServer } from "../lib/utils";
-import { Upload, X, Paperclip, Loader2, DollarSign, FileText, Info, Repeat, Users, PlusCircle, Save, Camera, Mail, UserPlus, Check } from "lucide-react";
+import { Upload, X, Paperclip, Loader2, DollarSign, FileText, Info, Repeat, Users, PlusCircle, Save, Camera, Mail, UserPlus, Check, Share2, Layers, Building2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { RecurrenceType, UserRole } from "../types";
 import { CameraCapture } from "./CameraCapture";
@@ -95,6 +95,52 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
   };
 
   const [isDraftRestored, setIsDraftRestored] = useState(false);
+  const [isSharedRequisition, setIsSharedRequisition] = useState<boolean>(false);
+  const [sharedGroups, setSharedGroups] = useState<string[]>([]);
+
+  // Compute available co-share groups (excluding primary selected group)
+  const availableCoShareGroups = React.useMemo(() => {
+    if (!churchGroups) return [];
+    const primary = (selectedGroup || "").trim().toLowerCase();
+    return churchGroups.filter(g => g.name.trim().toLowerCase() !== primary);
+  }, [churchGroups, selectedGroup]);
+
+  // Compute members assigned to attached co-sharing ministry groups
+  const coSharedGroupMembers = React.useMemo(() => {
+    if (!isSharedRequisition || sharedGroups.length === 0 || !users) return [];
+    const normalizedShared = sharedGroups.map(g => g.trim().toLowerCase());
+    return users.filter(u => {
+      if (!u.email) return false;
+      const uGrp = (u.group || "").trim().toLowerCase();
+      if (normalizedShared.includes(uGrp)) return true;
+      if (u.groups && Array.isArray(u.groups)) {
+        if (u.groups.some(g => normalizedShared.includes((g || "").trim().toLowerCase()))) return true;
+      }
+      if (u.department && normalizedShared.includes((u.department || "").trim().toLowerCase())) return true;
+      return false;
+    });
+  }, [users, isSharedRequisition, sharedGroups]);
+
+  const toggleSharedGroup = (groupName: string) => {
+    setSharedGroups(prev => {
+      const exists = prev.includes(groupName);
+      if (exists) {
+        return prev.filter(g => g !== groupName);
+      } else {
+        return [...prev, groupName];
+      }
+    });
+  };
+
+  const handleAddAllCoSharedMembersToNotify = () => {
+    const emailsToAdd = coSharedGroupMembers.map(m => m.email.toLowerCase()).filter(Boolean);
+    if (emailsToAdd.length === 0) return;
+    setNotificationEmails(prev => {
+      const set = new Set(prev);
+      emailsToAdd.forEach(e => set.add(e));
+      return Array.from(set);
+    });
+  };
 
   // Compute members assigned to the currently selected ministry group
   const ministryMembers = React.useMemo(() => {
@@ -153,6 +199,8 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
         if (draft.vendorOfferings) setVendorOfferings(draft.vendorOfferings);
         if (draft.showAddVendorForm !== undefined) setShowAddVendorForm(draft.showAddVendorForm);
         if (Array.isArray(draft.notificationEmails)) setNotificationEmails(draft.notificationEmails);
+        if (draft.isSharedRequisition !== undefined) setIsSharedRequisition(Boolean(draft.isSharedRequisition));
+        if (Array.isArray(draft.sharedGroups)) setSharedGroups(draft.sharedGroups);
         setIsDraftRestored(true);
       } catch (err) {
         console.error("Failed to restore draft:", err);
@@ -204,7 +252,9 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
       vendorLocation,
       vendorOfferings,
       showAddVendorForm,
-      notificationEmails
+      notificationEmails,
+      isSharedRequisition,
+      sharedGroups
     };
     localStorage.setItem(draftKey, JSON.stringify(draftData));
   }, [
@@ -219,7 +269,9 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
     vendorLocation,
     vendorOfferings,
     showAddVendorForm,
-    notificationEmails
+    notificationEmails,
+    isSharedRequisition,
+    sharedGroups
   ]);
 
   useEffect(() => {
@@ -371,6 +423,8 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
         requesterName: currentUser?.name || "Anonymous",
         requesterEmail: currentUser?.email || "",
         notificationEmails,
+        isSharedRequisition,
+        sharedGroups: isSharedRequisition ? sharedGroups : [],
         attachments: [], // Usually draft doesn't need to parse attachments, keep simple
       });
       if (currentUser?.id) {
@@ -469,6 +523,8 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
         requesterName: currentUser?.name || "Anonymous",
         requesterEmail: currentUser?.email || "",
         notificationEmails,
+        isSharedRequisition,
+        sharedGroups: isSharedRequisition ? sharedGroups : [],
         attachments: localUploadedAttachments,
       });
 
@@ -668,6 +724,161 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
                     <span>⚡ Group Auto-filled: Requisition matches user church group securely</span>
                   </p>
                 </div>
+              )}
+            </div>
+
+            {/* Shared Requisition Toggle Card */}
+            <div className="p-4 bg-gradient-to-r from-indigo-50/70 via-purple-50/50 to-slate-50 dark:from-indigo-950/30 dark:via-purple-950/20 dark:to-slate-900/40 rounded-2xl border border-indigo-200/80 dark:border-indigo-800/60 shadow-sm space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <Share2 size={16} />
+                  </div>
+                  <div>
+                    <h5 className="text-[11px] md:text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-1.5">
+                      Co-Share Requisition
+                    </h5>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                      Enable if two or more ministry groups are co-funding or joint-purchasing this item.
+                    </p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={isSharedRequisition}
+                    onChange={(e) => {
+                      setIsSharedRequisition(e.target.checked);
+                      if (!e.target.checked) {
+                        setSharedGroups([]);
+                      }
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
+
+              {/* ONLY WHEN DEFINED AS A SHARED REQUISITION */}
+              {isSharedRequisition && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="pt-3 border-t border-indigo-200/60 dark:border-indigo-800/50 space-y-3.5"
+                >
+                  {/* Co-Sharing Groups Selection */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[9px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest flex items-center gap-1">
+                        <Layers size={11} />
+                        Attach Co-Sharing Ministries / Groups (Select 1 or more):
+                      </label>
+                      <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-2 py-0.5 rounded-full">
+                        {sharedGroups.length > 0 ? `${sharedGroups.length + 1} Ministries Attached` : "1 Primary Ministry"}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 p-2.5 bg-white dark:bg-slate-950 border border-indigo-150 dark:border-slate-800 rounded-xl">
+                      {/* Primary Group Pill */}
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-sm">
+                        <Building2 size={12} />
+                        <span>Primary: {selectedGroup || "Selected Ministry"}</span>
+                      </span>
+
+                      {/* Available Co-Share Groups */}
+                      {availableCoShareGroups.map((grp) => {
+                        const isAttached = sharedGroups.includes(grp.name);
+                        return (
+                          <button
+                            key={grp.id}
+                            type="button"
+                            onClick={() => toggleSharedGroup(grp.name)}
+                            className={cn(
+                              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border text-left",
+                              isAttached
+                                ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                                : "bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-indigo-400"
+                            )}
+                          >
+                            {isAttached ? <Check size={12} /> : <PlusCircle size={12} />}
+                            <span>{grp.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Summary badge of shared requisition */}
+                  <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-[10px] text-indigo-800 dark:text-indigo-300 font-semibold flex items-start gap-2">
+                    <Info size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+                    <div>
+                      {sharedGroups.length > 0 ? (
+                        <span>
+                          Requisition is co-shared between <strong>{selectedGroup}</strong> and <strong>{sharedGroups.join(", ")}</strong>.
+                          All attached groups will have visibility and can contribute towards joint purchase records.
+                        </span>
+                      ) : (
+                        <span>Please select at least one additional ministry above to co-share this requisition.</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Co-Shared Group Members Notification Section */}
+                  {sharedGroups.length > 0 && (
+                    <div className="space-y-2 pt-1 border-t border-indigo-200/50 dark:border-indigo-800/40">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[9px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-widest flex items-center gap-1">
+                          <Mail size={11} className="text-indigo-500" />
+                          Co-Sharing Ministry Members ({coSharedGroupMembers.length}):
+                        </label>
+                        {coSharedGroupMembers.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleAddAllCoSharedMembersToNotify}
+                            className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline uppercase tracking-wider flex items-center gap-1"
+                          >
+                            <UserPlus size={10} />
+                            <span>Notify All Co-Share Members</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {coSharedGroupMembers.length > 0 ? (
+                        <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl">
+                          {coSharedGroupMembers.map((member) => {
+                            const isSelected = notificationEmails.includes(member.email.toLowerCase());
+                            return (
+                              <button
+                                key={member.id}
+                                type="button"
+                                onClick={() => toggleNotifyEmail(member.email)}
+                                className={cn(
+                                  "flex items-center gap-2 px-2.5 py-1 rounded-lg text-xs font-medium transition-all border text-left",
+                                  isSelected
+                                    ? "bg-purple-600 text-white border-purple-600 shadow-sm"
+                                    : "bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-purple-300"
+                                )}
+                              >
+                                <div className={cn("w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] shrink-0", isSelected ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-500")}>
+                                  {isSelected ? <Check size={8} /> : <PlusCircle size={8} />}
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="font-bold leading-none">{member.name || member.email}</span>
+                                  <span className={cn("text-[8px] leading-tight opacity-80 mt-0.5", isSelected ? "text-purple-100" : "text-slate-500 dark:text-slate-400")}>
+                                    {member.group || member.department} &bull; {member.email}
+                                  </span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-slate-500 italic">No additional users assigned to the selected co-sharing groups.</p>
+                      )}
+                    </div>
+                  )}
+                </motion.div>
               )}
             </div>
 

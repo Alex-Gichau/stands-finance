@@ -556,6 +556,8 @@ async function startServer() {
     attachments: { type: [mongoose.Schema.Types.Mixed], default: [] },
     receipts: { type: [mongoose.Schema.Types.Mixed], default: [] },
     notificationEmails: { type: [String], default: [] },
+    isSharedRequisition: { type: Boolean, default: false },
+    sharedGroups: { type: [String], default: [] },
     flaggedForAudit: { type: Boolean, default: false },
     inProcurement: { type: Boolean, default: false },
     requiresMoreInfo: { type: Boolean, default: false },
