@@ -50,36 +50,44 @@ const TransactionsPanel: React.FC = () => {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const disbursedReqs = useMemo(() => {
-    return requisitions.filter(r => r.status === RequisitionStatus.DISBURSED);
+    return requisitions
+      .filter(r => r.status === RequisitionStatus.DISBURSED)
+      .sort((a, b) => {
+        const dateA = new Date(a.disbursedAt || a.updatedAt || a.submittedAt).getTime();
+        const dateB = new Date(b.disbursedAt || b.updatedAt || b.submittedAt).getTime();
+        return dateB - dateA;
+      });
   }, [requisitions]);
 
   const filteredTransactions = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     const numericTerm = term.replace(/[^0-9.]/g, "");
 
-    return transactions.filter(t => {
-      let matchesSearch = true;
-      if (term) {
-        const refMatch = t.externalRef.toLowerCase().includes(term) || t.id.toLowerCase().includes(term);
-        const vendorMatch = 
-          (t.metadata?.payableTo && t.metadata.payableTo.toLowerCase().includes(term)) ||
-          (t.performedBy && t.performedBy.toLowerCase().includes(term)) ||
-          t.description.toLowerCase().includes(term) ||
-          (t.category && t.category.toLowerCase().includes(term));
-        const amountMatch = 
-          t.amount.toString().includes(term) ||
-          t.amount.toLocaleString().toLowerCase().includes(term) ||
-          (numericTerm.length > 0 && t.amount.toString().includes(numericTerm));
-        const systemMatch = t.sourceSystem.toLowerCase().includes(term);
+    return transactions
+      .filter(t => {
+        let matchesSearch = true;
+        if (term) {
+          const refMatch = t.externalRef.toLowerCase().includes(term) || t.id.toLowerCase().includes(term);
+          const vendorMatch = 
+            (t.metadata?.payableTo && t.metadata.payableTo.toLowerCase().includes(term)) ||
+            (t.performedBy && t.performedBy.toLowerCase().includes(term)) ||
+            t.description.toLowerCase().includes(term) ||
+            (t.category && t.category.toLowerCase().includes(term));
+          const amountMatch = 
+            t.amount.toString().includes(term) ||
+            t.amount.toLocaleString().toLowerCase().includes(term) ||
+            (numericTerm.length > 0 && t.amount.toString().includes(numericTerm));
+          const systemMatch = t.sourceSystem.toLowerCase().includes(term);
 
-        matchesSearch = refMatch || vendorMatch || amountMatch || systemMatch;
-      }
+          matchesSearch = refMatch || vendorMatch || amountMatch || systemMatch;
+        }
 
-      const matchesType = typeFilter === "ALL" || t.type === typeFilter;
-      const matchesStatus = statusFilter === "ALL" || t.status === statusFilter;
+        const matchesType = typeFilter === "ALL" || t.type === typeFilter;
+        const matchesStatus = statusFilter === "ALL" || t.status === statusFilter;
 
-      return matchesSearch && matchesType && matchesStatus;
-    });
+        return matchesSearch && matchesType && matchesStatus;
+      })
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [transactions, searchTerm, typeFilter, statusFilter]);
 
   const stats = useMemo(() => {

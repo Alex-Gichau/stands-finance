@@ -7,7 +7,7 @@ import React, { useState, useEffect } from "react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { numberToWords } from "../utils/numberUtils";
 import { formatCurrency, cn, uploadAttachmentsToLocalServer } from "../lib/utils";
-import { X, Loader2, DollarSign, FileText, Repeat, Users, PlusCircle, Save, Activity } from "lucide-react";
+import { X, Loader2, DollarSign, FileText, Repeat, Users, PlusCircle, Save, Activity, Mail, Check, UserPlus, Info, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
 import { RecurrenceType, Requisition, RequisitionStatus, UserRole } from "../types";
 import { ApprovalSparkline } from "./ApprovalSparkline";
@@ -18,7 +18,7 @@ interface EditRequisitionModalProps {
 }
 
 export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req, onClose }) => {
-  const { updateRequisition, projects, churchGroups, addChurchGroup, currentUser, triggerToast } = useRequisitions();
+  const { updateRequisition, projects, churchGroups, addChurchGroup, currentUser, triggerToast, users } = useRequisitions();
   
   const [title, setTitle] = useState(req.title);
   const [description, setDescription] = useState(req.description);
@@ -29,6 +29,11 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
   const [projectId, setProjectId] = useState(req.projectId || "");
   const [inProcurement, setInProcurement] = useState(req.inProcurement || false);
   const [requiresMoreInfo, setRequiresMoreInfo] = useState(req.requiresMoreInfo || false);
+  
+  const [notificationEmails, setNotificationEmails] = useState<string[]>(
+    Array.isArray(req.notificationEmails) ? req.notificationEmails : []
+  );
+  const [customNotifyEmail, setCustomNotifyEmail] = useState("");
   
   const [showNewGroupInput, setShowNewGroupInput] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
@@ -102,6 +107,43 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
 
   const removeNewAttachment = (idx: number) => {
     setNewAttachments(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const ministryMembers = React.useMemo(() => {
+    if (!selectedGroup || !users) return [];
+    const selGrp = selectedGroup.trim().toLowerCase();
+    return users.filter(u => {
+      if (!u.email) return false;
+      const uGrp = (u.group || "").trim().toLowerCase();
+      if (uGrp === selGrp) return true;
+      if (u.groups && Array.isArray(u.groups)) {
+        if (u.groups.some(g => (g || "").trim().toLowerCase() === selGrp)) return true;
+      }
+      if (u.department && (u.department || "").trim().toLowerCase() === selGrp) return true;
+      return false;
+    });
+  }, [users, selectedGroup]);
+
+  const toggleNotifyEmail = (email: string) => {
+    const norm = email.trim().toLowerCase();
+    if (!norm) return;
+    setNotificationEmails(prev =>
+      prev.includes(norm) ? prev.filter(e => e !== norm) : [...prev, norm]
+    );
+  };
+
+  const handleAddCustomNotifyEmail = (e?: React.FormEvent | React.MouseEvent) => {
+    if (e) e.preventDefault();
+    const norm = customNotifyEmail.trim().toLowerCase();
+    if (!norm) return;
+    if (!norm.includes("@") || !norm.includes(".")) {
+      alert("Please enter a valid email address.");
+      return;
+    }
+    if (!notificationEmails.includes(norm)) {
+      setNotificationEmails(prev => [...prev, norm]);
+    }
+    setCustomNotifyEmail("");
   };
 
   useEffect(() => {
@@ -215,6 +257,7 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
         inProcurement,
         requiresMoreInfo,
         attachments: finalAttachments,
+        notificationEmails,
         status: finalStatus
       });
       onClose();
@@ -553,6 +596,147 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Ministry Notification Recipients Section */}
+          <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-150 dark:border-slate-800">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-indigo-500/10 flex items-center justify-center shrink-0">
+                  <Mail size={14} className="text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <div>
+                  <h5 className="text-[10px] md:text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest">
+                    Ministry Update Recipients
+                  </h5>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Add or remove members assigned to <span className="font-bold text-indigo-600 dark:text-indigo-400">{selectedGroup || "this ministry"}</span> to receive email notifications when status changes.
+                  </p>
+                </div>
+              </div>
+              {notificationEmails.length > 0 && (
+                <span className="text-[10px] font-bold bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-full whitespace-nowrap">
+                  {notificationEmails.length} selected
+                </span>
+              )}
+            </div>
+
+            {/* Assigned Ministry Members Quick Select Pills */}
+            {ministryMembers.length > 0 ? (
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">
+                    Assigned Ministry Members ({ministryMembers.length})
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allSelected = ministryMembers.every(m => notificationEmails.includes(m.email.toLowerCase()));
+                      if (allSelected) {
+                        const memberEmails = ministryMembers.map(m => m.email.toLowerCase());
+                        setNotificationEmails(prev => prev.filter(e => !memberEmails.includes(e)));
+                      } else {
+                        const memberEmails = ministryMembers.map(m => m.email.toLowerCase()).filter(Boolean);
+                        setNotificationEmails(prev => Array.from(new Set([...prev, ...memberEmails])));
+                      }
+                    }}
+                    className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline uppercase tracking-wider"
+                  >
+                    {ministryMembers.every(m => notificationEmails.includes(m.email.toLowerCase())) ? "Unselect All" : "Select All Members"}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl">
+                  {ministryMembers.map((member) => {
+                    const isSelected = notificationEmails.includes(member.email.toLowerCase());
+                    return (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => toggleNotifyEmail(member.email)}
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border text-left",
+                          isSelected
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                            : "bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700"
+                        )}
+                      >
+                        <div className={cn("w-4 h-4 rounded-full flex items-center justify-center text-[9px] shrink-0", isSelected ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-500")}>
+                          {isSelected ? <Check size={10} /> : <PlusCircle size={10} />}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-bold leading-none">{member.name || member.email}</span>
+                          <span className={cn("text-[9px] leading-tight opacity-80 mt-0.5", isSelected ? "text-indigo-100" : "text-slate-500 dark:text-slate-400")}>
+                            {member.email}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[10px] text-amber-800 dark:text-amber-300 font-medium">
+                No individual members currently assigned to group "{selectedGroup}". You can manually add member emails below.
+              </div>
+            )}
+
+            {/* Manual Custom Recipient Email Input */}
+            <div className="space-y-1.5 pt-1">
+              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">
+                Add External or Additional Email
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={customNotifyEmail}
+                  onChange={(e) => setCustomNotifyEmail(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddCustomNotifyEmail();
+                    }
+                  }}
+                  placeholder="e.g. member@church.org"
+                  className="flex-1 px-3 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCustomNotifyEmail}
+                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5 shrink-0 cursor-pointer"
+                >
+                  <PlusCircle size={14} />
+                  <span>Add Email</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Selected Recipients Chips */}
+            {notificationEmails.length > 0 && (
+              <div className="space-y-1.5 pt-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">
+                  Active Email Notification List ({notificationEmails.length})
+                </label>
+                <div className="flex flex-wrap gap-1.5 p-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl max-h-28 overflow-y-auto">
+                  {notificationEmails.map((email) => (
+                    <span
+                      key={email}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60"
+                    >
+                      <Mail size={11} className="text-indigo-500" />
+                      <span>{email}</span>
+                      <button
+                        type="button"
+                        onClick={() => toggleNotifyEmail(email)}
+                        className="p-0.5 hover:bg-indigo-200/50 dark:hover:bg-indigo-800/50 rounded text-indigo-500 hover:text-rose-600 transition-colors"
+                        title="Remove email"
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Visual upload progress bar */}

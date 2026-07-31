@@ -2730,6 +2730,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 metadata: tx?.metadata || null
               } as Transaction;
             }).filter(Boolean) as Transaction[];
+            data.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
             setTransactions(data);
           }
         } catch (txErr) {
@@ -4303,6 +4304,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
           }
         }
 
+        realTxs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
         setTransactions(realTxs);
 
         await addSystemLog("REAL_TRANSACTIONS_STORED", `Stored ${realTxs.length} disbursed funds transaction details on the website.`, { count: realTxs.length });

@@ -158,6 +158,20 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
     });
   }, [users, selectedGroup]);
 
+  const currentGroupDefaultedRef = React.useRef<string>("");
+
+  useEffect(() => {
+    if (!selectedGroup || ministryMembers.length === 0) return;
+    if (currentGroupDefaultedRef.current !== selectedGroup) {
+      currentGroupDefaultedRef.current = selectedGroup;
+      const memberEmails = ministryMembers.map(m => m.email.toLowerCase()).filter(Boolean);
+      setNotificationEmails(prev => {
+        const combined = new Set([...prev, ...memberEmails]);
+        return Array.from(combined);
+      });
+    }
+  }, [selectedGroup, ministryMembers]);
+
   const toggleNotifyEmail = (email: string) => {
     const norm = email.trim().toLowerCase();
     if (!norm) return;
@@ -908,9 +922,27 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
               {/* Assigned Ministry Members Quick Select Pills */}
               {ministryMembers.length > 0 ? (
                 <div className="space-y-1.5 pt-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">
-                    Assigned Ministry Members ({ministryMembers.length})
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">
+                      Assigned Ministry Members ({ministryMembers.length})
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allSelected = ministryMembers.every(m => notificationEmails.includes(m.email.toLowerCase()));
+                        if (allSelected) {
+                          const memberEmails = ministryMembers.map(m => m.email.toLowerCase());
+                          setNotificationEmails(prev => prev.filter(e => !memberEmails.includes(e)));
+                        } else {
+                          const memberEmails = ministryMembers.map(m => m.email.toLowerCase()).filter(Boolean);
+                          setNotificationEmails(prev => Array.from(new Set([...prev, ...memberEmails])));
+                        }
+                      }}
+                      className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline uppercase tracking-wider"
+                    >
+                      {ministryMembers.every(m => notificationEmails.includes(m.email.toLowerCase())) ? "Unselect All" : "Select All Members"}
+                    </button>
+                  </div>
                   <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl">
                     {ministryMembers.map((member) => {
                       const isSelected = notificationEmails.includes(member.email.toLowerCase());
