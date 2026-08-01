@@ -3577,13 +3577,23 @@ async function startServer() {
     let records: any[] = [];
     try {
       if (fs.existsSync(backupPath)) {
-        records = JSON.parse(fs.readFileSync(backupPath, "utf-8"));
+        const fileContent = fs.readFileSync(backupPath, "utf-8");
+        const parsed = JSON.parse(fileContent);
+        if (Array.isArray(parsed)) {
+          records = parsed;
+        } else if (parsed && typeof parsed === "object" && Array.isArray((parsed as any).records)) {
+          records = (parsed as any).records;
+        }
       }
     } catch (e) {
       console.warn("Failed to read simulated sheets ledger", e);
     }
 
-    const idx = records.findIndex(r => r.id === reqObj.id);
+    if (!Array.isArray(records)) {
+      records = [];
+    }
+
+    const idx = records.findIndex(r => r && typeof r === "object" && r.id === reqObj.id);
     const enrichedRecord = {
       ...reqObj,
       sheetTitle,
@@ -3864,7 +3874,10 @@ async function startServer() {
             spreadsheetId = createRes.data.spreadsheetId;
           }
         } catch (driveErr: any) {
-          console.warn("[Google Sheets] Spreadsheet lookup/creation failed:", driveErr.message);
+          console.warn("[Google Sheets] Spreadsheet lookup/creation failed:", driveErr.message || driveErr);
+          if (driveErr?.message?.includes("invalid_grant") || driveErr?.message?.includes("JWT")) {
+            cachedGoogleClients = null;
+          }
         }
 
         if (spreadsheetId) {

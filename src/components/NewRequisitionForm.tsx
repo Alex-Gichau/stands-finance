@@ -7,6 +7,7 @@ import React, { useState, useEffect } from "react";
 import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionContext";
 import { numberToWords } from "../utils/numberUtils";
 import { formatCurrency, cn, uploadAttachmentsToLocalServer } from "../lib/utils";
+import { processFileToAttachmentStrings } from "../lib/pdfUtils";
 import { Upload, X, Paperclip, Loader2, DollarSign, FileText, Info, Repeat, Users, PlusCircle, Save, Camera, Mail, UserPlus, Check, Share2, Layers, Building2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { RecurrenceType, UserRole } from "../types";
@@ -159,6 +160,7 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
   }, [users, selectedGroup]);
 
   const currentGroupDefaultedRef = React.useRef<string>("");
+  const currentSharedGroupsRef = React.useRef<string>("");
 
   useEffect(() => {
     if (!selectedGroup || ministryMembers.length === 0) return;
@@ -171,6 +173,19 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
       });
     }
   }, [selectedGroup, ministryMembers]);
+
+  useEffect(() => {
+    if (!isSharedRequisition || coSharedGroupMembers.length === 0) return;
+    const key = sharedGroups.slice().sort().join(",");
+    if (currentSharedGroupsRef.current !== key) {
+      currentSharedGroupsRef.current = key;
+      const coShareEmails = coSharedGroupMembers.map(m => m.email.toLowerCase()).filter(Boolean);
+      setNotificationEmails(prev => {
+        const combined = new Set([...prev, ...coShareEmails]);
+        return Array.from(combined);
+      });
+    }
+  }, [isSharedRequisition, sharedGroups, coSharedGroupMembers]);
 
   const toggleNotifyEmail = (email: string) => {
     const norm = email.trim().toLowerCase();
@@ -473,55 +488,20 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
         return;
       }
 
-      // Convert all local attachments to persistent base64 strings
-      const readPromises = attachments.map((file) => {
-        return new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const result = reader.result as string;
-            // Compress images using browser canvas
-            if (file.type.startsWith("image/")) {
-              const img = new Image();
-              img.onload = () => {
-                const canvas = document.createElement("canvas");
-                const MAX_DIM = 800; // Optimal preview dimension
-                let width = img.width;
-                let height = img.height;
-                if (width > MAX_DIM || height > MAX_DIM) {
-                  if (width > height) {
-                    height = Math.round((height * MAX_DIM) / width);
-                    width = MAX_DIM;
-                  } else {
-                    width = Math.round((width * MAX_DIM) / height);
-                    height = MAX_DIM;
-                  }
-                }
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext("2d");
-                ctx?.drawImage(img, 0, 0, width, height);
-                // Save space using a medium-high quality JPEG
-                const compressed = canvas.toDataURL("image/jpeg", 0.7);
-                resolve(`${file.name}::${compressed}`);
-              };
-              img.onerror = () => {
-                resolve(`${file.name}::${result}`);
-              };
-              img.src = result;
-            } else {
-              // Non-image files like PDFs. Preserve full base64 content so they are uploaded to Google Drive and saved.
-              resolve(`${file.name}::${result}`);
-            }
-          };
-          reader.onerror = () => {
-            resolve(`${file.name}::data:text/plain;base64,RXJyb3IgcmVhZGluZyBmaWxl`);
-          };
-          reader.readAsDataURL(file);
-        });
-      });
-
-      const encodedAttachments = await Promise.all(readPromises);
+      // Convert all local attachments (converting PDFs to JPEG for easy preview)
+      const readPromises = attachments.map((file) => processFileToAttachmentStrings(file));
+      const nestedEncoded = await Promise.all(readPromises);
+      const encodedAttachments = nestedEncoded.flat();
       const localUploadedAttachments = await uploadAttachmentsToLocalServer(encodedAttachments);
+
+      // Apply any pending custom notification email entered in the text box
+      let finalNotificationEmails = [...notificationEmails];
+      const pendingCustom = customNotifyEmail.trim().toLowerCase();
+      if (pendingCustom && pendingCustom.includes("@") && pendingCustom.includes(".")) {
+        if (!finalNotificationEmails.includes(pendingCustom)) {
+          finalNotificationEmails.push(pendingCustom);
+        }
+      }
 
       await addRequisition({
         projectId: matchingProject ? matchingProject.id : "",
@@ -536,7 +516,7 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
         requesterId: currentUser?.id || "u-anon",
         requesterName: currentUser?.name || "Anonymous",
         requesterEmail: currentUser?.email || "",
-        notificationEmails,
+        notificationEmails: finalNotificationEmails,
         isSharedRequisition,
         sharedGroups: isSharedRequisition ? sharedGroups : [],
         attachments: localUploadedAttachments,

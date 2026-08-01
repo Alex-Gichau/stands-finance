@@ -7,6 +7,7 @@ import React, { useState, useEffect } from "react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { numberToWords } from "../utils/numberUtils";
 import { formatCurrency, cn, uploadAttachmentsToLocalServer } from "../lib/utils";
+import { processFileToAttachmentStrings } from "../lib/pdfUtils";
 import { X, Loader2, DollarSign, FileText, Repeat, Users, PlusCircle, Save, Activity, Mail, Check, UserPlus, Info, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
 import { RecurrenceType, Requisition, RequisitionStatus, UserRole } from "../types";
@@ -177,54 +178,10 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
     setSaving(true);
 
     try {
-      // Process and encode any new attachments
-      const readPromises = newAttachments.map((file) => {
-        return new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const result = reader.result as string;
-            // Compress images using browser canvas
-            if (file.type.startsWith("image/")) {
-              const img = new Image();
-              img.onload = () => {
-                const canvas = document.createElement("canvas");
-                const MAX_DIM = 800; // Optimal preview dimension
-                let width = img.width;
-                let height = img.height;
-                if (width > MAX_DIM || height > MAX_DIM) {
-                  if (width > height) {
-                    height = Math.round((height * MAX_DIM) / width);
-                    width = MAX_DIM;
-                  } else {
-                    width = Math.round((width * MAX_DIM) / height);
-                    height = MAX_DIM;
-                  }
-                }
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext("2d");
-                ctx?.drawImage(img, 0, 0, width, height);
-                // Save space using a medium-high quality JPEG
-                const compressed = canvas.toDataURL("image/jpeg", 0.7);
-                resolve(`${file.name}::${compressed}`);
-              };
-              img.onerror = () => {
-                resolve(`${file.name}::${result}`);
-              };
-              img.src = result;
-            } else {
-              // Non-image files like PDFs. Preserve full base64 content so they are uploaded to Google Drive and saved.
-              resolve(`${file.name}::${result}`);
-            }
-          };
-          reader.onerror = () => {
-            resolve(`${file.name}::data:text/plain;base64,RXJyb3IgcmVhZGluZyBmaWxl`);
-          };
-          reader.readAsDataURL(file);
-        });
-      });
-
-      const encodedNew = await Promise.all(readPromises);
+      // Process and encode any new attachments (converting PDFs to JPEG for easy preview)
+      const readPromises = newAttachments.map((file) => processFileToAttachmentStrings(file));
+      const nestedEncoded = await Promise.all(readPromises);
+      const encodedNew = nestedEncoded.flat();
       const combinedAttachments = [...existingAttachments, ...encodedNew];
       
       setUploadCompletedCount(0);
@@ -245,6 +202,14 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
         ? RequisitionStatus.SUBMITTED 
         : req.status;
 
+      let finalNotificationEmails = [...notificationEmails];
+      const pendingCustom = customNotifyEmail.trim().toLowerCase();
+      if (pendingCustom && pendingCustom.includes("@") && pendingCustom.includes(".")) {
+        if (!finalNotificationEmails.includes(pendingCustom)) {
+          finalNotificationEmails.push(pendingCustom);
+        }
+      }
+
       await updateRequisition(req.id, {
         title: title.trim(),
         description: description.trim(),
@@ -257,7 +222,7 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
         inProcurement,
         requiresMoreInfo,
         attachments: finalAttachments,
-        notificationEmails,
+        notificationEmails: finalNotificationEmails,
         status: finalStatus
       });
       onClose();

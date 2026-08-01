@@ -52,7 +52,7 @@ import {
   Maximize2,
   Minimize2
 } from "lucide-react";
-import { Info, HardDrive } from "lucide-react";
+import { Info, HardDrive, Mail, UserPlus } from "lucide-react";
 import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
 import { formatCurrency, formatDate, cn, getDaysSinceSubmission, formatRequisitionAge, isFinalStage, normalizeAttachmentUrl } from "../lib/utils";
@@ -2518,7 +2518,7 @@ export interface DetailModalProps {
 }
 
 export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClose, onDelete, onGenerateReceipt, onEdit }) => {
-  const { currentUser, updateRequisitionStatus, updateRequisition, uploadReceipts, globalSearchTerm, projects, triggerToast, vendors, requisitions } = useRequisitions();
+  const { currentUser, updateRequisitionStatus, updateRequisition, uploadReceipts, globalSearchTerm, projects, triggerToast, vendors, requisitions, users } = useRequisitions();
   const [decisionNote, setDecisionNote] = useState("");
   const [approvalCode, setApprovalCode] = useState("");
   const [showDecisionForm, setShowDecisionForm] = useState<"APPROVE" | "REJECT" | "ESCALATE" | null>(null);
@@ -2529,7 +2529,157 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
   const [showAssignConfirm, setShowAssignConfirm] = useState(false);
   const [isGroupVerified, setIsGroupVerified] = useState(false);
   const [isAmountVerified, setIsAmountVerified] = useState(false);
+  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+  const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [isSavingMember, setIsSavingMember] = useState(false);
   const decisionFormRef = useRef<HTMLDivElement>(null);
+
+  const availableUsers = React.useMemo(() => {
+    if (!users) return [];
+    const currentList = Array.isArray(req.notificationEmails)
+      ? req.notificationEmails.map(e => (e || "").trim().toLowerCase())
+      : [];
+    if (req.requesterEmail) currentList.push(req.requesterEmail.trim().toLowerCase());
+    return users.filter(u => u.email && !currentList.includes(u.email.trim().toLowerCase()));
+  }, [users, req.notificationEmails, req.requesterEmail]);
+
+  const handleAddMember = async (emailToAdd: string) => {
+    const norm = emailToAdd.trim().toLowerCase();
+    if (!norm || !norm.includes("@") || !norm.includes(".")) {
+      triggerToast({
+        type: "SECURITY_UPDATE",
+        severity: "HIGH",
+        message: "Please enter a valid email address.",
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    const currentList = Array.isArray(req.notificationEmails) ? req.notificationEmails : [];
+    if (currentList.some(e => (e || "").trim().toLowerCase() === norm)) {
+      triggerToast({
+        type: "SYSTEM_INFO",
+        severity: "LOW",
+        message: "This email is already receiving updates.",
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    setIsSavingMember(true);
+    try {
+      const updated = [...currentList, norm];
+      await updateRequisition(req.id, { notificationEmails: updated });
+      triggerToast({
+        type: "SYSTEM_INFO",
+        severity: "LOW",
+        message: `Added ${norm} to update recipients.`,
+        timestamp: new Date().toISOString()
+      });
+      setNewMemberEmail("");
+      setSelectedUserId("");
+      setIsAddMemberOpen(false);
+    } catch (err) {
+      triggerToast({
+        type: "SECURITY_UPDATE",
+        severity: "HIGH",
+        message: "Failed to add member to recipients.",
+        timestamp: new Date().toISOString()
+      });
+    } finally {
+      setIsSavingMember(false);
+    }
+  };
+
+  const handleRemoveMember = async (emailToRemove: string) => {
+    const norm = emailToRemove.trim().toLowerCase();
+    const currentList = Array.isArray(req.notificationEmails) ? req.notificationEmails : [];
+    const updated = currentList.filter(e => (e || "").trim().toLowerCase() !== norm);
+
+    setIsSavingMember(true);
+    try {
+      await updateRequisition(req.id, { notificationEmails: updated });
+      triggerToast({
+        type: "SYSTEM_INFO",
+        severity: "LOW",
+        message: `Removed ${norm} from update recipients.`,
+        timestamp: new Date().toISOString()
+      });
+    } catch (err) {
+      triggerToast({
+        type: "SECURITY_UPDATE",
+        severity: "HIGH",
+        message: "Failed to remove recipient.",
+        timestamp: new Date().toISOString()
+      });
+    } finally {
+      setIsSavingMember(false);
+    }
+  };
+
+  const updateRecipients = React.useMemo(() => {
+    const rawEmails = new Set<string>();
+
+    if (req.requesterEmail) {
+      rawEmails.add(req.requesterEmail.trim().toLowerCase());
+    }
+
+    if (Array.isArray(req.notificationEmails)) {
+      req.notificationEmails.forEach((email) => {
+        const norm = (email || "").trim().toLowerCase();
+        if (norm) rawEmails.add(norm);
+      });
+    }
+
+    if (rawEmails.size === 0 && req.groupName && users) {
+      const grpLower = req.groupName.trim().toLowerCase();
+      users.forEach((u) => {
+        if (!u.email) return;
+        const uGrp = (u.group || "").trim().toLowerCase();
+        const inGroups = Array.isArray(u.groups) && u.groups.some(g => (g || "").trim().toLowerCase() === grpLower);
+        const inDept = (u.department || "").trim().toLowerCase() === grpLower;
+        if (uGrp === grpLower || inGroups || inDept) {
+          rawEmails.add(u.email.trim().toLowerCase());
+        }
+      });
+    }
+
+    const result: Array<{
+      email: string;
+      name: string;
+      roleOrGroup: string;
+      isRequester: boolean;
+    }> = [];
+
+    rawEmails.forEach((email) => {
+      const matchedUser = users?.find(
+        (u) => u.email && u.email.trim().toLowerCase() === email
+      );
+      const isRequester =
+        (req.requesterEmail && req.requesterEmail.trim().toLowerCase() === email) ||
+        (matchedUser && matchedUser.name === req.requesterName) ||
+        (!matchedUser && email.includes(req.requesterName.toLowerCase()));
+
+      if (matchedUser) {
+        result.push({
+          email: matchedUser.email,
+          name: matchedUser.name || email,
+          roleOrGroup: matchedUser.group || matchedUser.department || matchedUser.role || "Member",
+          isRequester: Boolean(isRequester)
+        });
+      } else {
+        result.push({
+          email,
+          name: isRequester ? req.requesterName : email.split("@")[0],
+          roleOrGroup: isRequester ? `${req.groupName} (Requester)` : "Notification Recipient",
+          isRequester: Boolean(isRequester)
+        });
+      }
+    });
+
+    return result;
+  }, [req, users]);
 
   useEffect(() => {
     if (showDecisionForm && decisionFormRef.current) {
@@ -3045,6 +3195,158 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                   })()}
                 </section>
               </div>
+
+              {/* Members Receiving Updates Section */}
+              <section className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <Mail size={12} className="text-indigo-500" />
+                    Members Receiving Updates ({updateRecipients.length})
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddMemberOpen(!isAddMemberOpen)}
+                    disabled={isSavingMember}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/80 dark:text-indigo-300 rounded-xl text-[10px] font-bold transition-all cursor-pointer border border-indigo-200/50 dark:border-indigo-800/50 shrink-0 shadow-sm"
+                  >
+                    <UserPlus size={13} className="text-indigo-600 dark:text-indigo-400" />
+                    <span>{isAddMemberOpen ? "Cancel" : "Add Members"}</span>
+                  </button>
+                </div>
+
+                <AnimatePresence>
+                  {isAddMemberOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="bg-indigo-50/60 dark:bg-indigo-950/40 p-3.5 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 space-y-3"
+                    >
+                      <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                        <UserPlus size={14} className="text-indigo-500" />
+                        Add Member to Receive Updates
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Dropdown for registered team members */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                            Select Team Member
+                          </label>
+                          <select
+                            value={selectedUserId}
+                            onChange={(e) => {
+                              const uId = e.target.value;
+                              setSelectedUserId(uId);
+                              const found = availableUsers.find(u => u.id === uId);
+                              if (found && found.email) {
+                                setNewMemberEmail(found.email);
+                              }
+                            }}
+                            className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-slate-200"
+                          >
+                            <option value="">-- Choose team member --</option>
+                            {availableUsers.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.name} ({u.email}) - {u.group || u.role}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Manual Email Input */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                            Or Custom Email Address
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="email"
+                              value={newMemberEmail}
+                              onChange={(e) => setNewMemberEmail(e.target.value)}
+                              placeholder="e.g. member@church.org"
+                              className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-slate-200"
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleAddMember(newMemberEmail);
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleAddMember(newMemberEmail)}
+                              disabled={isSavingMember || !newMemberEmail.trim()}
+                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1 shadow-sm cursor-pointer"
+                            >
+                              {isSavingMember ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <Plus size={13} />
+                              )}
+                              Add
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {updateRecipients.length > 0 ? (
+                  <div className="flex flex-wrap gap-2.5 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+                    {updateRecipients.map((rec) => {
+                      const isRemoveable = Array.isArray(req.notificationEmails) &&
+                        req.notificationEmails.some(e => (e || "").trim().toLowerCase() === rec.email.toLowerCase());
+                      return (
+                        <div
+                          key={rec.email}
+                          className="flex items-center gap-2.5 px-3 py-2 bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm text-xs"
+                        >
+                          <div className="w-7 h-7 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold flex items-center justify-center text-xs shrink-0 border border-indigo-100 dark:border-indigo-900/40">
+                            {rec.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-slate-900 dark:text-slate-100 text-xs truncate max-w-[140px]">
+                                {rec.name}
+                              </span>
+                              {rec.isRequester && (
+                                <span className="px-1.5 py-0.2 bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[8px] font-black uppercase rounded tracking-wider">
+                                  Requester
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate max-w-[180px]">
+                              {rec.email}
+                            </span>
+                          </div>
+                          {rec.roleOrGroup && (
+                            <span className="ml-1 px-2 py-0.5 text-[8.5px] font-black uppercase tracking-wider bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded-md border border-indigo-100 dark:border-indigo-800/50 shrink-0">
+                              {rec.roleOrGroup}
+                            </span>
+                          )}
+                          {isRemoveable && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveMember(rec.email)}
+                              disabled={isSavingMember}
+                              title="Remove from update recipients"
+                              className="ml-1 p-1 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 italic">
+                    No members currently configured to receive updates for this requisition.
+                  </div>
+                )}
+              </section>
 
               <section className="space-y-3 md:space-y-4">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
