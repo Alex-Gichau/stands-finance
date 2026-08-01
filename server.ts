@@ -413,6 +413,7 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   // Serve uploaded files using the Express uploads router
+  app.use("/api/attachments", uploadsRouter);
   app.use("/uploads", uploadsRouter);
 
   // Bootstrap JSON database user storage from root users.json if missing

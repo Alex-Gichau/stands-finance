@@ -573,26 +573,13 @@ const PdfDocumentViewer = ({
         </div>
       </div>
 
-      {/* Visual placeholder requesting to open in a new tab */}
-      <div className="flex-1 bg-slate-950 p-6 flex flex-col items-center justify-center gap-4 text-center w-full min-h-[450px]">
-        <div className="w-20 h-20 bg-rose-500/10 border border-rose-500/20 text-rose-500 rounded-3xl flex items-center justify-center shadow-lg">
-          <FileText size={40} />
-        </div>
-        <div className="space-y-1.5 max-w-md">
-          <h3 className="text-lg font-bold text-slate-100">PDF Document Ready</h3>
-          <p className="text-xs text-slate-400">
-            For secure, full-resolution viewing, this PDF document is opened directly in a new browser tab.
-          </p>
-        </div>
-        <button
-          onClick={() => {
-            window.open(pdfSourceUrl, "_blank", "noopener,noreferrer");
-          }}
-          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer flex items-center gap-2 shadow-lg shadow-indigo-950/40"
-        >
-          <ExternalLink size={14} />
-          <span>Open PDF in New Tab</span>
-        </button>
+      {/* Native PDF Viewer inside Modal */}
+      <div className="flex-1 bg-slate-950 p-0 flex flex-col w-full min-h-[500px] md:min-h-[650px] relative overflow-hidden">
+        <iframe
+          src={`${pdfSourceUrl}#toolbar=1&navpanes=0`}
+          title={docProps.name}
+          className="w-full h-full flex-1 border-0 min-h-[500px] md:min-h-[650px] bg-slate-950 rounded-b-3xl"
+        />
       </div>
     </div>
   );
@@ -978,12 +965,8 @@ const DocumentPreviewModal = ({
                       whileHover={{ scale: 1.02, y: -2 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => {
-                        if (props.isPdf) {
-                          window.open(props.url, '_blank', 'noopener,noreferrer');
-                        } else {
-                          setCurrentIndex(idx);
-                          setViewMode("detail");
-                        }
+                        setCurrentIndex(idx);
+                        setViewMode("detail");
                       }}
                       className={`cursor-pointer rounded-2xl border transition-all overflow-hidden flex flex-col h-36 relative group shadow-lg ${
                         isCur 
@@ -1106,12 +1089,8 @@ const DocumentPreviewModal = ({
                       <div 
                         key={`strip-doc-${idx}`} 
                         onClick={() => {
-                          if (props.isPdf) {
-                            window.open(props.url, '_blank', 'noopener,noreferrer');
-                          } else {
-                            setZoomScale(1);
-                            setCurrentIndex(idx);
-                          }
+                          setZoomScale(1);
+                          setCurrentIndex(idx);
                         }}
                         className={`w-12 h-12 rounded-lg cursor-pointer overflow-hidden border-2 shrink-0 transition-all ${
                           isCur 
@@ -3360,11 +3339,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                     <div 
                       key={`doc-${i}`} 
                       onClick={() => {
-                        if (isPdf) {
-                          window.open(url, '_blank', 'noopener,noreferrer');
-                        } else {
-                          setPreviewIndex(i);
-                        }
+                        setPreviewIndex(i);
                       }}
                       className="w-20 h-20 md:w-24 md:h-24 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl hover:border-primary/40 hover:shadow-md transition-all cursor-pointer group flex flex-col items-center justify-center overflow-hidden relative shadow-sm shrink-0"
                       title={name}
