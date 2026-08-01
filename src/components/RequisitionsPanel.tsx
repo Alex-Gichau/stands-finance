@@ -2531,18 +2531,8 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
   const [isAmountVerified, setIsAmountVerified] = useState(false);
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
   const [newMemberEmail, setNewMemberEmail] = useState("");
-  const [selectedUserId, setSelectedUserId] = useState("");
   const [isSavingMember, setIsSavingMember] = useState(false);
   const decisionFormRef = useRef<HTMLDivElement>(null);
-
-  const availableUsers = React.useMemo(() => {
-    if (!users) return [];
-    const currentList = Array.isArray(req.notificationEmails)
-      ? req.notificationEmails.map(e => (e || "").trim().toLowerCase())
-      : [];
-    if (req.requesterEmail) currentList.push(req.requesterEmail.trim().toLowerCase());
-    return users.filter(u => u.email && !currentList.includes(u.email.trim().toLowerCase()));
-  }, [users, req.notificationEmails, req.requesterEmail]);
 
   const handleAddMember = async (emailToAdd: string) => {
     const norm = emailToAdd.trim().toLowerCase();
@@ -2578,7 +2568,6 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
         timestamp: new Date().toISOString()
       });
       setNewMemberEmail("");
-      setSelectedUserId("");
       setIsAddMemberOpen(false);
     } catch (err) {
       triggerToast({
@@ -3227,66 +3216,37 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                         Add Member to Receive Updates
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {/* Dropdown for registered team members */}
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                            Select Team Member
-                          </label>
-                          <select
-                            value={selectedUserId}
-                            onChange={(e) => {
-                              const uId = e.target.value;
-                              setSelectedUserId(uId);
-                              const found = availableUsers.find(u => u.id === uId);
-                              if (found && found.email) {
-                                setNewMemberEmail(found.email);
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                          Email Address
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="email"
+                            value={newMemberEmail}
+                            onChange={(e) => setNewMemberEmail(e.target.value)}
+                            placeholder="e.g. member@church.org"
+                            className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-slate-200"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleAddMember(newMemberEmail);
                               }
                             }}
-                            className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-slate-200"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddMember(newMemberEmail)}
+                            disabled={isSavingMember || !newMemberEmail.trim()}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1 shadow-sm cursor-pointer"
                           >
-                            <option value="">-- Choose team member --</option>
-                            {availableUsers.map((u) => (
-                              <option key={u.id} value={u.id}>
-                                {u.name} ({u.email}) - {u.group || u.role}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {/* Manual Email Input */}
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                            Or Custom Email Address
-                          </label>
-                          <div className="flex gap-2">
-                            <input
-                              type="email"
-                              value={newMemberEmail}
-                              onChange={(e) => setNewMemberEmail(e.target.value)}
-                              placeholder="e.g. member@church.org"
-                              className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-slate-200"
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  e.preventDefault();
-                                  handleAddMember(newMemberEmail);
-                                }
-                              }}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleAddMember(newMemberEmail)}
-                              disabled={isSavingMember || !newMemberEmail.trim()}
-                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1 shadow-sm cursor-pointer"
-                            >
-                              {isSavingMember ? (
-                                <Loader2 size={13} className="animate-spin" />
-                              ) : (
-                                <Plus size={13} />
-                              )}
-                              Add
-                            </button>
-                          </div>
+                            {isSavingMember ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <Plus size={13} />
+                            )}
+                            Add
+                          </button>
                         </div>
                       </div>
                     </motion.div>
