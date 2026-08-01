@@ -984,14 +984,20 @@ const DocumentPreviewModal = ({
                             referrerPolicy="no-referrer"
                           />
                         ) : props.isPdf ? (
-                          <div className="flex flex-col items-center justify-center">
+                          <a 
+                            href={props.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex flex-col items-center justify-center p-2 rounded-xl hover:bg-slate-800/80 transition-colors w-full h-full"
+                          >
                             <span className="text-rose-500 group-hover:text-rose-400 transition-colors">
                               <FileText size={32} />
                             </span>
-                            <span className="text-[8px] font-black text-rose-400 uppercase tracking-widest font-mono mt-1.5">
-                              PDF Document
+                            <span className="text-[8px] font-black text-rose-400 uppercase tracking-widest font-mono mt-1.5 flex items-center gap-1">
+                              PDF Document <ExternalLink size={10} />
                             </span>
-                          </div>
+                          </a>
                         ) : (
                           <div className="flex flex-col items-center justify-center">
                             <span className="text-indigo-400 group-hover:text-indigo-300 transition-colors">
@@ -3335,48 +3341,66 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                      const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(name) || /\.(jpg|jpeg|png|gif|webp)$/i.test(url) || (typeof url === 'string' && (url.startsWith('data:image/') || url.startsWith('blob:')));
                      const fileExt = name.split('.').pop()?.toUpperCase() || "DOC";
                      const isPdf = fileExt === "PDF" || /\.(pdf)$/i.test(name) || /\.(pdf)$/i.test(url) || (typeof url === 'string' && (url.startsWith('data:application/pdf') || url.includes('/api/attachments/')));
-                     return (
-                    <div 
-                      key={`doc-${i}`} 
-                      onClick={() => {
-                        setPreviewIndex(i);
-                      }}
-                      className="w-20 h-20 md:w-24 md:h-24 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl hover:border-primary/40 hover:shadow-md transition-all cursor-pointer group flex flex-col items-center justify-center overflow-hidden relative shadow-sm shrink-0"
-                      title={name}
-                    >
-                      {isImage ? (
-                        <img 
-                          src={url} 
-                          alt={name} 
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : isPdf ? (
-                        <div className="flex flex-col items-center justify-center p-1.5 text-center w-full h-full">
-                          <div className="text-rose-500 group-hover:text-rose-400 transition-colors mb-1">
-                            <FileText size={20} />
+                      if (isPdf) {
+                        return (
+                          <a 
+                            key={`doc-${i}`} 
+                            href={url}
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="w-20 h-20 md:w-24 md:h-24 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl hover:border-primary/40 hover:shadow-md transition-all cursor-pointer group flex flex-col items-center justify-center overflow-hidden relative shadow-sm shrink-0"
+                            title={name}
+                          >
+                            <div className="flex flex-col items-center justify-center p-1.5 text-center w-full h-full">
+                              <div className="text-rose-500 group-hover:text-rose-400 transition-colors mb-1">
+                                <FileText size={20} />
+                              </div>
+                              <span className="text-[7.5px] font-black text-rose-500 dark:text-rose-400 truncate w-full px-1.5 uppercase tracking-wider font-mono">
+                                PDF
+                              </span>
+                            </div>
+                            <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/20 transition-all flex items-center justify-center">
+                              <span className="text-[7.5px] font-black tracking-widest uppercase bg-white/95 dark:bg-slate-900/90 text-slate-800 dark:text-slate-100 px-1.5 py-1 rounded-xl shadow border border-slate-100 dark:border-slate-800 opacity-0 group-hover:opacity-100 transition-opacity transform translateY(15px) group-hover:translateY(0)">
+                                Open PDF
+                              </span>
+                            </div>
+                          </a>
+                        );
+                      }
+
+                      return (
+                        <div 
+                          key={`doc-${i}`} 
+                          onClick={() => {
+                            setPreviewIndex(i);
+                          }}
+                          className="w-20 h-20 md:w-24 md:h-24 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl hover:border-primary/40 hover:shadow-md transition-all cursor-pointer group flex flex-col items-center justify-center overflow-hidden relative shadow-sm shrink-0"
+                          title={name}
+                        >
+                          {isImage ? (
+                            <img 
+                              src={url} 
+                              alt={name} 
+                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center p-1.5 text-center w-full h-full">
+                              <div className="text-slate-400 dark:text-slate-500 group-hover:text-primary transition-colors mb-1">
+                                <FileText size={20} />
+                              </div>
+                              <span className="text-[7.5px] font-black text-slate-500 dark:text-slate-400 truncate w-full px-1.5 uppercase tracking-wider font-mono">
+                                {fileExt === "PDF" || fileExt === "XLSX" || fileExt === "DOCX" ? fileExt : "DOCUMENT"}
+                              </span>
+                            </div>
+                          )}
+                          <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/20 transition-all flex items-center justify-center">
+                            <span className="text-[7.5px] font-black tracking-widest uppercase bg-white/95 dark:bg-slate-900/90 text-slate-800 dark:text-slate-100 px-1.5 py-1 rounded-xl shadow border border-slate-100 dark:border-slate-800 opacity-0 group-hover:opacity-100 transition-opacity transform translateY(15px) group-hover:translateY(0)">
+                              View
+                            </span>
                           </div>
-                          <span className="text-[7.5px] font-black text-rose-500 dark:text-rose-400 truncate w-full px-1.5 uppercase tracking-wider font-mono">
-                            PDF
-                          </span>
                         </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center p-1.5 text-center w-full h-full">
-                          <div className="text-slate-400 dark:text-slate-500 group-hover:text-primary transition-colors mb-1">
-                            <FileText size={20} />
-                          </div>
-                          <span className="text-[7.5px] font-black text-slate-500 dark:text-slate-400 truncate w-full px-1.5 uppercase tracking-wider font-mono">
-                            {fileExt === "PDF" || fileExt === "XLSX" || fileExt === "DOCX" ? fileExt : "DOCUMENT"}
-                          </span>
-                        </div>
-                      )}
-                      <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/20 transition-all flex items-center justify-center">
-                        <span className="text-[7.5px] font-black tracking-widest uppercase bg-white/95 dark:bg-slate-900/90 text-slate-800 dark:text-slate-100 px-1.5 py-1 rounded-xl shadow border border-slate-100 dark:border-slate-800 opacity-0 group-hover:opacity-100 transition-opacity transform translateY(15px) group-hover:translateY(0)">
-                          {isPdf ? "Open" : "View"}
-                        </span>
-                      </div>
-                    </div>
-                  );
+                      );
                 })}
                   {req.receipts && req.receipts.length > 0 && (
                     <div className="w-full mt-2">
