@@ -11,6 +11,7 @@ import * as models from "./src/models/index.ts";
 import { seedDatabase } from "./scripts/seed-mongo.ts";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import uploadsRouter from "./uploads.ts";
 
 dotenv.config();
 
@@ -37,6 +38,11 @@ const fileMappings: { [key: string]: string } = {
   "church_groups": "church_groups.json",
   "supplementary_budgets": "supplementary_budgets.json"
 };
+
+const uploadsDir = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 function getFilePath(collection: string) {
   const fileName = fileMappings[collection] || (collection + ".json");
   const dirPath = path.join(process.cwd(), "server", "data");
@@ -406,73 +412,8 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  const uploadsDir = path.join(process.cwd(), "uploads");
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  }
-
-  // Server-side route to serve uploaded files with accurate Content-Type & Content-Disposition headers based on extension
-  app.get("/uploads/:filename", (req, res) => {
-    const filename = req.params.filename;
-    const safeFilename = path.basename(filename);
-    const filePath = path.join(uploadsDir, safeFilename);
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).send("Attachment file not found");
-    }
-
-    const ext = path.extname(safeFilename).toLowerCase();
-    let contentType = "application/octet-stream";
-
-    if (ext === ".pdf") {
-      contentType = "application/pdf";
-    } else if (ext === ".jpg" || ext === ".jpeg") {
-      contentType = "image/jpeg";
-    } else if (ext === ".png") {
-      contentType = "image/png";
-    } else if (ext === ".gif") {
-      contentType = "image/gif";
-    } else if (ext === ".webp") {
-      contentType = "image/webp";
-    } else if (ext === ".svg") {
-      contentType = "image/svg+xml";
-    } else if (ext === ".docx") {
-      contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    } else if (ext === ".doc") {
-      contentType = "application/msword";
-    } else if (ext === ".xlsx") {
-      contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    } else if (ext === ".xls") {
-      contentType = "application/vnd.ms-excel";
-    } else if (ext === ".txt") {
-      contentType = "text/plain";
-    } else if (ext === ".json") {
-      contentType = "application/json";
-    }
-
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(safeFilename)}"`);
-    res.setHeader("Cache-Control", "public, max-age=86400");
-    return res.sendFile(filePath);
-  });
-
-  app.use("/uploads", express.static(uploadsDir, {
-    setHeaders: (res, filePath) => {
-      const ext = path.extname(filePath).toLowerCase();
-      if (ext === ".pdf") {
-        res.setHeader("Content-Type", "application/pdf");
-      } else if (ext === ".jpg" || ext === ".jpeg") {
-        res.setHeader("Content-Type", "image/jpeg");
-      } else if (ext === ".png") {
-        res.setHeader("Content-Type", "image/png");
-      } else if (ext === ".gif") {
-        res.setHeader("Content-Type", "image/gif");
-      } else if (ext === ".webp") {
-        res.setHeader("Content-Type", "image/webp");
-      }
-      res.setHeader("Content-Disposition", "inline");
-    }
-  }));
+  // Serve uploaded files using the Express uploads router
+  app.use("/uploads", uploadsRouter);
 
   // Bootstrap JSON database user storage from root users.json if missing
   const dataDir = path.join(process.cwd(), "server", "data");
