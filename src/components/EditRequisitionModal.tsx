@@ -178,7 +178,7 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
     setSaving(true);
 
     try {
-      // Process and encode any new attachments (converting PDFs to JPEG for easy preview)
+      // Process and encode any new attachments
       const readPromises = newAttachments.map((file) => processFileToAttachmentStrings(file));
       const nestedEncoded = await Promise.all(readPromises);
       const encodedNew = nestedEncoded.flat();

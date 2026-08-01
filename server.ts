@@ -160,6 +160,10 @@ function convertBase64ToLocalFile(attachmentStr: string, uploadsDir: string, vps
     hasPrefix = true;
   }
   
+  if (dataUrl.startsWith("JVBERi") && !dataUrl.startsWith("data:")) {
+    dataUrl = `data:application/pdf;base64,${dataUrl}`;
+  }
+
   if (!dataUrl.startsWith("data:")) {
     return attachmentStr;
   }
@@ -173,8 +177,24 @@ function convertBase64ToLocalFile(attachmentStr: string, uploadsDir: string, vps
     const mimeType = matches[1];
     const base64Data = matches[2];
     const buffer = Buffer.from(base64Data, "base64");
+
+    let ext = "";
+    if (mimeType.includes("pdf")) ext = "pdf";
+    else if (mimeType.includes("png")) ext = "png";
+    else if (mimeType.includes("jpeg") || mimeType.includes("jpg")) ext = "jpg";
+    else if (mimeType.includes("gif")) ext = "gif";
+    else if (mimeType.includes("word") || mimeType.includes("document")) ext = "docx";
+    else {
+      const parts = fileName.split(".");
+      if (parts.length > 1) ext = parts[parts.length - 1];
+      else ext = "bin";
+    }
     
-    const cleanFileName = fileName.replace(/[^a-zA-Z0-9_.-]/g, "_");
+    let cleanFileName = fileName.replace(/[^a-zA-Z0-9_.-]/g, "_");
+    if (ext && !cleanFileName.toLowerCase().endsWith(`.${ext}`)) {
+      cleanFileName = `${cleanFileName}.${ext}`;
+    }
+
     const uniquePrefix = Math.random().toString(36).substring(2, 10) + "_" + Date.now();
     const uniqueFileName = `${uniquePrefix}_${cleanFileName}`;
     const filePath = path.join(uploadsDir, uniqueFileName);
@@ -186,13 +206,41 @@ function convertBase64ToLocalFile(attachmentStr: string, uploadsDir: string, vps
     fs.writeFileSync(filePath, buffer);
     
     const fileUrl = `/uploads/${uniqueFileName}`;
-    console.log(`[Base64 Purger] Converted base64 to VPS disk file: ${fileUrl}`);
+    console.log(`[Base64 Purger] Converted base64 attachment (${fileName}) to VPS disk file: ${fileUrl}`);
     
     return hasPrefix ? `${fileName}::${fileUrl}` : fileUrl;
   } catch (err: any) {
     console.error(`[Base64 Purger] Failed converting base64 attachment "${fileName}":`, err.message || err);
     return attachmentStr;
   }
+}
+
+function sanitizeRequisitionAttachments(item: any, uploadsDir: string): any {
+  if (!item || typeof item !== "object") return item;
+
+  let modified = false;
+  let rawAtts = item.attachments || item.attachment;
+
+  if (Array.isArray(rawAtts)) {
+    const cleanAtts = rawAtts.map((att: any) => {
+      if (typeof att === "string") {
+        const cleaned = convertBase64ToLocalFile(att, uploadsDir);
+        if (cleaned !== att) modified = true;
+        return cleaned;
+      }
+      return att;
+    });
+    if (modified) {
+      return { ...item, attachments: cleanAtts };
+    }
+  } else if (typeof rawAtts === "string") {
+    const cleaned = convertBase64ToLocalFile(rawAtts, uploadsDir);
+    if (cleaned !== rawAtts) {
+      return { ...item, attachments: [cleaned] };
+    }
+  }
+
+  return item;
 }
 
 
@@ -362,7 +410,69 @@ async function startServer() {
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
   }
-  app.use("/uploads", express.static(uploadsDir));
+
+  // Server-side route to serve uploaded files with accurate Content-Type & Content-Disposition headers based on extension
+  app.get("/uploads/:filename", (req, res) => {
+    const filename = req.params.filename;
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(uploadsDir, safeFilename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send("Attachment file not found");
+    }
+
+    const ext = path.extname(safeFilename).toLowerCase();
+    let contentType = "application/octet-stream";
+
+    if (ext === ".pdf") {
+      contentType = "application/pdf";
+    } else if (ext === ".jpg" || ext === ".jpeg") {
+      contentType = "image/jpeg";
+    } else if (ext === ".png") {
+      contentType = "image/png";
+    } else if (ext === ".gif") {
+      contentType = "image/gif";
+    } else if (ext === ".webp") {
+      contentType = "image/webp";
+    } else if (ext === ".svg") {
+      contentType = "image/svg+xml";
+    } else if (ext === ".docx") {
+      contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    } else if (ext === ".doc") {
+      contentType = "application/msword";
+    } else if (ext === ".xlsx") {
+      contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    } else if (ext === ".xls") {
+      contentType = "application/vnd.ms-excel";
+    } else if (ext === ".txt") {
+      contentType = "text/plain";
+    } else if (ext === ".json") {
+      contentType = "application/json";
+    }
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(safeFilename)}"`);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    return res.sendFile(filePath);
+  });
+
+  app.use("/uploads", express.static(uploadsDir, {
+    setHeaders: (res, filePath) => {
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext === ".pdf") {
+        res.setHeader("Content-Type", "application/pdf");
+      } else if (ext === ".jpg" || ext === ".jpeg") {
+        res.setHeader("Content-Type", "image/jpeg");
+      } else if (ext === ".png") {
+        res.setHeader("Content-Type", "image/png");
+      } else if (ext === ".gif") {
+        res.setHeader("Content-Type", "image/gif");
+      } else if (ext === ".webp") {
+        res.setHeader("Content-Type", "image/webp");
+      }
+      res.setHeader("Content-Disposition", "inline");
+    }
+  }));
 
   // Bootstrap JSON database user storage from root users.json if missing
   const dataDir = path.join(process.cwd(), "server", "data");
@@ -1039,7 +1149,8 @@ async function startServer() {
       if (mongoose.connection.readyState === 1) {
         const data = await mongoose.model('Requisition').find({}).sort({ createdAt: -1 }).lean();
         const cleanData = data.map((item: any) => {
-          const { _id, __v, ...rest } = item;
+          const sanitized = sanitizeRequisitionAttachments(item, uploadsDir);
+          const { _id, __v, ...rest } = sanitized;
           const snakeRest = toSnakeCase(rest);
           return { id: snakeRest.id || String(_id), ...snakeRest };
         });
@@ -1047,7 +1158,8 @@ async function startServer() {
       } else {
         const data = readJsonCollection("requisitions");
         const cleanData = data.map((item: any) => {
-          const { _id, __v, ...rest } = item;
+          const sanitized = sanitizeRequisitionAttachments(item, uploadsDir);
+          const { _id, __v, ...rest } = sanitized;
           const snakeRest = toSnakeCase(rest);
           return { id: snakeRest.id || String(_id), ...snakeRest };
         });
@@ -1065,7 +1177,8 @@ async function startServer() {
    */
   app.post("/api/requisitions", express.json({ limit: "50mb" }), async (req, res) => {
     try {
-      const body = req.body;
+      let body = req.body;
+      body = sanitizeRequisitionAttachments(body, uploadsDir);
       const id = body.id || `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       
       if (mongoose.connection.readyState === 1) {
@@ -3739,7 +3852,12 @@ async function startServer() {
       console.log(`[Google Drive] Successfully uploaded file "${fileName}" to Google Drive (Proxied): ${viewUrl}`);
       return `${fileName}::${viewUrl}`;
     } catch (err: any) {
-      console.error(`[Google Drive] Failed uploading attachment "${fileName}" to drive:`, err.message || err);
+      if (err?.message?.includes("invalid_grant") || err?.message?.includes("JWT") || err?.message?.includes("invalid_key")) {
+        cachedGoogleClients = null;
+        console.log(`[Google Drive] Invalid JWT grant when uploading attachment "${fileName}". Retaining local data.`);
+      } else {
+        console.warn(`[Google Drive] Failed uploading attachment "${fileName}" to drive:`, err.message || err);
+      }
       return attachmentStr;
     }
   }
@@ -3790,236 +3908,7 @@ async function startServer() {
     }
   });
 
-  // API Route for Google Sheets Synchronization (Durable Persistence & Quota Fallback)
-  app.post("/api/sync-to-sheet", async (req, res) => {
-    try {
-      const { requisition, sheetTitle: customSheetTitle } = req.body || {};
-      const reqObj = requisition || req.body;
 
-      if (!reqObj || !reqObj.id) {
-        return res.status(400).json({ error: "Missing required requisition data for sheets sync." });
-      }
-
-      const fy = reqObj.fiscalYear || new Date().getFullYear();
-      const sheetTitle = customSheetTitle || `STANDS Financial Records FY${fy}`;
-
-      // Upload attachments if any
-      let uploadedAttachments: string[] = [];
-      let driveClient: any = null;
-
-      try {
-        const clients = getGoogleClients();
-        driveClient = clients.drive;
-      } catch (e) {
-        // No drive credentials available
-      }
-
-      if (Array.isArray(reqObj.attachments) && reqObj.attachments.length > 0) {
-        if (driveClient) {
-          uploadedAttachments = await Promise.all(
-            reqObj.attachments.map((att: string) => uploadAttachmentToDrive(att, driveClient))
-          );
-        } else {
-          uploadedAttachments = reqObj.attachments;
-        }
-      }
-
-      // Try Google Sheets sync
-      try {
-        const clients = getGoogleClients();
-        const sheets = clients.sheets;
-        const drive = clients.drive;
-
-        let spreadsheetId: string | null = null;
-        try {
-          const listRes = await drive.files.list({
-            q: `name = '${sheetTitle}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`,
-            fields: "files(id, name, webViewLink)",
-            spaces: "drive",
-          });
-
-          if (listRes.data?.files && listRes.data.files.length > 0) {
-            spreadsheetId = listRes.data.files[0].id;
-          } else {
-            const createRes = await sheets.spreadsheets.create({
-              requestBody: {
-                properties: { title: sheetTitle },
-                sheets: [
-                  {
-                    properties: { title: "Requisitions" },
-                    data: [
-                      {
-                        rowData: [
-                          {
-                            values: [
-                              { userEnteredValue: { stringValue: "Requisition ID" } },
-                              { userEnteredValue: { stringValue: "Submitted At" } },
-                              { userEnteredValue: { stringValue: "Requester Name" } },
-                              { userEnteredValue: { stringValue: "Requester Email" } },
-                              { userEnteredValue: { stringValue: "Group / Department" } },
-                              { userEnteredValue: { stringValue: "Title / Purpose" } },
-                              { userEnteredValue: { stringValue: "Amount (KES)" } },
-                              { userEnteredValue: { stringValue: "Status" } },
-                              { userEnteredValue: { stringValue: "Payable To" } },
-                              { userEnteredValue: { stringValue: "Attachments" } },
-                            ],
-                          },
-                        ],
-                      },
-                    ],
-                  },
-                ],
-              },
-            });
-            spreadsheetId = createRes.data.spreadsheetId;
-          }
-        } catch (driveErr: any) {
-          console.warn("[Google Sheets] Spreadsheet lookup/creation failed:", driveErr.message || driveErr);
-          if (driveErr?.message?.includes("invalid_grant") || driveErr?.message?.includes("JWT")) {
-            cachedGoogleClients = null;
-          }
-        }
-
-        if (spreadsheetId) {
-          const values = [
-            [
-              reqObj.id || "",
-              reqObj.submittedAt || reqObj.createdAt || new Date().toISOString(),
-              reqObj.requesterName || "",
-              reqObj.requesterEmail || "",
-              reqObj.groupName || reqObj.groupId || "",
-              reqObj.title || "",
-              reqObj.amount || 0,
-              reqObj.status || "SUBMITTED",
-              reqObj.payableTo || "",
-              (uploadedAttachments || []).join("; "),
-            ],
-          ];
-
-          await sheets.spreadsheets.values.append({
-            spreadsheetId,
-            range: "Requisitions!A:J",
-            valueInputOption: "USER_ENTERED",
-            requestBody: { values },
-          });
-
-          return res.json({
-            success: true,
-            mode: "google_sheets_live",
-            message: `Successfully synced requisition ${reqObj.id} to Google Sheets.`,
-            sheetTitle,
-            spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}`,
-            uploadedAttachments,
-          });
-        }
-      } catch (sheetsErr: any) {
-        console.warn("[Google Sheets Live Sync Failed, falling back to simulated ledger]:", sheetsErr.message || sheetsErr);
-      }
-
-      // Fallback to simulated offline sheets ledger
-      const fallbackResult = handleOfflineFallback({ ...reqObj, attachments: uploadedAttachments }, sheetTitle);
-      return res.json({
-        ...fallbackResult,
-        uploadedAttachments,
-      });
-    } catch (err: any) {
-      console.error("[/api/sync-to-sheet error]:", err);
-      return res.status(500).json({
-        error: err.message || "Failed to execute Google Sheets sync",
-        uploadedAttachments: req.body?.requisition?.attachments || [],
-      });
-    }
-  });
-
-  app.post("/api/backup-all-to-sheets", async (req, res) => {
-    try {
-      const requisitions = req.body?.requisitions || readJsonCollection("requisitions") || [];
-      const users = req.body?.users || readJsonCollection("users") || [];
-
-      const sheetTitle = `STANDS Financial Records FY${new Date().getFullYear()} Backup`;
-
-      try {
-        const clients = getGoogleClients();
-        const sheets = clients.sheets;
-        const drive = clients.drive;
-
-        let spreadsheetId: string | null = null;
-        const listRes = await drive.files.list({
-          q: `name = '${sheetTitle}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`,
-          fields: "files(id, name)",
-          spaces: "drive",
-        });
-
-        if (listRes.data?.files && listRes.data.files.length > 0) {
-          spreadsheetId = listRes.data.files[0].id;
-        } else {
-          const createRes = await sheets.spreadsheets.create({
-            requestBody: {
-              properties: { title: sheetTitle },
-              sheets: [
-                { properties: { title: "Requisitions" } },
-                { properties: { title: "Users" } },
-              ],
-            },
-          });
-          spreadsheetId = createRes.data.spreadsheetId;
-        }
-
-        if (spreadsheetId) {
-          const reqRows = [
-            ["ID", "Submitted At", "Requester", "Group", "Title", "Amount", "Status", "Payable To"],
-            ...requisitions.map((r: any) => [
-              r.id || "",
-              r.submittedAt || r.createdAt || "",
-              r.requesterName || "",
-              r.groupName || r.groupId || "",
-              r.title || "",
-              r.amount || 0,
-              r.status || "",
-              r.payableTo || "",
-            ]),
-          ];
-
-          await sheets.spreadsheets.values.update({
-            spreadsheetId,
-            range: "Requisitions!A1",
-            valueInputOption: "USER_ENTERED",
-            requestBody: { values: reqRows },
-          });
-
-          return res.json({
-            success: true,
-            mode: "google_sheets_live",
-            message: `Successfully backed up ${requisitions.length} requisitions and ${users.length} users to Google Sheets.`,
-            sheetTitle,
-            spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}`,
-            backupCount: requisitions.length,
-          });
-        }
-      } catch (sheetsErr: any) {
-        console.warn("[Google Sheets Bulk Backup Live Failed, using local simulated fallback]:", sheetsErr.message || sheetsErr);
-      }
-
-      // Offline simulated backup fallback
-      const backupPath = path.join(process.cwd(), "financial_records_google_sheets_simulated.json");
-      fs.writeFileSync(backupPath, JSON.stringify({ requisitions, users, backedUpAt: new Date().toISOString() }, null, 2), "utf-8");
-
-      return res.json({
-        success: true,
-        mode: "simulated_fallback",
-        message: `Successfully backed up ${requisitions.length} requisitions and ${users.length} users to simulated Sheets ledger.`,
-        sheetTitle,
-        spreadsheetUrl: "#simulated-google-sheets",
-        backupCount: requisitions.length,
-      });
-    } catch (err: any) {
-      console.error("[/api/backup-all-to-sheets error]:", err);
-      return res.status(500).json({
-        success: false,
-        error: err.message || "Failed to execute bulk backup to Google Sheets",
-      });
-    }
-  });
 
   app.post("/api/backup-all-to-drive", async (req, res) => {
     try {

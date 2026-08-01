@@ -3742,63 +3742,6 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [users, currentUser]);
 
-  const syncRequisitionToGoogleSheets = useCallback(async (req: Requisition) => {
-    try {
-      const response = await fetch("/api/sync-to-sheet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requisition: req })
-      });
-      const text = await response.text();
-      let data: any = {};
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch (pErr) {
-        data = { error: "Server returned non-JSON response" };
-      }
-      if (!response.ok) {
-        console.log("Failed to sync to Google Sheets:", data.error || response.statusText);
-      } else {
-        console.log(`[Google Sheets] Synced Requisition ${req.id} successfully:`, data);
-
-        // If newly uploaded Google Drive URLs were returned, persist them back to Firestore
-        if (data.uploadedAttachments && Array.isArray(data.uploadedAttachments) && data.uploadedAttachments.length > 0) {
-          const hasChanged = JSON.stringify(data.uploadedAttachments) !== JSON.stringify(req.attachments);
-          if (hasChanged && !isFirestoreQuotaExceeded()) {
-            try {
-              await updateDoc(doc(db, "requisitions", req.id), {
-                attachments: data.uploadedAttachments,
-                updatedAt: new Date().toISOString()
-              });
-              console.log(`[Google Drive Sync] Successfully updated requisition ${req.id} firestore attachments with Drive URLs.`);
-              setRequisitions(prev => prev.map(r => r.id === req.id ? { ...r, attachments: data.uploadedAttachments } : r));
-            } catch (fsErr) {
-              console.log("Failed to update firestore attachments with Google Drive URLs:", fsErr);
-            }
-          }
-        }
-
-        if (data.mode === "simulated_fallback") {
-          addSystemLog("SYNC_WARM_WARNING", `Firestore synced to Local Google Sheet Simulation Ledger: '${req.title}'`, {
-            requisitionId: req.id,
-            mode: data.mode,
-            sheetTitle: data.sheetTitle
-          }).catch(() => {});
-        } else {
-          addSystemLog("SYNC_SUCCESSFUL", `Requisition synced to online sheet 'STANDS Financial Records FY${req.fiscalYear || 2026}': '${req.title}'`, {
-            requisitionId: req.id,
-            mode: data.mode,
-            spreadsheetUrl: data.spreadsheetUrl,
-            sheetTitle: data.sheetTitle
-          }).catch(() => {});
-        }
-      }
-      return data;
-    } catch (err) {
-      console.error("Error executing Google Sheets Sync:", err);
-    }
-  }, [addSystemLog]);
-
   const addRequisition = useCallback(async (reqData: any) => {
     return withDbLoading("Submitting requisition to database...", async () => {
       if (!navigator.onLine) {
@@ -3841,8 +3784,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setRequisitions(prev => [newReq, ...prev.filter(r => r.id !== id)]);
 
     if (isFirestoreQuotaExceeded()) {
-      console.log("[Quota Fallback] Firestore Daily limits exceeded. Adding requisition local state + Sheets Sync.");
-      addSystemLog("QUOTA_FALLBACK_ACTIVE", `Firestore daily write quota exceeded. Synchronized requisition '${newReq.title}' directly to Google Sheets for isolation target.`, {
+      console.log("[Quota Fallback] Firestore Daily limits exceeded. Adding requisition local state.");
+      addSystemLog("QUOTA_FALLBACK_ACTIVE", `Firestore daily write quota exceeded. Requisition '${newReq.title}' saved locally.`, {
         requisitionId: id,
         title: newReq.title,
         amount: newReq.amount,
@@ -3852,7 +3795,6 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (newReq.status === RequisitionStatus.SUBMITTED) {
         sendEmailNotification(newReq, "SUBMITTED").catch(() => {});
       }
-      await syncRequisitionToGoogleSheets(newReq);
       return;
     }
 
@@ -3881,7 +3823,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       handleFirestoreError(err, OperationType.CREATE, `requisitions/${id}`);
     }
     });
-  }, [addSystemLog, systemSettings, projects, syncProjectAmounts, setRequisitions, syncRequisitionToGoogleSheets, withDbLoading]);
+  }, [addSystemLog, systemSettings, projects, syncProjectAmounts, setRequisitions, withDbLoading]);
 
   const updateRequisitionStatus = useCallback(async (
     id: string, 
@@ -3947,7 +3889,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       setRequisitions(prev => prev.map(r => r.id === id ? updatedReq : r));
 
-      addSystemLog("QUOTA_FALLBACK_ACTIVE", `Firestore write limits exceeded. Requisition '${req.title}' updated locally to status '${status}' and synced to Google Sheets.`, {
+      addSystemLog("QUOTA_FALLBACK_ACTIVE", `Firestore write limits exceeded. Requisition '${req.title}' updated locally to status '${status}'.`, {
         requisitionId: id,
         newStatus: status
       }).catch(() => {});
@@ -3961,7 +3903,6 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
          );
       }
 
-      await syncRequisitionToGoogleSheets(updatedReq);
       return;
     }
 
@@ -4073,10 +4014,6 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       await databaseService.saveRequisition(cleanFirestoreData(updatedReq));
       
       // Fire-and-forget background operations
-      if (status === RequisitionStatus.APPROVED_L1 || status === RequisitionStatus.APPROVED_L2 || status === RequisitionStatus.DISBURSED) {
-        syncRequisitionToGoogleSheets(updatedReq).catch(() => {});
-      }
-      
       if (status === RequisitionStatus.APPROVED_L1 || status === RequisitionStatus.APPROVED_L2 || status === RequisitionStatus.DISBURSED || status === RequisitionStatus.REJECTED) {
          sendEmailNotification(
            updatedReq, 
@@ -4113,7 +4050,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       handleFirestoreError(err, OperationType.UPDATE, `requisitions/${id}`);
     }
     });
-  }, [currentUser, addSystemLog, systemSettings, syncProjectAmounts, setRequisitions, syncRequisitionToGoogleSheets, withDbLoading]);
+  }, [currentUser, addSystemLog, systemSettings, syncProjectAmounts, setRequisitions, withDbLoading]);
 
   const enrollBiometric = useCallback((enabled: boolean = true) => {
     setBiometricEnrolled(enabled);
@@ -4177,7 +4114,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       setRequisitions(prev => prev.map(r => r.id === id ? updatedReq : r));
 
-      addSystemLog("QUOTA_FALLBACK_ACTIVE", `Firestore write limits exceeded. Requisition '${id}' edited locally and synced to Google Sheets.`, {
+      addSystemLog("QUOTA_FALLBACK_ACTIVE", `Firestore write limits exceeded. Requisition '${id}' edited locally.`, {
         requisitionId: id,
         updates
       }).catch(() => {});
@@ -4186,7 +4123,6 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         sendEmailNotification(updatedReq, "SUBMITTED").catch(() => {});
       }
 
-      await syncRequisitionToGoogleSheets(updatedReq);
       return;
     }
 
@@ -4212,8 +4148,6 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         sendEmailNotification(updatedReq, "SUBMITTED").catch(() => {});
       }
 
-      await syncRequisitionToGoogleSheets(updatedReq);
-
       if (currentReq.projectId) {
         await syncProjectAmounts(currentReq.projectId);
       }
@@ -4224,7 +4158,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       handleFirestoreError(err, OperationType.UPDATE, `requisitions/${id}`);
     }
     });
-  }, [addSystemLog, db, systemSettings, syncProjectAmounts, requisitions, setRequisitions, syncRequisitionToGoogleSheets, withDbLoading]);
+  }, [addSystemLog, db, systemSettings, syncProjectAmounts, requisitions, setRequisitions, withDbLoading]);
 
   const uploadReceipts = useCallback(async (id: string, newReceipts: string[]) => {
     try {

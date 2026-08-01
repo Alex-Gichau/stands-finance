@@ -488,7 +488,7 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
         return;
       }
 
-      // Convert all local attachments (converting PDFs to JPEG for easy preview)
+      // Process all local attachments
       const readPromises = attachments.map((file) => processFileToAttachmentStrings(file));
       const nestedEncoded = await Promise.all(readPromises);
       const encodedAttachments = nestedEncoded.flat();

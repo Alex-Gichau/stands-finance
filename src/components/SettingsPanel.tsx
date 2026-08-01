@@ -107,49 +107,6 @@ export const SettingsPanel: React.FC = () => {
 
   const devices = Array.isArray(localActiveDevices) ? localActiveDevices : [];
 
-  const runFullBackup = async () => {
-    setIsBackingUp(true);
-    setBackupResult(null);
-    try {
-      const response = await fetch("/api/backup-all-to-sheets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requisitions, users })
-      });
-      const text = await response.text();
-      let data: any = {};
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch (pErr) {
-        data = { success: false, error: "Server returned non-JSON response." };
-      }
-      setBackupResult(data);
-      if (response.ok && data.success) {
-        triggerToast({
-          type: "SYSTEM_INFO",
-          severity: "MEDIUM",
-          message: `Successfully completed backup of ${requisitions.length} requisitions and ${users.length} users to Google Sheets.`,
-          timestamp: new Date().toISOString()
-        });
-      } else {
-        triggerToast({
-          type: "SYSTEM_INFO",
-          severity: "HIGH",
-          message: data.error || "Failed to complete data backup to Sheets.",
-          timestamp: new Date().toISOString()
-        });
-      }
-    } catch (err: any) {
-      console.error(err);
-      setBackupResult({
-        success: false,
-        message: err.message || "Failed to contact Google Workspace sync endpoint."
-      });
-    } finally {
-      setIsBackingUp(false);
-    }
-  };
-
   // Slack Notification States and Live Dispatchers (Prompt 6)
   const [slackActionLoading, setSlackActionLoading] = React.useState<{ [key: string]: boolean }>({});
   const [slackActionResult, setSlackActionResult] = React.useState<any | null>(null);
@@ -1375,82 +1332,6 @@ sudo systemctl enable mongod`}
               >
                 <Cloud size={14} />
                 <span>Manage Drive Backup & View Logs</span>
-              </button>
-            </section>
-
-            {/* Google Sheets Data Backup Section */}
-            <section className="bg-card rounded-[2rem] border border-border p-8 shadow-sm transition-all space-y-6">
-              <div className="flex items-center gap-3">
-                <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 font-bold text-lg">
-                  📊
-                </span>
-                <div>
-                  <h3 className="text-xs font-black text-foreground uppercase tracking-[0.2em]">Sheets Backup Drive</h3>
-                  <p className="text-[9px] text-muted uppercase tracking-widest mt-1 font-mono">Workspace API Backup Sink</p>
-                </div>
-              </div>
-
-              <p className="text-[10px] text-muted leading-relaxed font-semibold">
-                Performs a secure bulk audit upload of all matching record indices to designated Google Sheets isolation sheets, dynamically mapped and archived according to their respective Fiscal Years.
-              </p>
-
-              {backupResult && (
-                <motion.div
-                  initial={{ opacity: 0, y: 5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`p-4 rounded-2xl border text-[10px] font-mono leading-relaxed space-y-2 ${
-                    backupResult.mode === "online"
-                      ? "bg-emerald-500/5 border-emerald-200/50 text-emerald-800 dark:text-emerald-300 dark:border-emerald-900/30"
-                      : "bg-rose-500/5 border-rose-200/50 text-rose-800 dark:text-rose-300 dark:border-rose-900/30"
-                  }`}
-                >
-                  <div className="font-bold uppercase tracking-wider flex items-center gap-1.5 text-[11px] text-slate-800 dark:text-slate-100">
-                    {backupResult.mode === "online" ? "🟢 Synchronization Authorized" : "🟡 Synced to Simulated Local Pool"}
-                  </div>
-                  <div className="space-y-1.5">
-                    <div>{backupResult.message}</div>
-                    {Array.isArray(backupResult?.backupSummary) && backupResult.backupSummary.map((summary: any, sIdx: number) => (
-                      <div key={sIdx} className="pt-2 border-t border-slate-200/30 dark:border-slate-800/50">
-                        <div className="font-bold text-foreground">Fiscal Year: {summary.fiscalYear}</div>
-                        <div>Sheet Title: {summary.sheetTitle}</div>
-                        <div>Indexed: Row Appends ({summary.appendedCount}) | Overwrites ({summary.updatedCount})</div>
-                        {summary.spreadsheetUrl && summary.mode !== "simulated_fallback" && (
-                          <a
-                            href={summary.spreadsheetUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 dark:hover:text-emerald-300 underline font-semibold inline-flex items-center gap-1 mt-1 font-sans cursor-pointer text-xs"
-                          >
-                            Explore Spreadsheet Ledger
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-
-              <button
-                type="button"
-                onClick={runFullBackup}
-                disabled={isBackingUp || requisitions.length === 0}
-                className={`w-full py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm ${
-                  isBackingUp
-                    ? "bg-slate-100 text-slate-400 dark:bg-slate-800"
-                    : "bg-emerald-600 hover:bg-emerald-700 text-white hover:shadow-lg hover:shadow-emerald-200/50"
-                }`}
-              >
-                {isBackingUp ? (
-                  <>
-                    <RefreshCw size={14} className="animate-spin" />
-                    Backing Up ({requisitions.length} Records)...
-                  </>
-                ) : (
-                  <>
-                    <Database size={14} />
-                    Initiate Data Backup
-                  </>
-                )}
               </button>
             </section>
 
