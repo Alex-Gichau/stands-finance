@@ -733,7 +733,7 @@ const PdfDocumentViewer = ({
 
         {iframeUrl && (
           <iframe
-            src={`${iframeUrl}#toolbar=1&navpanes=0`}
+            src={iframeUrl.startsWith("blob:") ? iframeUrl : `${iframeUrl}#toolbar=1&navpanes=0`}
             title={docProps.name}
             onLoad={() => setIsIframeLoaded(true)}
             className={`w-full h-full flex-1 border-0 min-h-[500px] md:min-h-[650px] bg-slate-950 rounded-b-3xl transition-opacity duration-300 ${
