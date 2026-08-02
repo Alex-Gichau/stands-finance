@@ -35,6 +35,9 @@ router.get("/:filename", (req, res, next) => {
   const filePath = path.join(uploadsDir, safeFilename);
 
   if (!fs.existsSync(filePath)) {
+    if (safeFilename.endsWith(".js") || safeFilename.includes("sw.js")) {
+      return res.status(404).type("application/javascript").send("// Script or service worker not found in uploads");
+    }
     return next();
   }
 

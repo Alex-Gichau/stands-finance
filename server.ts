@@ -4697,6 +4697,9 @@ async function startServer() {
 
   // Avoid letting unmatched /uploads or /api/attachments requests fall through to SPA wildcard index.html
   app.use(["/uploads", "/api/attachments"], (req, res) => {
+    if (req.path.endsWith(".js") || req.path.includes("sw.js")) {
+      return res.status(404).type("application/javascript").send("// Script or service worker not found");
+    }
     res.status(404).json({ error: "Attachment not found on disk or storage provider." });
   });
 
