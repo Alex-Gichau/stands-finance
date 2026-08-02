@@ -6,14 +6,15 @@ import mime from "mime-types";
 const router = express.Router();
 const uploadsDir = path.join(process.cwd(), "uploads");
 
+// Ensure the ./uploads directory exists
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
 /**
- * Express router serving files from './uploads' directory.
- * Configured with express.static middleware and custom header resolution via 'mime-types'
- * to ensure all uploaded attachments (PDFs, images, docs) are viewable and downloadable by browsers.
+ * Express router serving static files from the './uploads' directory.
+ * Uses 'mime-types' to dynamically set the Content-Type header based on the file extension
+ * (e.g., application/pdf for .pdf) and inline Content-Disposition so documents render seamlessly.
  */
 router.use(
   express.static(uploadsDir, {
@@ -27,18 +28,17 @@ router.use(
   })
 );
 
-// Direct route handler to guarantee file serving with mime-types header setup
-router.get("/:filename", (req, res, next) => {
+// Explicit route handler for /:filename guaranteeing exact Content-Type headers via mime-types
+router.get("/:filename", (req, res) => {
   const filename = req.params.filename;
   const safeFilename = path.basename(filename);
   const filePath = path.join(uploadsDir, safeFilename);
 
   if (!fs.existsSync(filePath)) {
-    return next();
+    return res.status(404).json({ error: "Attachment file not found" });
   }
 
   const contentType = mime.lookup(safeFilename) || "application/octet-stream";
-
   res.setHeader("Content-Type", contentType);
   res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(safeFilename)}"`);
   res.setHeader("Cache-Control", "public, max-age=86400");
