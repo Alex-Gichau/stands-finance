@@ -4162,25 +4162,60 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const uploadReceipts = useCallback(async (id: string, newReceipts: string[]) => {
     try {
-      const reqRef = doc(db, "requisitions", id);
-      const reqSnap = await getDoc(reqRef);
-      if (!reqSnap.exists()) return;
-      const data = reqSnap.data() as Requisition;
-      const currentReceipts = data.receipts || [];
+      const existingReq = requisitions.find(r => r.id === id);
+      if (existingReq && existingReq.status !== RequisitionStatus.DISBURSED) {
+        triggerToast({
+          type: "SECURITY_UPDATE",
+          severity: "MEDIUM",
+          message: "Receipts can only be attached after all approvals are confirmed and disbursement is done.",
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      if (!skipFirestore && db) {
+        const reqRef = doc(db, "requisitions", id);
+        const reqSnap = await getDoc(reqRef);
+        if (reqSnap.exists()) {
+          const data = reqSnap.data() as Requisition;
+          if (data.status !== RequisitionStatus.DISBURSED) {
+            triggerToast({
+              type: "SECURITY_UPDATE",
+              severity: "MEDIUM",
+              message: "Receipts can only be attached after all approvals are confirmed and disbursement is done.",
+              timestamp: new Date().toISOString()
+            });
+            return;
+          }
+          const currentReceipts = data.receipts || [];
+          const localUploadedReceipts = await uploadAttachmentsToLocalServer(newReceipts);
+          const updatedReceipts = [...currentReceipts, ...localUploadedReceipts];
+          
+          const updatedAt = new Date().toISOString();
+          await updateDoc(reqRef, {
+            receipts: updatedReceipts,
+            updatedAt
+          });
+          setRequisitions(prev => prev.map(r => r.id === id ? { ...r, receipts: updatedReceipts, updatedAt } : r));
+          await addSystemLog("RECEIPTS_UPLOADED", `Uploaded ${newReceipts.length} receipts to Requisition ID: ${id}`, { requisitionId: id, currentReceiptCount: updatedReceipts.length });
+          return;
+        }
+      }
+
       const localUploadedReceipts = await uploadAttachmentsToLocalServer(newReceipts);
-      const updatedReceipts = [...currentReceipts, ...localUploadedReceipts];
-      
       const updatedAt = new Date().toISOString();
-      await updateDoc(reqRef, {
-        receipts: updatedReceipts,
-        updatedAt
-      });
-      setRequisitions(prev => prev.map(r => r.id === id ? { ...r, receipts: updatedReceipts, updatedAt } : r));
-      await addSystemLog("RECEIPTS_UPLOADED", `Uploaded ${newReceipts.length} receipts to Requisition ID: ${id}`, { requisitionId: id, currentReceiptCount: updatedReceipts.length });
+      setRequisitions(prev => prev.map(r => {
+        if (r.id === id) {
+          const currentReceipts = r.receipts || [];
+          return { ...r, receipts: [...currentReceipts, ...localUploadedReceipts], updatedAt };
+        }
+        return r;
+      }));
+      await addSystemLog("RECEIPTS_UPLOADED", `Uploaded ${newReceipts.length} receipts to Requisition ID: ${id}`, { requisitionId: id });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `requisitions/${id}`);
     }
-  }, [addSystemLog, setRequisitions]);
+  }, [addSystemLog, db, requisitions, setRequisitions, skipFirestore, triggerToast]);
 
   const clearWebTransactions = useCallback(async () => {
     return withDbLoading("Clearing web transactions from database...", async () => {

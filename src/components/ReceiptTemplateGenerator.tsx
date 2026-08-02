@@ -4,9 +4,9 @@
  */
 
 import React, { useRef, useState, useMemo } from "react";
-import { Requisition } from "../types";
+import { Requisition, RequisitionStatus } from "../types";
 import { formatCurrency, formatDate, cn } from "../lib/utils";
-import { Printer, Download, X, FileText, CheckCircle, Paperclip, Loader2, Image as ImageIcon } from "lucide-react";
+import { Printer, Download, X, FileText, CheckCircle, Paperclip, Loader2, Image as ImageIcon, Lock } from "lucide-react";
 import { motion } from "motion/react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { printRequisitionReceipt, downloadReceiptHtml, getReceiptFileName } from "../utils/exportUtils";
@@ -75,6 +75,11 @@ export const ReceiptTemplateGenerator: React.FC<ReceiptTemplateGeneratorProps> =
 
   const attachToRequisition = async () => {
     if (!receiptRef.current) return;
+
+    if (req.status !== RequisitionStatus.DISBURSED) {
+      alert("Receipts can only be attached after all approvals are confirmed and disbursement is completed.");
+      return;
+    }
     
     setIsAttaching(true);
     try {
@@ -280,16 +285,27 @@ export const ReceiptTemplateGenerator: React.FC<ReceiptTemplateGeneratorProps> =
 
             <button 
               onClick={attachToRequisition}
-              disabled={isAttaching || attached}
+              disabled={isAttaching || attached || req.status !== RequisitionStatus.DISBURSED}
               className={cn(
                 "px-4 py-2.5 border rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
-                attached 
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-700" 
-                  : "bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100"
+                req.status !== RequisitionStatus.DISBURSED
+                  ? "bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-70"
+                  : attached 
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-700" 
+                    : "bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100"
               )}
-              title="Attach receipt image directly to requisition record"
+              title={
+                req.status !== RequisitionStatus.DISBURSED
+                  ? "Receipts can only be attached after all approvals are confirmed and disbursement is completed"
+                  : "Attach receipt image directly to requisition record"
+              }
             >
-              {isAttaching ? (
+              {req.status !== RequisitionStatus.DISBURSED ? (
+                <>
+                  <Lock size={14} className="text-slate-400" />
+                  <span>Attach (Disbursement Required)</span>
+                </>
+              ) : isAttaching ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
                   <span>Attaching...</span>

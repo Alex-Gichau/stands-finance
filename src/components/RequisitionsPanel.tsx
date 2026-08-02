@@ -50,7 +50,8 @@ import {
   Store,
   ExternalLink,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Lock
 } from "lucide-react";
 import { Info, HardDrive, Mail, UserPlus } from "lucide-react";
 import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionContext";
@@ -541,7 +542,7 @@ const PdfDocumentViewer = ({
 
   useEffect(() => {
     setIsIframeLoaded(false);
-    let activeUrl = pdfSourceUrl;
+    let isCancelled = false;
 
     // Revoke previous blob URL if exists to prevent memory accumulation
     if (createdBlobUrlRef.current) {
@@ -561,13 +562,36 @@ const PdfDocumentViewer = ({
         const blob = new Blob([array], { type: "application/pdf" });
         const newBlobUrl = URL.createObjectURL(blob);
         createdBlobUrlRef.current = newBlobUrl;
-        activeUrl = newBlobUrl;
+        setIframeUrl(newBlobUrl);
       } catch (e) {
         console.error("Failed to parse base64 PDF to blob URL:", e);
+        setIframeUrl(pdfSourceUrl);
       }
+    } else if (
+      pdfSourceUrl.startsWith("/uploads/") ||
+      pdfSourceUrl.startsWith("http://") ||
+      pdfSourceUrl.startsWith("https://")
+    ) {
+      // Fetch file from server uploads and convert to client Blob URL for iframe rendering
+      fetch(pdfSourceUrl)
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+          return res.blob();
+        })
+        .then((blob) => {
+          if (isCancelled) return;
+          const pdfBlob = new Blob([blob], { type: "application/pdf" });
+          const newBlobUrl = URL.createObjectURL(pdfBlob);
+          createdBlobUrlRef.current = newBlobUrl;
+          setIframeUrl(newBlobUrl);
+        })
+        .catch((err) => {
+          console.error("Failed to fetch server PDF for blob conversion:", err);
+          if (!isCancelled) setIframeUrl(pdfSourceUrl);
+        });
+    } else {
+      setIframeUrl(pdfSourceUrl);
     }
-
-    setIframeUrl(activeUrl);
 
     // Fallback timer ensures skeleton clears if iframe onLoad event is suppressed by native pdf plugin
     const timer = setTimeout(() => {
@@ -575,6 +599,7 @@ const PdfDocumentViewer = ({
     }, 2000);
 
     return () => {
+      isCancelled = true;
       clearTimeout(timer);
       if (createdBlobUrlRef.current) {
         URL.revokeObjectURL(createdBlobUrlRef.current);
@@ -2866,6 +2891,15 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
   };
 
   const handleCaptureReceipt = async (file: File) => {
+    if (req.status !== RequisitionStatus.DISBURSED) {
+      triggerToast({
+        type: "SECURITY_UPDATE",
+        severity: "MEDIUM",
+        message: "Receipts can only be attached after all approvals are confirmed and disbursement is done.",
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
     setIsUploadingReceipt(true);
     try {
       const base64data = await new Promise<string>((resolve, reject) => {
@@ -3425,30 +3459,52 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
 
               <section className="space-y-3 md:space-y-4">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-                  <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Attachments</h4>
-                  <button 
-                    onClick={() => setIsCameraOpen(true)}
-                    disabled={isUploadingReceipt}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-750 border border-slate-200 hover:border-slate-300 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shrink-0"
-                  >
-                    {isUploadingReceipt ? <Loader2 size={12} className="animate-spin text-primary" /> : <Camera size={12} className="text-primary" />}
-                    <span>{isUploadingReceipt ? "Uploading..." : "Snap Receipt Image"}</span>
-                  </button>
+                  <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Attachments & Receipts</h4>
+                  {req.status === RequisitionStatus.DISBURSED ? (
+                    <button 
+                      onClick={() => setIsCameraOpen(true)}
+                      disabled={isUploadingReceipt}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-750 border border-slate-200 hover:border-slate-300 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shrink-0"
+                    >
+                      {isUploadingReceipt ? <Loader2 size={12} className="animate-spin text-primary" /> : <Camera size={12} className="text-primary" />}
+                      <span>{isUploadingReceipt ? "Uploading..." : "Snap Receipt Image"}</span>
+                    </button>
+                  ) : (
+                    <span 
+                      className="text-[9px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-400 px-2.5 py-1 rounded-lg border border-amber-200/60 dark:border-amber-800/60 flex items-center gap-1.5 shrink-0"
+                      title="Receipts can only be attached after all approvals are confirmed and disbursement is completed"
+                    >
+                      <Lock size={11} />
+                      Attach Receipt (Requires Disbursement)
+                    </span>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-4">
-                   <button 
-                     onClick={() => setIsCameraOpen(true)}
-                     disabled={isUploadingReceipt}
-                     className="w-20 h-20 md:w-24 md:h-24 bg-slate-50 border border-dashed border-slate-300 rounded-2xl hover:border-primary/40 hover:shadow-sm transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 overflow-hidden relative shadow-sm shrink-0 group"
-                     title="Snap Receipt using Camera"
-                   >
-                     <div className="text-slate-400 group-hover:text-primary transition-colors">
-                       {isUploadingReceipt ? <Loader2 size={18} className="animate-spin text-primary" /> : <Camera size={18} />}
+                   {req.status === RequisitionStatus.DISBURSED ? (
+                     <button 
+                       onClick={() => setIsCameraOpen(true)}
+                       disabled={isUploadingReceipt}
+                       className="w-20 h-20 md:w-24 md:h-24 bg-slate-50 border border-dashed border-slate-300 rounded-2xl hover:border-primary/40 hover:shadow-sm transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 overflow-hidden relative shadow-sm shrink-0 group"
+                       title="Snap Receipt using Camera"
+                     >
+                       <div className="text-slate-400 group-hover:text-primary transition-colors">
+                         {isUploadingReceipt ? <Loader2 size={18} className="animate-spin text-primary" /> : <Camera size={18} />}
+                       </div>
+                       <span className="text-[7.5px] font-black text-slate-500 group-hover:text-primary transition-colors uppercase tracking-widest leading-none mt-1 text-center font-sans">
+                         {isUploadingReceipt ? "Uploading..." : "Snap Camera"}
+                       </span>
+                     </button>
+                   ) : (
+                     <div 
+                       className="w-20 h-20 md:w-24 md:h-24 bg-slate-100/60 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700/60 rounded-2xl flex flex-col items-center justify-center gap-1 p-2 text-center shrink-0 cursor-not-allowed opacity-60"
+                       title="Receipt attachment requires full approval confirmation and completed disbursement"
+                     >
+                       <Lock size={16} className="text-slate-400" />
+                       <span className="text-[7.5px] font-bold text-slate-400 uppercase tracking-tight leading-tight">
+                         Attach Receipt (Pending Payout)
+                       </span>
                      </div>
-                     <span className="text-[7.5px] font-black text-slate-500 group-hover:text-primary transition-colors uppercase tracking-widest leading-none mt-1 text-center font-sans">
-                       {isUploadingReceipt ? "Uploading..." : "Snap Camera"}
-                     </span>
-                   </button>
+                   )}
 
                    {req.attachments?.map((attachment: any, i: number) => {
                      let name = typeof attachment === 'string' ? attachment : (attachment?.name || 'Attachment');
