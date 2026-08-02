@@ -536,8 +536,10 @@ const PdfDocumentViewer = ({
   }, [docProps.url, docProps.name, isPdfStream]);
 
   const [iframeUrl, setIframeUrl] = useState<string>("");
+  const [isIframeLoaded, setIsIframeLoaded] = useState<boolean>(false);
 
   useEffect(() => {
+    setIsIframeLoaded(false);
     let activeUrl = pdfSourceUrl;
     let blobUrl = "";
 
@@ -560,7 +562,13 @@ const PdfDocumentViewer = ({
 
     setIframeUrl(activeUrl);
 
+    // Fallback timer ensures skeleton clears if iframe onLoad event is suppressed by native pdf plugin
+    const timer = setTimeout(() => {
+      setIsIframeLoaded(true);
+    }, 2000);
+
     return () => {
+      clearTimeout(timer);
       if (blobUrl) {
         URL.revokeObjectURL(blobUrl);
       }
@@ -568,9 +576,9 @@ const PdfDocumentViewer = ({
   }, [pdfSourceUrl]);
 
   return (
-    <div className="w-full h-full min-h-[78vh] md:min-h-[85vh] max-w-7xl bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden flex flex-col shadow-2xl">
+    <div className="w-full h-full min-h-[78vh] md:min-h-[85vh] max-w-7xl bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden flex flex-col shadow-2xl relative">
       {/* Top Header Ribbon */}
-      <div className="bg-slate-950 border-b border-slate-800 px-4 py-3 flex items-center justify-between gap-4 select-none shrink-0">
+      <div className="bg-slate-950 border-b border-slate-800 px-4 py-3 flex items-center justify-between gap-4 select-none shrink-0 z-20">
         <div className="flex items-center gap-2.5">
           <span className="px-2 py-0.5 bg-rose-500/20 text-rose-400 font-black rounded border border-rose-500/30 uppercase tracking-wider text-[9px]">
             PDF DOCUMENT
@@ -608,17 +616,97 @@ const PdfDocumentViewer = ({
 
       {/* Native PDF Viewer inside Modal */}
       <div className="flex-1 bg-slate-950 p-0 flex flex-col w-full min-h-[500px] md:min-h-[650px] relative overflow-hidden">
-        {iframeUrl ? (
+        {(!iframeUrl || !isIframeLoaded) && (
+          <div className="absolute inset-0 z-10 bg-slate-950/95 backdrop-blur-sm p-4 md:p-8 flex flex-col items-center justify-center overflow-y-auto">
+            {/* Document Skeleton Paper Sheet */}
+            <div className="w-full max-w-2xl bg-slate-900/90 border border-slate-800/80 rounded-2xl p-6 md:p-8 shadow-2xl flex flex-col gap-5 animate-pulse my-auto">
+              {/* Header skeleton */}
+              <div className="flex items-center justify-between border-b border-slate-800/60 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-indigo-950/60 border border-indigo-800/40 rounded-xl flex items-center justify-center shrink-0">
+                    <FileText size={20} className="text-indigo-400" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-4 w-40 bg-slate-800 rounded-lg"></div>
+                    <div className="h-3 w-24 bg-slate-800/60 rounded-md"></div>
+                  </div>
+                </div>
+                <div className="h-6 w-20 bg-slate-800/70 rounded-full"></div>
+              </div>
+
+              {/* Title & Metadata Skeleton */}
+              <div className="space-y-3">
+                <div className="h-5 w-3/4 bg-slate-800 rounded-xl"></div>
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-28 bg-slate-800/60 rounded-md"></div>
+                  <div className="h-3 w-20 bg-slate-800/60 rounded-md"></div>
+                  <div className="h-3 w-32 bg-slate-800/60 rounded-md"></div>
+                </div>
+              </div>
+
+              <div className="w-full h-px bg-slate-800/60"></div>
+
+              {/* Body Text Lines Skeleton */}
+              <div className="space-y-3 py-1">
+                <div className="h-3 w-full bg-slate-800/70 rounded-full"></div>
+                <div className="h-3 w-[94%] bg-slate-800/60 rounded-full"></div>
+                <div className="h-3 w-[88%] bg-slate-800/60 rounded-full"></div>
+                <div className="h-3 w-[65%] bg-slate-800/50 rounded-full"></div>
+              </div>
+
+              {/* Table / Grid Box Skeleton */}
+              <div className="bg-slate-950/70 border border-slate-800/60 rounded-xl p-4 space-y-3">
+                <div className="grid grid-cols-4 gap-3 border-b border-slate-800/60 pb-2">
+                  <div className="h-2.5 bg-slate-800 rounded"></div>
+                  <div className="h-2.5 bg-slate-800 rounded"></div>
+                  <div className="h-2.5 bg-slate-800 rounded"></div>
+                  <div className="h-2.5 bg-slate-800 rounded"></div>
+                </div>
+                <div className="grid grid-cols-4 gap-3 py-0.5">
+                  <div className="h-2.5 bg-slate-800/50 rounded"></div>
+                  <div className="h-2.5 bg-slate-800/50 rounded"></div>
+                  <div className="h-2.5 bg-slate-800/50 rounded"></div>
+                  <div className="h-2.5 bg-slate-800/50 rounded"></div>
+                </div>
+                <div className="grid grid-cols-4 gap-3 py-0.5">
+                  <div className="h-2.5 bg-slate-800/50 rounded"></div>
+                  <div className="h-2.5 bg-slate-800/50 rounded"></div>
+                  <div className="h-2.5 bg-slate-800/50 rounded"></div>
+                  <div className="h-2.5 bg-slate-800/50 rounded"></div>
+                </div>
+              </div>
+
+              {/* Secondary text block skeleton */}
+              <div className="space-y-3 pt-1">
+                <div className="h-3 w-full bg-slate-800/60 rounded-full"></div>
+                <div className="h-3 w-[80%] bg-slate-800/50 rounded-full"></div>
+              </div>
+
+              {/* Status Indicator Bar */}
+              <div className="mt-2 flex items-center justify-between pt-4 border-t border-slate-800/60">
+                <div className="flex items-center gap-2">
+                  <Loader2 size={16} className="animate-spin text-indigo-400 shrink-0" />
+                  <span className="text-xs font-semibold text-slate-300 tracking-wide font-mono">
+                    Preparing PDF document preview...
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">
+                  Page 1 of 1
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {iframeUrl && (
           <iframe
             src={`${iframeUrl}#toolbar=1&navpanes=0`}
             title={docProps.name}
-            className="w-full h-full flex-1 border-0 min-h-[500px] md:min-h-[650px] bg-slate-950 rounded-b-3xl"
+            onLoad={() => setIsIframeLoaded(true)}
+            className={`w-full h-full flex-1 border-0 min-h-[500px] md:min-h-[650px] bg-slate-950 rounded-b-3xl transition-opacity duration-300 ${
+              isIframeLoaded ? "opacity-100" : "opacity-0"
+            }`}
           />
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-slate-400">
-            <Loader2 className="animate-spin text-indigo-500" size={32} />
-            <span className="text-xs font-bold font-mono tracking-wider">LOADING DOCUMENT...</span>
-          </div>
         )}
       </div>
     </div>
