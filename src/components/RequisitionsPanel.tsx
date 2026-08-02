@@ -537,11 +537,17 @@ const PdfDocumentViewer = ({
 
   const [iframeUrl, setIframeUrl] = useState<string>("");
   const [isIframeLoaded, setIsIframeLoaded] = useState<boolean>(false);
+  const createdBlobUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     setIsIframeLoaded(false);
     let activeUrl = pdfSourceUrl;
-    let blobUrl = "";
+
+    // Revoke previous blob URL if exists to prevent memory accumulation
+    if (createdBlobUrlRef.current) {
+      URL.revokeObjectURL(createdBlobUrlRef.current);
+      createdBlobUrlRef.current = null;
+    }
 
     if (pdfSourceUrl.startsWith("data:application/pdf;base64,")) {
       try {
@@ -553,8 +559,9 @@ const PdfDocumentViewer = ({
           array[i] = raw.charCodeAt(i);
         }
         const blob = new Blob([array], { type: "application/pdf" });
-        blobUrl = URL.createObjectURL(blob);
-        activeUrl = blobUrl;
+        const newBlobUrl = URL.createObjectURL(blob);
+        createdBlobUrlRef.current = newBlobUrl;
+        activeUrl = newBlobUrl;
       } catch (e) {
         console.error("Failed to parse base64 PDF to blob URL:", e);
       }
@@ -569,8 +576,9 @@ const PdfDocumentViewer = ({
 
     return () => {
       clearTimeout(timer);
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl);
+      if (createdBlobUrlRef.current) {
+        URL.revokeObjectURL(createdBlobUrlRef.current);
+        createdBlobUrlRef.current = null;
       }
     };
   }, [pdfSourceUrl]);
