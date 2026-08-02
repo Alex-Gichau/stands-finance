@@ -4695,6 +4695,11 @@ async function startServer() {
     }
   }, 15 * 60 * 1000);
 
+  // Avoid letting unmatched /uploads or /api/attachments requests fall through to SPA wildcard index.html
+  app.use(["/uploads", "/api/attachments"], (req, res) => {
+    res.status(404).json({ error: "Attachment not found on disk or storage provider." });
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

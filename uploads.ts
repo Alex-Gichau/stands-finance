@@ -29,13 +29,13 @@ router.use(
 );
 
 // Explicit route handler for /:filename guaranteeing exact Content-Type headers via mime-types
-router.get("/:filename", (req, res) => {
+router.get("/:filename", (req, res, next) => {
   const filename = req.params.filename;
   const safeFilename = path.basename(filename);
   const filePath = path.join(uploadsDir, safeFilename);
 
   if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: "Attachment file not found" });
+    return next();
   }
 
   const contentType = mime.lookup(safeFilename) || "application/octet-stream";

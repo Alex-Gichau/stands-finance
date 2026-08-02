@@ -535,6 +535,38 @@ const PdfDocumentViewer = ({
     return generateSamplePdfDataUrl(docProps.name);
   }, [docProps.url, docProps.name, isPdfStream]);
 
+  const [iframeUrl, setIframeUrl] = useState<string>("");
+
+  useEffect(() => {
+    let activeUrl = pdfSourceUrl;
+    let blobUrl = "";
+
+    if (pdfSourceUrl.startsWith("data:application/pdf;base64,")) {
+      try {
+        const base64Parts = pdfSourceUrl.split(";base64,");
+        const raw = window.atob(base64Parts[1]);
+        const rawLength = raw.length;
+        const array = new Uint8Array(new ArrayBuffer(rawLength));
+        for (let i = 0; i < rawLength; i++) {
+          array[i] = raw.charCodeAt(i);
+        }
+        const blob = new Blob([array], { type: "application/pdf" });
+        blobUrl = URL.createObjectURL(blob);
+        activeUrl = blobUrl;
+      } catch (e) {
+        console.error("Failed to parse base64 PDF to blob URL:", e);
+      }
+    }
+
+    setIframeUrl(activeUrl);
+
+    return () => {
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
+      }
+    };
+  }, [pdfSourceUrl]);
+
   return (
     <div className="w-full h-full min-h-[78vh] md:min-h-[85vh] max-w-7xl bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden flex flex-col shadow-2xl">
       {/* Top Header Ribbon */}
@@ -550,7 +582,7 @@ const PdfDocumentViewer = ({
 
         <div className="flex items-center gap-2">
           <a
-            href={pdfSourceUrl}
+            href={iframeUrl || pdfSourceUrl}
             download={docProps.name}
             className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
           >
@@ -559,10 +591,11 @@ const PdfDocumentViewer = ({
           </a>
           <button
             onClick={() => {
-              const win = window.open(pdfSourceUrl, "_blank");
+              const urlToOpen = iframeUrl || pdfSourceUrl;
+              const win = window.open(urlToOpen, "_blank");
               if (!win) {
                 const w = window.open();
-                if (w) w.document.write(`<iframe src="${pdfSourceUrl}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                if (w) w.document.write(`<iframe src="${urlToOpen}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
               }
             }}
             className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
@@ -575,11 +608,18 @@ const PdfDocumentViewer = ({
 
       {/* Native PDF Viewer inside Modal */}
       <div className="flex-1 bg-slate-950 p-0 flex flex-col w-full min-h-[500px] md:min-h-[650px] relative overflow-hidden">
-        <iframe
-          src={`${pdfSourceUrl}#toolbar=1&navpanes=0`}
-          title={docProps.name}
-          className="w-full h-full flex-1 border-0 min-h-[500px] md:min-h-[650px] bg-slate-950 rounded-b-3xl"
-        />
+        {iframeUrl ? (
+          <iframe
+            src={`${iframeUrl}#toolbar=1&navpanes=0`}
+            title={docProps.name}
+            className="w-full h-full flex-1 border-0 min-h-[500px] md:min-h-[650px] bg-slate-950 rounded-b-3xl"
+          />
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-slate-400">
+            <Loader2 className="animate-spin text-indigo-500" size={32} />
+            <span className="text-xs font-bold font-mono tracking-wider">LOADING DOCUMENT...</span>
+          </div>
+        )}
       </div>
     </div>
   );
