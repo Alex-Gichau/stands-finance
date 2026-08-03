@@ -54,7 +54,7 @@ import {
   Lock
 } from "lucide-react";
 import { Info, HardDrive, Mail, UserPlus } from "lucide-react";
-import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionContext";
+import { useRequisitions, getActiveFiscalYear, safeNormalizeAttachments } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
 import { formatCurrency, formatDate, cn, getDaysSinceSubmission, formatRequisitionAge, isFinalStage, normalizeAttachmentUrl } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
@@ -2657,8 +2657,10 @@ export interface DetailModalProps {
   onEdit?: () => void;
 }
 
-export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClose, onDelete, onGenerateReceipt, onEdit }) => {
+export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initialReq, onClose, onDelete, onGenerateReceipt, onEdit }) => {
   const { currentUser, updateRequisitionStatus, updateRequisition, uploadReceipts, globalSearchTerm, projects, triggerToast, vendors, requisitions, users } = useRequisitions();
+  const req = requisitions.find(r => r.id === initialReq.id) || initialReq;
+  const normalizedAttachments = React.useMemo(() => safeNormalizeAttachments(req.attachments), [req.attachments]);
   const [decisionNote, setDecisionNote] = useState("");
   const [approvalCode, setApprovalCode] = useState("");
   const [showDecisionForm, setShowDecisionForm] = useState<"APPROVE" | "REJECT" | "ESCALATE" | null>(null);
@@ -2672,6 +2674,8 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
   const [newMemberEmail, setNewMemberEmail] = useState("");
   const [isSavingMember, setIsSavingMember] = useState(false);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const [lastAddedEmail, setLastAddedEmail] = useState<string | null>(null);
   const decisionFormRef = useRef<HTMLDivElement>(null);
 
   const handleAddMember = async (emailToAdd: string) => {
@@ -2701,6 +2705,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
     try {
       const updated = [...currentList, norm];
       await updateRequisition(req.id, { notificationEmails: updated });
+      setLastAddedEmail(norm);
       triggerToast({
         type: "SYSTEM_INFO",
         severity: "LOW",
@@ -2708,7 +2713,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
         timestamp: new Date().toISOString()
       });
       setNewMemberEmail("");
-      setIsAddMemberOpen(false);
+      setIsInputFocused(false);
     } catch (err) {
       triggerToast({
         type: "SECURITY_UPDATE",
@@ -2809,6 +2814,28 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
 
     return result;
   }, [req, users]);
+
+  const emailSuggestions = React.useMemo(() => {
+    const search = newMemberEmail.trim().toLowerCase();
+    if (!search) return [];
+
+    const existingEmails = new Set(
+      updateRecipients.map(r => (r.email || "").trim().toLowerCase())
+    );
+
+    return (users || [])
+      .filter((u) => {
+        if (!u.email) return false;
+        const em = u.email.trim().toLowerCase();
+        const nm = (u.name || "").trim().toLowerCase();
+        return em.includes(search) || nm.includes(search);
+      })
+      .map((u) => ({
+        user: u,
+        alreadyAdded: existingEmails.has(u.email.trim().toLowerCase())
+      }))
+      .slice(0, 6);
+  }, [newMemberEmail, users, updateRecipients]);
 
   useEffect(() => {
     if (showDecisionForm && decisionFormRef.current) {
@@ -3358,23 +3385,31 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
-                      className="bg-indigo-50/60 dark:bg-indigo-950/40 p-3.5 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 space-y-3"
+                      className="bg-indigo-50/60 dark:bg-indigo-950/40 p-3.5 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 space-y-3 relative overflow-visible"
                     >
-                      <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                        <UserPlus size={14} className="text-indigo-500" />
-                        Add Member to Receive Updates
+                      <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <UserPlus size={14} className="text-indigo-500" />
+                          <span>Add Member to Receive Updates</span>
+                        </div>
+                        <span className="text-[10px] font-medium text-slate-400">Type email or name to search</span>
                       </div>
 
-                      <div className="space-y-1">
+                      <div className="space-y-1 relative">
                         <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                           Email Address
                         </label>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 relative">
                           <input
                             type="email"
                             value={newMemberEmail}
-                            onChange={(e) => setNewMemberEmail(e.target.value)}
-                            placeholder="e.g. member@church.org"
+                            onChange={(e) => {
+                              setNewMemberEmail(e.target.value);
+                              setIsInputFocused(true);
+                            }}
+                            onFocus={() => setIsInputFocused(true)}
+                            onBlur={() => setTimeout(() => setIsInputFocused(false), 200)}
+                            placeholder="Type email or search member name..."
                             className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-slate-200"
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {
@@ -3394,9 +3429,69 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                             ) : (
                               <Plus size={13} />
                             )}
-                            Add
+                            Add Email
                           </button>
                         </div>
+
+                        {/* Dropdown Suggestions */}
+                        {isInputFocused && emailSuggestions.length > 0 && (
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100 dark:divide-slate-800 max-h-56 overflow-y-auto">
+                            <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/80 text-[9px] font-black uppercase text-slate-400 tracking-wider flex items-center justify-between">
+                              <span>Matching Church Members ({emailSuggestions.length})</span>
+                              <span>Click to select</span>
+                            </div>
+                            {emailSuggestions.map(({ user, alreadyAdded }) => (
+                              <button
+                                key={user.id || user.email}
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                  if (alreadyAdded) {
+                                    triggerToast({
+                                      type: "SYSTEM_INFO",
+                                      severity: "LOW",
+                                      message: `${user.email} is already in the recipient list.`,
+                                      timestamp: new Date().toISOString()
+                                    });
+                                  } else {
+                                    handleAddMember(user.email);
+                                  }
+                                }}
+                                className="w-full text-left px-3 py-2 hover:bg-indigo-50/80 dark:hover:bg-indigo-950/50 transition-colors flex items-center justify-between gap-2 text-xs group cursor-pointer"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="w-6.5 h-6.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold text-[10px] flex items-center justify-center shrink-0 border border-indigo-200/40">
+                                    {(user.name || user.email).charAt(0).toUpperCase()}
+                                  </div>
+                                  <div className="flex flex-col min-w-0">
+                                    <span className="font-bold text-slate-800 dark:text-slate-200 text-xs truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                                      {user.name || user.email.split("@")[0]}
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                                      {user.email}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {(user.group || user.department || user.role) && (
+                                    <span className="text-[8.5px] font-bold px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded">
+                                      {user.group || user.department || user.role}
+                                    </span>
+                                  )}
+                                  {alreadyAdded ? (
+                                    <span className="text-[8px] font-black uppercase px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 rounded flex items-center gap-1">
+                                      <Check size={9} /> Added
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9.5px] font-bold text-indigo-600 dark:text-indigo-400 group-hover:underline">
+                                      + Add
+                                    </span>
+                                  )}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </motion.div>
                   )}
@@ -3407,12 +3502,24 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                     {updateRecipients.map((rec) => {
                       const isRemoveable = Array.isArray(req.notificationEmails) &&
                         req.notificationEmails.some(e => (e || "").trim().toLowerCase() === rec.email.toLowerCase());
+                      const isJustAdded = rec.email.toLowerCase() === lastAddedEmail?.toLowerCase();
+
                       return (
                         <div
                           key={rec.email}
-                          className="flex items-center gap-2.5 px-3 py-2 bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm text-xs"
+                          className={cn(
+                            "flex items-center gap-2.5 px-3 py-2 rounded-xl border shadow-sm text-xs transition-all",
+                            isJustAdded
+                              ? "bg-emerald-50/90 dark:bg-emerald-950/70 border-emerald-300 dark:border-emerald-700/80 ring-2 ring-emerald-500/40"
+                              : "bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800"
+                          )}
                         >
-                          <div className="w-7 h-7 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold flex items-center justify-center text-xs shrink-0 border border-indigo-100 dark:border-indigo-900/40">
+                          <div className={cn(
+                            "w-7 h-7 rounded-full font-bold flex items-center justify-center text-xs shrink-0 border",
+                            isJustAdded
+                              ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                              : "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/40"
+                          )}>
                             {rec.name.charAt(0).toUpperCase()}
                           </div>
                           <div className="flex flex-col min-w-0">
@@ -3423,6 +3530,11 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                               {rec.isRequester && (
                                 <span className="px-1.5 py-0.2 bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[8px] font-black uppercase rounded tracking-wider">
                                   Requester
+                                </span>
+                              )}
+                              {isJustAdded && (
+                                <span className="px-1.5 py-0.2 bg-emerald-600 text-white text-[8px] font-black uppercase rounded tracking-wider flex items-center gap-0.5">
+                                  <Check size={9} /> Added
                                 </span>
                               )}
                             </div>
@@ -3506,7 +3618,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                      </div>
                    )}
 
-                   {req.attachments?.map((attachment: any, i: number) => {
+                    {normalizedAttachments.map((attachment: any, i: number) => {
                      let name = typeof attachment === 'string' ? attachment : (attachment?.name || 'Attachment');
                      let url = typeof attachment === 'string' ? attachment : (attachment?.url || '');
                      
@@ -3575,7 +3687,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
                       <ReceiptGallery receipts={req.receipts} requisitionTitle={req.title} groupName={req.groupName} />
                     </div>
                   )}
-                  {(!req.attachments || req.attachments.length === 0) && (!req.receipts || req.receipts.length === 0) && (
+                  {normalizedAttachments.length === 0 && (!req.receipts || req.receipts.length === 0) && (
                     <div className="w-full py-8 flex flex-col items-center justify-center text-slate-300 border border-dashed border-slate-200 rounded-3xl">
                       <p className="text-[10px] font-black uppercase tracking-widest">No Attachments</p>
                     </div>
@@ -4000,9 +4112,9 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req, onClos
 
         {/* Document Preview Overlay */}
         <AnimatePresence>
-          {previewIndex !== null && req.attachments && (
+          {previewIndex !== null && normalizedAttachments.length > 0 && (
             <DocumentPreviewModal 
-              attachments={req.attachments}
+              attachments={normalizedAttachments}
               initialIndex={previewIndex}
               onClose={() => setPreviewIndex(null)} 
               requisition={req}
