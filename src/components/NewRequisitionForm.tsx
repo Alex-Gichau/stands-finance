@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from "react";
 import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionContext";
 import { numberToWords } from "../utils/numberUtils";
-import { formatCurrency, cn, uploadAttachmentsToLocalServer } from "../lib/utils";
+import { formatCurrency, cn, uploadAttachmentsToLocalServer, handleImageError } from "../lib/utils";
 import { processFileToAttachmentStrings } from "../lib/pdfUtils";
 import { Upload, X, Paperclip, Loader2, DollarSign, FileText, Info, Repeat, Users, PlusCircle, Save, Camera, Mail, UserPlus, Check, Share2, Layers, Building2, Search, ChevronDown, Store } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -1609,6 +1609,7 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
                               alt="preview" 
                               className="w-full h-full object-cover" 
                               referrerPolicy="no-referrer"
+                              onError={(e) => handleImageError(e)}
                             />
                           ) : (
                             <span>{file.name.split('.').pop()?.slice(0, 3)}</span>

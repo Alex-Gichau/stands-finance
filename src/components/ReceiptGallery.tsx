@@ -3,10 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X, Maximize2, ExternalLink, Download, ZoomIn, ZoomOut, RotateCw, RotateCcw, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { cn, normalizeAttachmentUrl } from "../lib/utils";
+import { cn, normalizeAttachmentUrl, getAttachmentFileName, handleImageError } from "../lib/utils";
+import { CachedImage } from "./CachedImage";
+import { preloadMediaBatch } from "../lib/mediaCache";
 
 interface ReceiptGalleryProps {
   receipts: string[];
@@ -21,6 +23,12 @@ export const ReceiptGallery: React.FC<ReceiptGalleryProps> = ({ receipts, requis
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (receipts && receipts.length > 0) {
+      preloadMediaBatch(receipts);
+    }
+  }, [receipts]);
 
   if (!receipts || receipts.length === 0) return null;
 
@@ -102,19 +110,19 @@ export const ReceiptGallery: React.FC<ReceiptGalleryProps> = ({ receipts, requis
       <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
         {receipts.map((receipt, index) => {
           const normalizedReceipt = normalizeAttachmentUrl(receipt);
+          const fileName = getAttachmentFileName(receipt);
           return (
             <motion.div
-              key={`${receipt}-${index}`}
+              key={`receipt-item-${index}`}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => downloadImage(normalizedReceipt, getDownloadName(index))}
               className="relative flex-shrink-0 w-32 h-44 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 cursor-pointer group shadow-sm"
             >
-              <img 
+              <CachedImage 
                 src={normalizedReceipt} 
-                alt={`Receipt ${index + 1}`} 
+                alt={fileName || `Receipt ${index + 1}`} 
                 className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
               />
               <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3">
                 <Download size={24} className="text-white" />
@@ -187,14 +195,13 @@ export const ReceiptGallery: React.FC<ReceiptGalleryProps> = ({ receipts, requis
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleMouseUp}
               >
-                <img 
+                <CachedImage 
                   src={selectedImage} 
                   alt="Full Receipt" 
                   className="max-w-[90%] max-h-[90%] object-contain shadow-2xl pointer-events-none transition-transform duration-100 ease-out"
                   style={{
                     transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom}) rotate(${rotation}deg)`,
                   }}
-                  referrerPolicy="no-referrer"
                 />
 
                 {/* Controls overlay */}

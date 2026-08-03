@@ -317,27 +317,7 @@ export function safeNormalizeAttachments(attachments: any): string[] {
 }
 
 export function safeNormalizeReceipts(receipts: any): string[] {
-  if (!receipts) return [];
-  if (Array.isArray(receipts)) {
-    return receipts.filter((x: any) => typeof x === 'string' || (x && typeof x === 'object')).map((x: any) => typeof x === 'string' ? x : JSON.stringify(x));
-  }
-  if (typeof receipts === 'string') {
-    const trimmed = receipts.trim();
-    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-      try {
-        const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) {
-          return parsed.map((x: any) => typeof x === 'string' ? x : JSON.stringify(x));
-        }
-      } catch (e) {
-        console.error("Failed to parse stringified receipts array:", e);
-      }
-    }
-    if (trimmed.length > 0) {
-      return [trimmed];
-    }
-  }
-  return [];
+  return safeNormalizeAttachments(receipts);
 }
 
 export function safeNormalizeNotificationEmails(r: any): string[] {

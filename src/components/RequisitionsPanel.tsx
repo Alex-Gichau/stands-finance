@@ -56,7 +56,7 @@ import {
 import { Info, HardDrive, Mail, UserPlus } from "lucide-react";
 import { useRequisitions, getActiveFiscalYear, safeNormalizeAttachments } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
-import { formatCurrency, formatDate, cn, getDaysSinceSubmission, formatRequisitionAge, isFinalStage, normalizeAttachmentUrl } from "../lib/utils";
+import { formatCurrency, formatDate, cn, getDaysSinceSubmission, formatRequisitionAge, isFinalStage, normalizeAttachmentUrl, getAttachmentFileName, handleImageError } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { printRequisitions, downloadRequisitionsHtml, downloadRequisitionsCsv, downloadRequisitionsPdf, printRequisitionVoucher, printRequisitionReceipt } from "../utils/exportUtils";
 import { NewRequisitionForm } from "./NewRequisitionForm";
@@ -65,6 +65,8 @@ import { EditRequisitionModal } from "./EditRequisitionModal";
 import { ReceiptGallery } from "./ReceiptGallery";
 import { CameraCapture } from "./CameraCapture";
 import { ConfirmationModal } from "./ConfirmationModal";
+import { CachedImage } from "./CachedImage";
+import { getCachedMediaUrl, preloadMediaBatch } from "../lib/mediaCache";
 
 const RichDocumentViewer = ({ 
   docProps 
@@ -572,18 +574,10 @@ const PdfDocumentViewer = ({
       pdfSourceUrl.startsWith("http://") ||
       pdfSourceUrl.startsWith("https://")
     ) {
-      // Fetch file from server uploads and convert to client Blob URL for iframe rendering
-      fetch(pdfSourceUrl)
-        .then((res) => {
-          if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-          return res.blob();
-        })
-        .then((blob) => {
-          if (isCancelled) return;
-          const pdfBlob = new Blob([blob], { type: "application/pdf" });
-          const newBlobUrl = URL.createObjectURL(pdfBlob);
-          createdBlobUrlRef.current = newBlobUrl;
-          setIframeUrl(newBlobUrl);
+      // Use mediaCache to aggressively retrieve cached PDF blob URL
+      getCachedMediaUrl(pdfSourceUrl, "application/pdf")
+        .then((blobUrl) => {
+          if (!isCancelled) setIframeUrl(blobUrl);
         })
         .catch((err) => {
           console.error("Failed to fetch server PDF for blob conversion:", err);
@@ -821,6 +815,13 @@ const DocumentPreviewModal = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [currentIndex, attachments, viewMode]);
 
+  useEffect(() => {
+    if (attachments && attachments.length > 0) {
+      const urls = attachments.map((att: any) => typeof att === 'string' ? att : att?.url).filter(Boolean) as string[];
+      preloadMediaBatch(urls);
+    }
+  }, [attachments]);
+
   if (!attachments || attachments.length === 0) return null;
 
   // Helper to parse individual doc properties
@@ -840,54 +841,10 @@ const DocumentPreviewModal = ({
       isText: false 
     };
     
-    let rawItem = doc;
-    
-    // Unwrap stringified JSON if needed
-    if (typeof rawItem === "string") {
-      const trimmed = rawItem.trim();
-      if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
-        try {
-          const parsed = JSON.parse(trimmed);
-          if (typeof parsed === "string") {
-            rawItem = parsed;
-          } else if (Array.isArray(parsed) && parsed.length > 0) {
-            rawItem = parsed[0];
-          } else if (parsed && typeof parsed === "object") {
-            const firstKey = Object.keys(parsed)[0];
-            const candidate = parsed.url || parsed.dataUrl || parsed.link || (firstKey ? parsed[firstKey] : null);
-            const nameCandidate = parsed.name || parsed.fileName || parsed.title;
-            if (typeof candidate === "string" && nameCandidate && !candidate.includes("::")) {
-              rawItem = `${nameCandidate}::${candidate}`;
-            } else if (typeof candidate === "string") {
-              rawItem = candidate;
-            }
-          }
-        } catch (e) {
-          // not valid json string
-        }
-      }
-    }
+    let dUrl = normalizeAttachmentUrl(doc);
+    let dName = getAttachmentFileName(doc);
 
-    let dName = "";
-    let dUrl = "";
-
-    if (typeof rawItem === "string") {
-      dName = rawItem;
-      dUrl = rawItem;
-      if (rawItem.includes("::")) {
-        const parts = rawItem.split("::");
-        dName = parts[0];
-        dUrl = parts.slice(1).join("::");
-      }
-    } else if (typeof rawItem === "object" && rawItem !== null) {
-      dName = rawItem.name || rawItem.fileName || rawItem.title || "Attachment";
-      dUrl = rawItem.url || rawItem.dataUrl || rawItem.link || "";
-    } else {
-      dName = String(rawItem);
-      dUrl = String(rawItem);
-    }
-
-    // Clean up JSON syntax leftovers from dName if any (e.g., {"0":"PRINTER TONNERS...)
+    // Clean up JSON syntax leftovers from dName if any
     dName = dName
       .replace(/^\{"0":"/, "")
       .replace(/^\{\s*"\d+"\s*:\s*"/, "")
@@ -896,27 +853,9 @@ const DocumentPreviewModal = ({
       .replace(" (Simulated)", "")
       .trim();
 
-    // If dUrl was missing but dName contains a URL, swap
-    if (!dUrl && (dName.startsWith("data:") || dName.startsWith("http") || dName.startsWith("blob:") || dName.startsWith("/"))) {
-      dUrl = dName;
-    }
-
     // Check if dUrl looks like raw base64 without data prefix
     if (dUrl.startsWith("JVBERi")) {
       dUrl = `data:application/pdf;base64,${dUrl}`;
-    } else {
-      dUrl = normalizeAttachmentUrl(dUrl);
-    }
-
-    // Extract filename if dName is just a URL
-    if (dName.startsWith("http") || dName.startsWith("/") || dName.startsWith("data:")) {
-      const urlParts = dName.split("/");
-      const lastPart = urlParts[urlParts.length - 1];
-      if (lastPart && lastPart.includes(".")) {
-        dName = lastPart.split("?")[0].split("#")[0];
-      } else {
-        dName = "Attachment.pdf";
-      }
     }
 
     // Detect and rewrite Google Drive URLs to utilize our server-side secure proxy
@@ -928,10 +867,11 @@ const DocumentPreviewModal = ({
       }
     }
 
-    const ext = (dName.split('.').pop() || "PDF").toUpperCase();
-    
+    const hasDotExt = dName.includes(".") && !dName.startsWith(".");
+    const rawExt = hasDotExt ? (dName.split('.').pop() || "").toUpperCase() : "";
+
     const isImg = /\.(jpg|jpeg|png|gif|webp)$/i.test(dName) || dUrl.startsWith('blob:') || dUrl.startsWith('data:image/');
-    const isPf = /\.(pdf)$/i.test(dName) || dUrl.startsWith('data:application/pdf') || dUrl.includes('/api/attachments/') || ext === "PDF";
+    const isPf = (!isImg && /\.(pdf)$/i.test(dName)) || dUrl.startsWith('data:application/pdf') || dUrl.includes('/api/attachments/') || (rawExt === "PDF" && !isImg);
     const isWord = /\.(docx)$/i.test(dName) || dUrl.startsWith('data:application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     const isLegacyWord = /\.(doc)$/i.test(dName) || dUrl.startsWith('data:application/msword');
     const isExcel = /\.(xlsx)$/i.test(dName) || dUrl.startsWith('data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -939,6 +879,8 @@ const DocumentPreviewModal = ({
     const isCsv = /\.(csv)$/i.test(dName) || dUrl.startsWith('data:text/csv');
     const isText = /\.(txt|md|json|xml|log|yaml|yml|js|ts|html|css)$/i.test(dName) || dUrl.startsWith('data:text/plain');
     
+    const ext = rawExt || (isImg ? "IMG" : isPf ? "PDF" : "DOC");
+
     return { 
       name: dName, 
       url: dUrl, 
@@ -1138,11 +1080,10 @@ const DocumentPreviewModal = ({
                       {/* Image Preview / File Icon */}
                       <div className="flex-1 bg-slate-950/30 flex items-center justify-center overflow-hidden relative">
                         {props.isImage ? (
-                          <img 
+                          <CachedImage 
                             src={props.url} 
                             alt={props.name} 
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            referrerPolicy="no-referrer"
                           />
                         ) : props.isPdf ? (
                           <div className="flex flex-col items-center justify-center">
@@ -1224,11 +1165,10 @@ const DocumentPreviewModal = ({
                   className="max-w-full max-h-full flex items-center justify-center transition-transform duration-200"
                 >
                   {currentProps.isImage ? (
-                    <img 
+                    <CachedImage 
                       src={currentProps.url} 
                       alt={currentProps.name} 
                       className="max-w-[92vw] max-h-[72vh] md:max-h-[80vh] object-contain rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-slate-800"
-                      referrerPolicy="no-referrer"
                     />
                   ) : currentProps.isPdf ? (
                     <PdfDocumentViewer docProps={currentProps} requisition={requisition} />
@@ -1260,11 +1200,10 @@ const DocumentPreviewModal = ({
                         }`}
                       >
                         {props.isImage ? (
-                          <img 
+                          <CachedImage 
                             src={props.url} 
                             alt={props.name} 
                             className="w-full h-full object-cover" 
-                            referrerPolicy="no-referrer"
                           />
                         ) : props.isPdf ? (
                           <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center border border-rose-950/40">
@@ -3649,11 +3588,10 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
                       title={name}
                     >
                       {isImage ? (
-                        <img 
+                        <CachedImage 
                           src={url} 
                           alt={name} 
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                          referrerPolicy="no-referrer"
                         />
                       ) : isPdf ? (
                         <div className="flex flex-col items-center justify-center p-1.5 text-center w-full h-full">

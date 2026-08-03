@@ -6,16 +6,145 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function normalizeAttachmentUrl(url: string | null | undefined): string {
-  if (!url || typeof url !== "string") return "";
+export const DEFAULT_IMAGE_PLACEHOLDER = "data:image/svg+xml;utf8," + encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300" fill="none">
+  <rect width="400" height="300" fill="#0F172A"/>
+  <rect x="2" y="2" width="396" height="296" rx="8" stroke="#334155" stroke-width="2" stroke-dasharray="6 6"/>
+  <circle cx="200" cy="115" r="32" fill="#1E293B"/>
+  <path d="M188 125L196 107L204 120L212 112L220 125H188Z" fill="#64748B"/>
+  <circle cx="212" cy="102" r="4.5" fill="#94A3B8"/>
+  <text x="200" y="185" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="700" fill="#94A3B8" letter-spacing="0.05em">IMAGE UNAVAILABLE</text>
+  <text x="200" y="208" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#64748B">Unable to load image from server</text>
+</svg>
+`);
+
+export function handleImageError(e: React.SyntheticEvent<HTMLImageElement, Event>, fallbackUrl: string = DEFAULT_IMAGE_PLACEHOLDER) {
+  const target = e.currentTarget;
+  if (target && target.src !== fallbackUrl) {
+    target.onerror = null;
+    target.src = fallbackUrl;
+  }
+}
+
+export function normalizeAttachmentUrl(url: any): string {
+  if (!url) return "";
   
-  // Convert absolute VPS HTTP URLs containing /uploads/ to relative /uploads/ path
-  if (url.startsWith("http://") && url.includes("/uploads/")) {
-    const parts = url.split("/uploads/");
+  let target = url;
+  
+  // If object, extract url / dataUrl / link / first value
+  if (typeof target === "object" && target !== null) {
+    const firstKey = Object.keys(target)[0];
+    const candidate = target.url || target.dataUrl || target.link || (firstKey ? target[firstKey] : null);
+    if (typeof candidate === "string") {
+      target = candidate;
+    } else {
+      target = String(target);
+    }
+  }
+
+  if (typeof target !== "string") return "";
+
+  let trimmed = target.trim();
+
+  // If stringified JSON (starts with { or [)
+  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed === "string") {
+        trimmed = parsed.trim();
+      } else if (Array.isArray(parsed) && parsed.length > 0) {
+        return normalizeAttachmentUrl(parsed[0]);
+      } else if (parsed && typeof parsed === "object") {
+        const firstKey = Object.keys(parsed)[0];
+        const candidate = parsed.url || parsed.dataUrl || parsed.link || (firstKey ? parsed[firstKey] : null);
+        if (typeof candidate === "string") {
+          trimmed = candidate.trim();
+        }
+      }
+    } catch (e) {
+      // not valid json
+    }
+  }
+
+  // Strip `filename::` prefix if present (e.g. `1001549942.jpeg::data:image/jpeg;base64,...` or `file.pdf::/uploads/file.pdf`)
+  if (trimmed.includes("::")) {
+    const parts = trimmed.split("::");
+    // The actual URL/data URI is everything after the first `::`
+    trimmed = parts.slice(1).join("::").trim();
+  }
+
+  // Normalize absolute HTTP/HTTPS URLs containing /uploads/ or /api/attachments/ to relative path
+  if (trimmed.includes("/uploads/")) {
+    const parts = trimmed.split("/uploads/");
     return "/uploads/" + parts[1];
   }
-  
-  return url;
+  if (trimmed.includes("/api/attachments/")) {
+    const parts = trimmed.split("/api/attachments/");
+    return "/api/attachments/" + parts[1];
+  }
+
+  // If starts with uploads/ without leading slash
+  if (trimmed.startsWith("uploads/")) {
+    return "/" + trimmed;
+  }
+
+  return trimmed;
+}
+
+export function getAttachmentFileName(doc: any): string {
+  if (!doc) return "Attachment";
+  let target = doc;
+  if (typeof target === "object" && target !== null) {
+    if (target.name || target.fileName || target.title) {
+      return target.name || target.fileName || target.title;
+    }
+    const firstKey = Object.keys(target)[0];
+    const candidate = target[firstKey];
+    if (typeof candidate === "string") target = candidate;
+  }
+  if (typeof target !== "string") return "Attachment";
+  let trimmed = target.trim();
+
+  // If stringified JSON
+  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed === "string") trimmed = parsed.trim();
+      else if (Array.isArray(parsed) && parsed.length > 0) return getAttachmentFileName(parsed[0]);
+      else if (parsed && typeof parsed === "object") {
+        if (parsed.name || parsed.fileName || parsed.title) {
+          return parsed.name || parsed.fileName || parsed.title;
+        }
+        const firstKey = Object.keys(parsed)[0];
+        const candidate = parsed[firstKey];
+        if (typeof candidate === "string") trimmed = candidate.trim();
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  if (trimmed.includes("::")) {
+    const filename = trimmed.split("::")[0].trim();
+    if (filename && !filename.startsWith("data:") && !filename.startsWith("http") && !filename.startsWith("{")) {
+      return filename;
+    }
+  }
+
+  // If trimmed is a URL or data URL
+  if (trimmed.startsWith("http") || trimmed.startsWith("/") || trimmed.startsWith("data:")) {
+    const urlParts = trimmed.split("/");
+    const lastPart = urlParts[urlParts.length - 1];
+    if (lastPart && lastPart.includes(".") && !lastPart.includes(";")) {
+      return lastPart.split("?")[0].split("#")[0];
+    }
+    if (trimmed.startsWith("data:image/jpeg")) return "image.jpeg";
+    if (trimmed.startsWith("data:image/png")) return "image.png";
+    if (trimmed.startsWith("data:image/webp")) return "image.webp";
+    if (trimmed.startsWith("data:application/pdf")) return "document.pdf";
+  }
+
+  return trimmed || "Attachment";
 }
 
 export function formatCurrency(amount: number) {
