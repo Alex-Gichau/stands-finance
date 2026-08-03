@@ -340,6 +340,24 @@ export function safeNormalizeReceipts(receipts: any): string[] {
   return [];
 }
 
+export function safeNormalizeNotificationEmails(r: any): string[] {
+  if (!r) return [];
+  const list = r.notificationEmails ?? r.notification_emails ?? r.notification_list;
+  if (Array.isArray(list)) {
+    return list.map(e => (typeof e === 'string' ? e.trim() : String(e))).filter(e => e.length > 0);
+  }
+  if (Array.isArray(r.notification_emails) && r.notification_emails.length > 0) {
+    return r.notification_emails.map((e: any) => (typeof e === 'string' ? e.trim() : String(e))).filter((e: string) => e.length > 0);
+  }
+  if (Array.isArray(r.notificationEmails) && r.notificationEmails.length > 0) {
+    return r.notificationEmails.map((e: any) => (typeof e === 'string' ? e.trim() : String(e))).filter((e: string) => e.length > 0);
+  }
+  if (typeof list === 'object' && list !== null) {
+    return Object.values(list).map(e => (typeof e === 'string' ? e.trim() : String(e))).filter((e: string) => e.length > 0);
+  }
+  return [];
+}
+
 export function safeNormalizeApprovalHistory(history: any): any[] {
   if (!history) return [];
   if (Array.isArray(history)) {
@@ -478,6 +496,9 @@ const isFirestoreQuotaExceeded = () => false;
 // Helper to recursively remove any fields with value undefined to prevent Firestore write/update failures
 function cleanFirestoreData(data: any): any {
   if (data === null || data === undefined) return data;
+  if (Array.isArray(data)) {
+    return data.map(item => cleanFirestoreData(item));
+  }
   if (typeof data === "object") {
     const cleaned: any = {};
     for (const [key, val] of Object.entries(data)) {
@@ -1882,7 +1903,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
           ...r,
           attachments: safeNormalizeAttachments(r?.attachments),
           receipts: safeNormalizeReceipts(r?.receipts),
-          approvalHistory: safeNormalizeApprovalHistory(r?.approvalHistory || r?.approval_history)
+          approvalHistory: safeNormalizeApprovalHistory(r?.approvalHistory || r?.approval_history),
+          notificationEmails: safeNormalizeNotificationEmails(r)
         } as Requisition;
       });
       if (hidePrototype) data = data.filter(req => !req.id.startsWith("req-seed-"));
@@ -2613,7 +2635,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 additionalInfo: r?.additional_info || r?.additionalInfo || null,
                 attachments: safeNormalizeAttachments(r?.attachments),
                 receipts: safeNormalizeReceipts(r?.receipts),
-                notificationEmails: Array.isArray(r?.notification_emails) ? r.notification_emails : (Array.isArray(r?.notificationEmails) ? r.notificationEmails : []),
+                notificationEmails: safeNormalizeNotificationEmails(r),
                 isSharedRequisition: Boolean(r?.is_shared_requisition || r?.isSharedRequisition),
                 sharedGroups: Array.isArray(r?.shared_groups) ? r.shared_groups : (Array.isArray(r?.sharedGroups) ? r.sharedGroups : []),
                 flaggedForAudit: Boolean(r?.flagged_for_audit || r?.flaggedForAudit),

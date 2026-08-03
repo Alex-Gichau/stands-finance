@@ -143,6 +143,9 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
   };
 
   const [isDraftRestored, setIsDraftRestored] = useState(false);
+  const [draftRestoredTime, setDraftRestoredTime] = useState<string | null>(null);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [lastAutoSavedAt, setLastAutoSavedAt] = useState<Date | null>(null);
   const [isSharedRequisition, setIsSharedRequisition] = useState<boolean>(false);
   const [sharedGroups, setSharedGroups] = useState<string[]>([]);
 
@@ -256,6 +259,61 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
     setCustomNotifyEmail("");
   };
 
+  // Synchronous draft persistence function
+  const saveDraftToStorage = React.useCallback(() => {
+    if (!currentUser?.id) return;
+    const draftKey = `stands_requisition_draft_${currentUser.id}`;
+
+    // If completely empty, remove any existing draft from storage
+    if (!title.trim() && !description.trim() && !amount.trim() && !payableTo.trim()) {
+      localStorage.removeItem(draftKey);
+      setAutoSaveStatus('idle');
+      setLastAutoSavedAt(null);
+      return;
+    }
+
+    const now = new Date();
+    const draftData = {
+      title,
+      description,
+      amount,
+      recurrence,
+      payableTo,
+      selectedGroup,
+      vendorContact,
+      vendorLocation,
+      vendorOfferings,
+      showAddVendorForm,
+      notificationEmails,
+      isSharedRequisition,
+      sharedGroups,
+      savedAt: now.toISOString()
+    };
+
+    try {
+      localStorage.setItem(draftKey, JSON.stringify(draftData));
+      setLastAutoSavedAt(now);
+      setAutoSaveStatus('saved');
+    } catch (err) {
+      console.error("Auto-save to localStorage failed:", err);
+    }
+  }, [
+    currentUser,
+    title,
+    description,
+    amount,
+    recurrence,
+    payableTo,
+    selectedGroup,
+    vendorContact,
+    vendorLocation,
+    vendorOfferings,
+    showAddVendorForm,
+    notificationEmails,
+    isSharedRequisition,
+    sharedGroups
+  ]);
+
   // Load draft from localStorage on initial render
   useEffect(() => {
     if (!currentUser?.id) return;
@@ -277,7 +335,16 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
         if (Array.isArray(draft.notificationEmails)) setNotificationEmails(draft.notificationEmails);
         if (draft.isSharedRequisition !== undefined) setIsSharedRequisition(Boolean(draft.isSharedRequisition));
         if (Array.isArray(draft.sharedGroups)) setSharedGroups(draft.sharedGroups);
+        
+        if (draft.savedAt) {
+          const d = new Date(draft.savedAt);
+          if (!isNaN(d.getTime())) {
+            setLastAutoSavedAt(d);
+            setDraftRestoredTime(d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+          }
+        }
         setIsDraftRestored(true);
+        setAutoSaveStatus('saved');
       } catch (err) {
         console.error("Failed to restore draft:", err);
       }
@@ -306,49 +373,48 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
     }
   }, [currentUser, churchGroups, isAdminOrFinance]);
 
-  // Auto-save form inputs to localStorage on state updates
+  // Real-time auto-save form inputs to localStorage on state updates
   useEffect(() => {
     if (!currentUser?.id) return;
-    const draftKey = `stands_requisition_draft_${currentUser.id}`;
 
-    // If completely empty, remove any existing draft from storage
     if (!title.trim() && !description.trim() && !amount.trim() && !payableTo.trim()) {
+      const draftKey = `stands_requisition_draft_${currentUser.id}`;
       localStorage.removeItem(draftKey);
+      setAutoSaveStatus('idle');
       return;
     }
 
-    const draftData = {
-      title,
-      description,
-      amount,
-      recurrence,
-      payableTo,
-      selectedGroup,
-      vendorContact,
-      vendorLocation,
-      vendorOfferings,
-      showAddVendorForm,
-      notificationEmails,
-      isSharedRequisition,
-      sharedGroups
+    setAutoSaveStatus('saving');
+    const timer = setTimeout(() => {
+      saveDraftToStorage();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [saveDraftToStorage, currentUser, title, description, amount, payableTo]);
+
+  // Window event listeners for tab closing & visibility changes to guarantee zero data loss
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (title.trim() || description.trim() || amount.trim() || payableTo.trim()) {
+        saveDraftToStorage();
+        e.preventDefault();
+        e.returnValue = "";
+      }
     };
-    localStorage.setItem(draftKey, JSON.stringify(draftData));
-  }, [
-    currentUser,
-    title,
-    description,
-    amount,
-    recurrence,
-    payableTo,
-    selectedGroup,
-    vendorContact,
-    vendorLocation,
-    vendorOfferings,
-    showAddVendorForm,
-    notificationEmails,
-    isSharedRequisition,
-    sharedGroups
-  ]);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        saveDraftToStorage();
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [saveDraftToStorage, title, description, amount, payableTo]);
 
   useEffect(() => {
     const val = parseFloat(amount);
@@ -591,7 +657,23 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
         className="bg-white dark:bg-slate-900 rounded-none md:rounded-2xl w-full max-w-3xl h-full md:h-auto md:max-h-[90vh] shadow-2xl overflow-hidden border-t md:border border-slate-200 dark:border-slate-800 flex flex-col"
       >
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between sticky top-0 z-10">
-          <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-[0.2em]">New Requisition Hub</h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-[0.2em]">New Requisition Hub</h3>
+            
+            {/* Live Auto-Save Status Badge */}
+            {autoSaveStatus === 'saving' && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                <Loader2 size={11} className="animate-spin text-amber-500" />
+                Auto-saving...
+              </span>
+            )}
+            {autoSaveStatus === 'saved' && lastAutoSavedAt && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/80">
+                <Check size={11} className="text-emerald-500" />
+                Auto-saved {lastAutoSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            )}
+          </div>
           <button onClick={handleCloseAttempt} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
             <X size={20} className="text-slate-500 dark:text-slate-400" />
           </button>
@@ -611,7 +693,9 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
                 </div>
                 <div>
                   <h5 className="text-xs font-black text-indigo-900 dark:text-indigo-300 uppercase tracking-widest mb-1">Unsaved Draft Restored</h5>
-                  <p className="text-[11px] text-indigo-700/80 dark:text-indigo-400/80">We recovered your previous unsaved inputs from this device.</p>
+                  <p className="text-[11px] text-indigo-700/80 dark:text-indigo-400/80">
+                    We automatically recovered your unsaved inputs from your previous session {draftRestoredTime ? `(Saved at ${draftRestoredTime})` : ''}.
+                  </p>
                 </div>
               </div>
               <button 
@@ -628,8 +712,10 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
                     localStorage.removeItem(`stands_requisition_draft_${currentUser.id}`);
                   }
                   setIsDraftRestored(false);
+                  setAutoSaveStatus('idle');
+                  setLastAutoSavedAt(null);
                 }}
-                className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 px-3 py-1.5 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-800/50 transition-colors whitespace-nowrap"
+                className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 px-3 py-1.5 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-800/50 transition-colors whitespace-nowrap cursor-pointer"
               >
                 Start Fresh
               </button>

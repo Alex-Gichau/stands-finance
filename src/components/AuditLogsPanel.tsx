@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   ShieldAlert, 
@@ -16,7 +16,9 @@ import {
   Database,
   Activity,
   Zap,
-  CheckCircle2
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { SystemLog, UserRole } from "../types";
@@ -33,6 +35,9 @@ export const AuditLogsPanel: React.FC = () => {
   const [dateRangeFilter, setDateRangeFilter] = useState<'ALL' | 'TODAY' | '7DAYS' | '30DAYS'>('ALL');
   const [activeTab, setActiveTab] = useState<'LOGS' | 'EMAILS'>('LOGS');
   const [showQuotaModal, setShowQuotaModal] = useState(false);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const ROWS_PER_PAGE = 15;
 
   const uniqueActions = useMemo(() => {
     const actions = new Set(systemLogs.map(log => log.action));
@@ -67,6 +72,18 @@ export const AuditLogsPanel: React.FC = () => {
       return matchesSearch && matchesAction && matchesLevel && matchesDate;
     }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [systemLogs, searchTerm, selectedActionFilter, selectedLevelFilter, dateRangeFilter]);
+
+  // Reset pagination when search or filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedActionFilter, selectedLevelFilter, dateRangeFilter, systemLogLimit]);
+
+  const totalPages = Math.ceil(filteredLogs.length / ROWS_PER_PAGE) || 1;
+
+  const paginatedLogs = useMemo(() => {
+    const startIndex = (currentPage - 1) * ROWS_PER_PAGE;
+    return filteredLogs.slice(startIndex, startIndex + ROWS_PER_PAGE);
+  }, [filteredLogs, currentPage, ROWS_PER_PAGE]);
 
   if (currentUser?.role !== UserRole.SUPER_ADMIN) {
     return (
@@ -312,7 +329,7 @@ export const AuditLogsPanel: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {filteredLogs.map((log, idx) => (
+                  {paginatedLogs.map((log, idx) => (
                     <motion.tr 
                       layout
                       key={`audit-trail-log-${log.id || idx}-${idx}`} 
@@ -385,18 +402,74 @@ export const AuditLogsPanel: React.FC = () => {
               )}
             </div>
 
-            {systemLogs.length >= systemLogLimit && (
-              <div className="flex justify-between items-center p-6 border-t border-slate-50 bg-slate-50/50">
-                <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-                  Showing {systemLogs.length} of recent system audit logs
-                </span>
-                <button
-                  onClick={() => setSystemLogLimit(systemLogLimit + 100)}
-                  className="px-6 py-3 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:text-slate-900 shadow-xs transition-all cursor-pointer flex items-center gap-2"
-                >
-                  <History size={12} className="text-slate-400" />
-                  Load 100 More (Current: {systemLogLimit})
-                </button>
+            {filteredLogs.length > 0 && (
+              <div className="flex flex-col sm:flex-row justify-between items-center p-6 border-t border-slate-100 bg-slate-50/50 gap-4">
+                <div className="flex flex-col sm:flex-row items-center gap-3">
+                  <span className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">
+                    Showing <span className="font-mono text-slate-900 font-black">{(currentPage - 1) * ROWS_PER_PAGE + 1}</span> to <span className="font-mono text-slate-900 font-black">{Math.min(currentPage * ROWS_PER_PAGE, filteredLogs.length)}</span> of <span className="font-mono text-slate-900 font-black">{filteredLogs.length}</span> audit logs
+                  </span>
+
+                  {systemLogs.length >= systemLogLimit && (
+                    <button
+                      onClick={() => setSystemLogLimit(systemLogLimit + 100)}
+                      className="px-3 py-1 bg-white border border-slate-200 hover:border-slate-300 rounded-lg text-[9px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-800 shadow-2xs transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <History size={11} className="text-indigo-500" />
+                      Load +100 Logs
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl text-[10px] font-black uppercase tracking-wider text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                  >
+                    <ChevronLeft size={14} />
+                    <span>Prev</span>
+                  </button>
+
+                  <div className="flex items-center gap-1 px-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(page => page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1)
+                      .reduce<(number | string)[]>((acc, page, idx, arr) => {
+                        if (idx > 0 && (page as number) - (arr[idx - 1] as number) > 1) {
+                          acc.push("...");
+                        }
+                        acc.push(page);
+                        return acc;
+                      }, [])
+                      .map((p, i) => 
+                        typeof p === "number" ? (
+                          <button
+                            key={p}
+                            onClick={() => setCurrentPage(p)}
+                            className={cn(
+                              "w-7 h-7 rounded-lg text-[10px] font-black font-mono transition-all cursor-pointer flex items-center justify-center border",
+                              currentPage === p 
+                                ? "bg-slate-900 text-white border-slate-900 shadow-xs" 
+                                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                            )}
+                          >
+                            {p}
+                          </button>
+                        ) : (
+                          <span key={`ellipsis-${i}`} className="text-slate-400 text-xs px-1 font-mono">...</span>
+                        )
+                      )
+                    }
+                  </div>
+
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage >= totalPages}
+                    className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl text-[10px] font-black uppercase tracking-wider text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                  >
+                    <span>Next</span>
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
               </div>
             )}
           </div>
