@@ -4127,10 +4127,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
 
     try {
-      const reqRef = doc(db, "requisitions", id);
-      const reqSnap = await getDoc(reqRef);
-      if (!reqSnap.exists()) return;
-      const currentReq = reqSnap.data() as Requisition;
+      const currentReq = requisitions.find(r => r.id === id);
+      if (!currentReq) return;
       
       const newAmount = updates.amount !== undefined ? updates.amount : currentReq.amount;
       const cleanedUpdates = {
@@ -4140,8 +4138,18 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       };
       
       const updatedReq = { ...currentReq, ...cleanedUpdates };
-      await databaseService.saveRequisition(cleanFirestoreData(updatedReq));
       setRequisitions(prev => prev.map(r => r.id === id ? updatedReq : r));
+      await databaseService.saveRequisition(cleanFirestoreData(updatedReq));
+
+      if (!skipFirestore && db) {
+        try {
+          const reqRef = doc(db, "requisitions", id);
+          await updateDoc(reqRef, cleanFirestoreData(updates));
+        } catch (fErr) {
+          console.log("[Firestore Sync] updateDoc failed or skipped:", fErr);
+        }
+      }
+
       await addSystemLog("REQUISITION_EDITED", `Requisition '${id}' updated`, { requisitionId: id, updates });
 
       if (updates.status === RequisitionStatus.SUBMITTED && currentReq.status !== RequisitionStatus.SUBMITTED) {
@@ -4155,7 +4163,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         await syncProjectAmounts(updates.projectId);
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `requisitions/${id}`);
+      console.error("[updateRequisition Error]:", err);
     }
     });
   }, [addSystemLog, db, systemSettings, syncProjectAmounts, requisitions, setRequisitions, withDbLoading]);

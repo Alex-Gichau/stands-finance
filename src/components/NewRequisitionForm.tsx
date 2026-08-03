@@ -8,7 +8,7 @@ import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionCon
 import { numberToWords } from "../utils/numberUtils";
 import { formatCurrency, cn, uploadAttachmentsToLocalServer } from "../lib/utils";
 import { processFileToAttachmentStrings } from "../lib/pdfUtils";
-import { Upload, X, Paperclip, Loader2, DollarSign, FileText, Info, Repeat, Users, PlusCircle, Save, Camera, Mail, UserPlus, Check, Share2, Layers, Building2 } from "lucide-react";
+import { Upload, X, Paperclip, Loader2, DollarSign, FileText, Info, Repeat, Users, PlusCircle, Save, Camera, Mail, UserPlus, Check, Share2, Layers, Building2, Search, ChevronDown, Store } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { RecurrenceType, UserRole } from "../types";
 import { CameraCapture } from "./CameraCapture";
@@ -36,11 +36,58 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
   const [customNotifyEmail, setCustomNotifyEmail] = useState("");
 
   const [payableTo, setPayableTo] = useState<string>("");
+  const [isVendorDropdownOpen, setIsVendorDropdownOpen] = useState(false);
+  const [vendorHighlightIndex, setVendorHighlightIndex] = useState<number>(-1);
+  const vendorDropdownRef = React.useRef<HTMLDivElement>(null);
+
   const [showAddVendorForm, setShowAddVendorForm] = useState(false);
   const [vendorContact, setVendorContact] = useState("");
   const [vendorLocation, setVendorLocation] = useState("");
   const [vendorOfferings, setVendorOfferings] = useState("");
   const [isSavingVendor, setIsSavingVendor] = useState(false);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (vendorDropdownRef.current && !vendorDropdownRef.current.contains(e.target as Node)) {
+        setIsVendorDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredVendors = React.useMemo(() => {
+    if (!vendors || vendors.length === 0) return [];
+    const q = (payableTo || "").trim().toLowerCase();
+    if (!q) return vendors;
+    return vendors.filter(v => {
+      const nameMatch = (v.name || "").toLowerCase().includes(q);
+      const contactMatch = (v.contact || "").toLowerCase().includes(q);
+      const locationMatch = (v.location || "").toLowerCase().includes(q);
+      const offeringStr = Array.isArray(v.offerings) ? v.offerings.join(" ") : (v.offerings || "");
+      const offeringMatch = offeringStr.toLowerCase().includes(q);
+      return nameMatch || contactMatch || locationMatch || offeringMatch;
+    });
+  }, [vendors, payableTo]);
+
+  const handleSelectVendor = (v: any) => {
+    setPayableTo(v.name);
+    if (v.contact) setVendorContact(v.contact);
+    if (v.location) setVendorLocation(v.location);
+    if (v.offerings) {
+      setVendorOfferings(Array.isArray(v.offerings) ? v.offerings.join(", ") : v.offerings);
+    }
+    setIsVendorDropdownOpen(false);
+    setShowAddVendorForm(false);
+    if (triggerToast) {
+      triggerToast({
+        type: "SYSTEM_INFO",
+        message: `Auto-selected vendor: ${v.name}`,
+        severity: "LOW",
+        timestamp: new Date().toISOString()
+      });
+    }
+  };
 
   const [activeTab, setActiveTab] = useState<"SEARCH" | "CREATE">("SEARCH");
 
@@ -1023,60 +1070,194 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
             </div>
 
             {/* Vendor Management / Payable To Field */}
-            <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-150 dark:border-slate-800 relative">
-              <label className="text-[10px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-widest block mb-1">
-                🤝 Payable To (Vendor Name)
-              </label>
-              
-              <div className="relative">
-                <input 
-                  type="text"
-                  required 
-                  value={payableTo}
-                  onChange={(e) => {
-                    setPayableTo(e.target.value);
-                    setShowAddVendorForm(false);
-                  }}
-                  placeholder="e.g. Acme Stationery Supply Ltd"
-                  className="input-field bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-200 border-slate-200 dark:border-slate-800 text-xs md:text-sm h-10 px-3 pr-10"
-                />
-                
-                {/* Search suggestion drop-down if user types a matching string */}
-                {payableTo.trim() && !isExistingVendor && vendors && vendors.length > 0 && (
-                  <div className="absolute left-0 right-0 top-11 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg z-20 max-h-40 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
-                    <p className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest p-2 bg-slate-50 dark:bg-slate-800/60">
-                      Suggestions from registered STANDS Vendors
-                    </p>
-                    {vendors
-                      .filter(v => v.name.toLowerCase().includes(payableTo.toLowerCase()))
-                      .map(v => (
-                        <button
-                          key={v.id}
-                          type="button"
-                          onClick={() => {
-                            setPayableTo(v.name);
-                          }}
-                          className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-slate-800 font-medium text-slate-700 dark:text-slate-300 flex justify-between items-center"
-                        >
-                          <span>{v.name}</span>
-                          <span className={cn(
-                            "text-[9px] px-1.5 py-0.5 rounded font-mono font-bold uppercase",
-                            v.status === "PENDING" ? "bg-amber-100 text-amber-700" :
-                            v.status === "REJECTED" ? "bg-rose-100 text-rose-700" :
-                            "bg-emerald-100 text-emerald-700"
-                          )}>
-                            {v.status === "PENDING" ? "PENDING" :
-                             v.status === "REJECTED" ? "REJECTED" :
-                             "APPROVED"}
-                          </span>
-                        </button>
-                      ))}
-                  </div>
+            <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-150 dark:border-slate-800 relative" ref={vendorDropdownRef}>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-widest block">
+                  🤝 Payable To (Vendor Name)
+                </label>
+                {vendors && vendors.length > 0 && (
+                  <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500">
+                    {vendors.length} registered {vendors.length === 1 ? 'vendor' : 'vendors'} available
+                  </span>
                 )}
               </div>
+              
+              <div className="relative">
+                <div className="relative flex items-center">
+                  <Building2 className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                  <input 
+                    type="text"
+                    required 
+                    value={payableTo}
+                    onFocus={() => setIsVendorDropdownOpen(true)}
+                    onChange={(e) => {
+                      setPayableTo(e.target.value);
+                      setIsVendorDropdownOpen(true);
+                      setShowAddVendorForm(false);
+                      setVendorHighlightIndex(-1);
+                    }}
+                    onKeyDown={(e) => {
+                      if (!isVendorDropdownOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                        setIsVendorDropdownOpen(true);
+                        return;
+                      }
+                      const canPropose = payableTo.trim() && !isExistingVendor;
+                      const totalItems = filteredVendors.length + (canPropose ? 1 : 0);
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setVendorHighlightIndex(prev => (prev + 1 < totalItems ? prev + 1 : 0));
+                      } else if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setVendorHighlightIndex(prev => (prev - 1 >= 0 ? prev - 1 : totalItems - 1));
+                      } else if (e.key === "Enter" && isVendorDropdownOpen && vendorHighlightIndex >= 0) {
+                        e.preventDefault();
+                        if (vendorHighlightIndex < filteredVendors.length) {
+                          handleSelectVendor(filteredVendors[vendorHighlightIndex]);
+                        } else if (canPropose && vendorHighlightIndex === filteredVendors.length) {
+                          setShowAddVendorForm(true);
+                          setIsVendorDropdownOpen(false);
+                        }
+                      } else if (e.key === "Escape") {
+                        setIsVendorDropdownOpen(false);
+                      }
+                    }}
+                    placeholder="Type to search or select a vendor (e.g. Acme Supplies)"
+                    className="input-field bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-200 border-slate-200 dark:border-slate-800 text-xs md:text-sm h-10 pl-9 pr-16"
+                  />
+                  
+                  <div className="absolute right-2 flex items-center gap-1">
+                    {payableTo && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPayableTo("");
+                          setVendorContact("");
+                          setVendorLocation("");
+                          setVendorOfferings("");
+                          setIsVendorDropdownOpen(true);
+                        }}
+                        className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                        title="Clear vendor field"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIsVendorDropdownOpen(prev => !prev)}
+                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                      title="Toggle vendor list"
+                    >
+                      <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", isVendorDropdownOpen ? "rotate-180" : "")} />
+                    </button>
+                  </div>
+                </div>
 
-              {/* Add Vendor prompt if typed and not an existing registered vendor */}
-              {payableTo.trim() && !isExistingVendor && !showAddVendorForm && (
+                {/* Autocomplete Suggestions Dropdown */}
+                <AnimatePresence>
+                  {isVendorDropdownOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4, scale: 0.99 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -4, scale: 0.99 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute left-0 right-0 top-11 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-30 max-h-64 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60"
+                    >
+                      <div className="sticky top-0 bg-slate-50/95 dark:bg-slate-800/95 backdrop-blur-md px-3 py-2 flex items-center justify-between border-b border-slate-100 dark:border-slate-800 z-10">
+                        <span className="text-[9px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1.5">
+                          <Store className="w-3 h-3 text-primary" />
+                          {payableTo.trim() ? `Matching Vendors (${filteredVendors.length})` : `All Vendors (${filteredVendors.length})`}
+                        </span>
+                        <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono hidden sm:inline">
+                          Press ↑↓ to navigate
+                        </span>
+                      </div>
+
+                      {filteredVendors.length === 0 ? (
+                        <div className="p-4 text-center">
+                          <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">No matching registered vendor found</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">You can register "{payableTo}" below to save it to the vendor database.</p>
+                        </div>
+                      ) : (
+                        filteredVendors.map((v, idx) => {
+                          const isSelected = v.name.toLowerCase().trim() === payableTo.toLowerCase().trim();
+                          const isHighlighted = idx === vendorHighlightIndex;
+                          const offeringStr = Array.isArray(v.offerings) ? v.offerings.join(", ") : (v.offerings || "");
+
+                          return (
+                            <button
+                              key={v.id}
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                handleSelectVendor(v);
+                              }}
+                              onMouseEnter={() => setVendorHighlightIndex(idx)}
+                              className={cn(
+                                "w-full text-left px-3 py-2.5 text-xs transition-colors flex items-start justify-between gap-3",
+                                isHighlighted ? "bg-primary/10 dark:bg-primary/20" : "hover:bg-slate-50 dark:hover:bg-slate-800/70",
+                                isSelected ? "bg-emerald-50/70 dark:bg-emerald-950/20" : ""
+                              )}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-slate-800 dark:text-slate-200 truncate">{v.name}</span>
+                                  {isSelected && (
+                                    <span className="inline-flex items-center gap-0.5 text-[9px] bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-bold px-1.5 py-0.5 rounded-md">
+                                      <Check className="w-2.5 h-2.5" /> Selected
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                                  {v.location && <span>📍 {v.location}</span>}
+                                  {v.contact && <span>📞 {v.contact}</span>}
+                                  {offeringStr && <span className="truncate max-w-[200px]">🛍️ {offeringStr}</span>}
+                                </div>
+                              </div>
+
+                              <span className={cn(
+                                "text-[9px] px-1.5 py-0.5 rounded font-mono font-bold uppercase shrink-0 mt-0.5",
+                                v.status === "PENDING" ? "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400" :
+                                v.status === "REJECTED" ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400" :
+                                "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400"
+                              )}>
+                                {v.status === "PENDING" ? "PENDING" : v.status === "REJECTED" ? "REJECTED" : "VERIFIED"}
+                              </span>
+                            </button>
+                          );
+                        })
+                      )}
+
+                      {payableTo.trim() && !isExistingVendor && (
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setShowAddVendorForm(true);
+                            setIsVendorDropdownOpen(false);
+                          }}
+                          onMouseEnter={() => setVendorHighlightIndex(filteredVendors.length)}
+                          className={cn(
+                            "w-full text-left px-3 py-2.5 text-xs font-semibold text-primary flex items-center justify-between transition-colors bg-primary/5 dark:bg-primary/10 hover:bg-primary/15 border-t border-slate-100 dark:border-slate-800",
+                            vendorHighlightIndex === filteredVendors.length ? "ring-2 ring-primary/40 inset-0" : ""
+                          )}
+                        >
+                          <div className="flex items-center gap-2">
+                            <PlusCircle className="w-3.5 h-3.5 text-primary" />
+                            <span>{isAdminOrFinance ? "Register" : "Propose"} vendor <strong>"{payableTo}"</strong></span>
+                          </div>
+                          <span className="text-[9px] bg-white dark:bg-slate-800 text-primary border border-primary/30 px-2 py-0.5 rounded-lg font-bold uppercase tracking-wider">
+                            + Add New
+                          </span>
+                        </button>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Add Vendor prompt if typed and not an existing registered vendor and dropdown is closed */}
+              {payableTo.trim() && !isExistingVendor && !showAddVendorForm && !isVendorDropdownOpen && (
                 <motion.div 
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -1107,7 +1288,7 @@ export const NewRequisitionForm: React.FC<NewRequisitionFormProps> = ({ onClose 
                   v.status === "REJECTED" ? "bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/30" :
                   "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/30"
                 )}>
-                  <div className={cn("w-5 h-5 flex items-center justify-center text-white shrink-0 font-bold text-xs rounded-full",
+                  <div className={cn("w-5 h-5 flex items-center justify-center text-white shrink-0 font-bold text-xs rounded-full mt-0.5",
                      v.status === "PENDING" ? "bg-amber-500" :
                      v.status === "REJECTED" ? "bg-rose-500" :
                      "bg-emerald-500"
