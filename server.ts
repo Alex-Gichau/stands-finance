@@ -1566,6 +1566,38 @@ async function startServer() {
           nextStepsText = `Please log in to the STANDS eRequisitions portal to review feedback, make required changes, and resubmit if appropriate.`;
           break;
 
+        case "DELETED":
+          subject = `[Deleted] Requisition Notice: ${reqName}`;
+          headerTitle = "Requisition Deleted";
+          mainMessage = `The requisition "<strong>${reqName}</strong>" (${formattedAmount}) has been deleted from the eRequisitions portal.`;
+          decisionBoxHtml = `
+            <div style="margin-top: 16px; padding: 16px; background-color: #fef2f2; border-left: 4px solid #ef4444; border-radius: 6px;">
+              <p style="margin: 0 0 10px 0; font-size: 12px; font-weight: 800; color: #991b1b; text-transform: uppercase; letter-spacing: 0.5px;">Deletion Record</p>
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px; color: #7f1d1d;">
+                <tr>
+                  <td style="padding: 4px 0; font-weight: 700; width: 35%;">Action By:</td>
+                  <td style="padding: 4px 0; font-weight: 600; color: #991b1b;">${actualApprover}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; font-weight: 700;">Ministry / Group:</td>
+                  <td style="padding: 4px 0; font-weight: 600; color: #991b1b;">${ministryName}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; font-weight: 700; vertical-align: top;">Requisition ID:</td>
+                  <td style="padding: 4px 0; font-family: monospace; color: #991b1b;">#${displayId}</td>
+                </tr>
+                ${decisionNote ? `
+                <tr>
+                  <td style="padding: 4px 0; font-weight: 700; vertical-align: top;">Details / Note:</td>
+                  <td style="padding: 4px 0; font-style: italic; color: #7f1d1d;">"${decisionNote}"</td>
+                </tr>
+                ` : ""}
+              </table>
+            </div>
+          `;
+          nextStepsText = `This requisition has been removed from active workflow queues. All subscribers receiving updates for this record have been notified.`;
+          break;
+
         default:
           subject = `[Update] Requisition: ${reqName}`;
           headerTitle = "Requisition Status Update";

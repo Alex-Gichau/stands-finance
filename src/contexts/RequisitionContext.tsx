@@ -514,7 +514,7 @@ interface RequisitionContextType {
   updateRequisition: (id: string, updates: Partial<Requisition>) => Promise<void>;
   updateRequisitionStatus: (id: string, status: RequisitionStatus, decision: "APPROVE" | "REJECT" | "ESCALATE", note?: string, method?: any, rejectionReason?: string, approvalCode?: string) => Promise<void>;
   uploadReceipts: (id: string, receipts: string[]) => Promise<void>;
-  deleteRequisition: (id: string) => Promise<void>;
+  deleteRequisition: (id: string, reason?: string) => Promise<void>;
   markAlertAsRead: (id: string) => Promise<void>;
   deleteAlert: (id: string) => Promise<void>;
   updateThreshold: (id: string, updates: Partial<AlertThreshold>) => Promise<void>;
@@ -3712,8 +3712,10 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (user) targetEmail = user.email;
     }
 
-    if (!targetEmail) {
-      console.log("Cannot send email: Requisition has no requesterEmail and no matching user found", req.id);
+    const notificationEmailsList = req.notificationEmails || [];
+
+    if (!targetEmail && notificationEmailsList.length === 0) {
+      console.log("Cannot send email: Requisition has no requesterEmail and no notificationEmails", req.id);
       return;
     }
     
@@ -3722,8 +3724,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to: targetEmail,
-          notificationEmails: req.notificationEmails || [],
+          to: targetEmail || notificationEmailsList[0] || "",
+          notificationEmails: notificationEmailsList,
           requesterName: req.requesterName || "Requester",
           requesterEmail: req.requesterEmail || targetEmail,
           amount: req.amount,
@@ -4058,7 +4060,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setBiometricEnrolled(enabled);
   }, []);
 
-  const deleteRequisition = useCallback(async (id: string) => {
+  const deleteRequisition = useCallback(async (id: string, reason?: string) => {
     const targetReq = requisitions.find(r => r.id === id);
     // OPTIMISTIC DELETE: Immediately remove from UI
     setRequisitions(prev => prev.filter(r => r.id !== id));
@@ -4072,10 +4074,25 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       try {
         const reqRef = doc(db, "requisitions", id);
         const reqSnap = await getDoc(reqRef);
-        const projectId = reqSnap.exists() ? (reqSnap.data() as Requisition).projectId : null;
+        let reqToDelete = targetReq;
+        if (reqSnap.exists()) {
+          const docData = { id: reqSnap.id, ...reqSnap.data() } as Requisition;
+          reqToDelete = reqToDelete ? { ...docData, ...reqToDelete } : docData;
+        }
+
+        const projectId = reqToDelete?.projectId || (reqSnap.exists() ? (reqSnap.data() as Requisition).projectId : null);
 
         await databaseService.deleteRequisition(id);
         addSystemLog("REQUISITION_DELETED", `Requisition ID '${id}' deleted`, { requisitionId: id }).catch(() => {});
+
+        if (reqToDelete) {
+          sendEmailNotification(
+            reqToDelete, 
+            "DELETED", 
+            reason || "Requisition has been deleted from the portal", 
+            currentUser?.name || currentUser?.email || "Reviewing Official"
+          ).catch(() => {});
+        }
 
         if (projectId) {
           syncProjectAmounts(projectId).catch(() => {});
@@ -4085,7 +4102,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         handleFirestoreError(err, OperationType.DELETE, `requisitions/${id}`);
       }
     });
-  }, [requisitions, setRequisitions, addSystemLog, syncProjectAmounts, withDbLoading]);
+  }, [requisitions, setRequisitions, addSystemLog, syncProjectAmounts, sendEmailNotification, currentUser, withDbLoading]);
 
   const updateRequisition = useCallback(async (id: string, updates: Partial<Requisition>) => {
     return withDbLoading("Saving requisition changes...", async () => {
