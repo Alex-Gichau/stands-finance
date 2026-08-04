@@ -38,7 +38,11 @@ import {
   CalendarRange,
   Save,
   Settings,
-  Trash2
+  Trash2,
+  User,
+  Mail,
+  UserCheck,
+  CreditCard
 } from "lucide-react";
 import { useRequisitions, getActiveFiscalYear } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition, Project } from "../types";
@@ -2070,10 +2074,24 @@ export const FinanceLedgerPanel: React.FC = () => {
                             <tr>
                               <td colSpan={5} className="bg-slate-50/50 p-4 border-t border-b border-dashed border-slate-200">
                                 <div className="space-y-2 text-[11px] text-slate-600">
-                                  <p><strong>Accounting Narrative:</strong> {req.description}</p>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 bg-white p-2.5 rounded-lg border border-slate-200 text-[10px]">
+                                    <div>
+                                      <span className="font-bold text-slate-400 uppercase block">Requester Details</span>
+                                      <p className="font-semibold text-slate-900">{req.requesterName}</p>
+                                      <p className="text-slate-500 font-mono">{req.requesterEmail || users?.find(u => u.id === req.requesterId)?.email || `${req.requesterName.toLowerCase().replace(/\s+/g, "")}@church.org`}</p>
+                                    </div>
+                                    <div>
+                                      <span className="font-bold text-slate-400 uppercase block">Group / Beneficiary</span>
+                                      <p className="font-semibold text-slate-900">{req.groupName}</p>
+                                      {req.payableTo && <p className="text-slate-600">Payable To: <strong>{req.payableTo}</strong></p>}
+                                    </div>
+                                  </div>
+
+                                  <p><strong>Accounting Narrative:</strong> {req.description || "No description provided."}</p>
                                   {req.amountWords && <p><strong>Amount in Words:</strong> {req.amountWords}</p>}
                                   
                                   <div className="flex flex-wrap gap-4 pt-2 text-[10px] text-slate-500 border-t border-slate-200">
+                                    <p><strong>Submitted Date:</strong> {req.submittedAt ? new Date(req.submittedAt).toLocaleString() : "N/A"}</p>
                                     <p><strong>Approved Date L1:</strong> {req.approvedAtL1 ? new Date(req.approvedAtL1).toLocaleString() : "N/A"}</p>
                                     <p><strong>Approved Date L2:</strong> {req.approvedAtL2 ? new Date(req.approvedAtL2).toLocaleString() : "N/A"}</p>
                                     {req.status === RequisitionStatus.DISBURSED && (
@@ -2085,11 +2103,12 @@ export const FinanceLedgerPanel: React.FC = () => {
 
                                   {Array.isArray(req.approvalHistory) && req.approvalHistory.length > 0 && (
                                     <div className="space-y-1 pt-2">
-                                      <p className="font-bold text-slate-700">Audit Chamber Protocol Logs:</p>
+                                      <p className="font-bold text-slate-700">Audit Chamber Protocol Logs & Approver Trail:</p>
                                       <div className="space-y-1">
                                         {req.approvalHistory.map((h, i) => (
-                                          <p key={i} className="font-mono text-[9px] text-slate-500 bg-white p-1 rounded-md border border-slate-100">
-                                            [{new Date(h.timestamp).toLocaleTimeString()}] [{h.role}] {h.approverName}: "{h.note || "No custom ledger notes provided"}"
+                                          <p key={i} className="font-mono text-[9px] text-slate-600 bg-white p-1.5 rounded-md border border-slate-200 flex justify-between items-center">
+                                            <span>[{new Date(h.timestamp).toLocaleTimeString()}] [{h.role}] <strong>{h.approverName}</strong> ({h.method}): "{h.note || "No custom ledger notes provided"}"</span>
+                                            <span className={h.decision === "APPROVE" ? "text-emerald-700 font-bold" : "text-amber-700 font-bold"}>{h.decision}</span>
                                           </p>
                                         ))}
                                       </div>
@@ -2969,108 +2988,289 @@ export const FinanceLedgerPanel: React.FC = () => {
 
       {/* 8. MODAL: Manual Disbursement Settlement Form */}
       <AnimatePresence>
-        {disbursingReq && (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 sm:p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-none md:rounded-2xl shadow-xl border-t md:border border-slate-200 h-full md:h-auto max-w-md w-full overflow-hidden flex flex-col"
-            >
-              <div className="bg-slate-900 text-white p-6 sticky top-0 z-10 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Receipt className="text-indigo-400 animate-pulse" size={20} />
-                  <div>
-                    <h3 className="text-xs font-black uppercase tracking-widest text-slate-300">Settle Approved Request</h3>
-                    <p className="text-[10px] text-indigo-200">Recording payouts on physical checks or mobile banking.</p>
+        {disbursingReq && (() => {
+          const requesterObj = users?.find(u => u.id === disbursingReq.requesterId || u.name === disbursingReq.requesterName);
+          const resolvedEmail = disbursingReq.requesterEmail || requesterObj?.email || `${disbursingReq.requesterName.toLowerCase().replace(/\s+/g, "")}@church.org`;
+          const requesterRole = requesterObj?.role || "Church Group Representative";
+          const historyList = Array.isArray(disbursingReq.approvalHistory) ? disbursingReq.approvalHistory : [];
+
+          return (
+            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-h-[90vh] max-w-2xl w-full overflow-hidden flex flex-col"
+              >
+                {/* Header */}
+                <div className="bg-slate-900 text-white p-5 sticky top-0 z-10 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-indigo-600/30 rounded-xl border border-indigo-400/30">
+                      <Receipt className="text-indigo-400 animate-pulse" size={22} />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-black uppercase tracking-widest text-slate-200">Disbursement & Settlement Voucher</h3>
+                      <p className="text-[11px] text-slate-400">Review requester & approver authorization details before funds release.</p>
+                    </div>
                   </div>
-                </div>
-                <button onClick={() => setDisbursingReq(null)} className="p-2 hover:bg-slate-800 rounded-full transition-all text-slate-400 hover:text-white">
-                  <X size={20} />
-                </button>
-              </div>
-
-              <form onSubmit={handleRecordPayout} className="p-6 space-y-4 flex-1 overflow-y-auto">
-                
-                <div className="border border-slate-100 bg-slate-50 p-3 rounded-xl space-y-1">
-                  <div className="flex justify-between text-[10px] text-slate-400 font-bold">
-                    <span>REQUISITION #{disbursingReq.id.substr(0, 8)}</span>
-                    <span className="text-slate-700">{disbursingReq.groupName}</span>
-                  </div>
-                  <h4 className="text-xs font-bold text-slate-900 leading-tight">{disbursingReq.title}</h4>
-                  <div className="text-sm font-black text-indigo-600">{formatCurrency(disbursingReq.amount)}</div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Disbursement Channel</label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {[
-                      { id: "MPESA", label: "M-PESA" },
-                      { id: "EFT", label: "Bank EFT" },
-                      { id: "CHEQUE", label: "Cheque" },
-                      { id: "CASH", label: "Cash" }
-                    ].map((ch) => (
-                      <button
-                        key={ch.id}
-                        type="button"
-                        onClick={() => setDisburseMethod(ch.id as any)}
-                        className={cn(
-                          "py-2 text-center rounded-lg text-[9px] font-bold uppercase transition-all cursor-pointer border",
-                          disburseMethod === ch.id 
-                            ? "bg-slate-900 text-white border-slate-900" 
-                            : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
-                        )}
-                      >
-                        {ch.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Transaction / Ref Reference</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g., MPESA-TXN-2831, CHQ #001223"
-                    value={referenceNum}
-                    onChange={(e) => setReferenceNum(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-mono"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Verification Comment (Optional)</label>
-                  <textarea
-                    rows={2}
-                    placeholder="Provide clerical details, bank transfer receipts references..."
-                    value={payoutNotes}
-                    onChange={(e) => setPayoutNotes(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500"
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setDisbursingReq(null)}
-                    className="flex-1 py-2.5 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:bg-slate-50 cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isCommitingPayout}
-                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer shadow-lg shadow-emerald-600/10"
-                  >
-                    {isCommitingPayout ? "Committing..." : "Confirm Release"}
+                  <button onClick={() => setDisbursingReq(null)} className="p-2 hover:bg-slate-800 rounded-full transition-all text-slate-400 hover:text-white cursor-pointer">
+                    <X size={20} />
                   </button>
                 </div>
 
-              </form>
-            </motion.div>
-          </div>
-        )}
+                <form onSubmit={handleRecordPayout} className="p-5 md:p-6 space-y-5 flex-1 overflow-y-auto">
+                  
+                  {/* 1. Requisition Summary Card */}
+                  <div className="border border-indigo-100 bg-gradient-to-br from-indigo-50/70 via-slate-50 to-white p-4 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between text-[11px] font-bold">
+                      <span className="font-mono text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
+                        REQUISITION #{disbursingReq.id.substr(0, 8)}
+                      </span>
+                      <span className="text-indigo-900 bg-indigo-100/70 px-2.5 py-0.5 rounded-full font-semibold text-[10px]">
+                        {disbursingReq.groupName}
+                      </span>
+                    </div>
+                    
+                    <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 pt-1">
+                      <h4 className="text-sm font-bold text-slate-900 leading-snug">{disbursingReq.title}</h4>
+                      <div className="text-lg font-black text-indigo-700 shrink-0">
+                        {formatCurrency(disbursingReq.amount)}
+                      </div>
+                    </div>
+
+                    {disbursingReq.amountWords && (
+                      <p className="text-[10px] font-medium text-slate-500 italic">
+                        Amount in words: {disbursingReq.amountWords}
+                      </p>
+                    )}
+
+                    {disbursingReq.description && (
+                      <div className="text-xs text-slate-600 bg-white/80 p-2.5 rounded-lg border border-slate-200/60 mt-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Purpose / Description</span>
+                        {disbursingReq.description}
+                      </div>
+                    )}
+
+                    {disbursingReq.payableTo && (
+                      <div className="flex items-center gap-2 text-xs text-slate-700 font-medium pt-0.5">
+                        <CreditCard size={14} className="text-slate-400 shrink-0" />
+                        <span>Payable To / Beneficiary: <strong className="text-slate-900">{disbursingReq.payableTo}</strong></span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. Requester Details */}
+                  <div className="border border-slate-200 bg-white rounded-xl p-4 space-y-3 shadow-2xs">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <div className="flex items-center gap-2">
+                        <User size={15} className="text-indigo-600" />
+                        <h5 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Requester Information</h5>
+                      </div>
+                      <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">
+                        {requesterRole}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Full Name</span>
+                        <p className="font-semibold text-slate-900">{disbursingReq.requesterName}</p>
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Contact Email</span>
+                        <div className="flex items-center gap-1.5 text-slate-700 font-mono text-[11px]">
+                          <Mail size={12} className="text-slate-400 shrink-0" />
+                          <span className="truncate">{resolvedEmail}</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Ministry / Department</span>
+                        <p className="font-medium text-slate-800">{disbursingReq.groupName}</p>
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Date Submitted</span>
+                        <div className="flex items-center gap-1 text-slate-700">
+                          <Clock size={12} className="text-slate-400 shrink-0" />
+                          <span>{disbursingReq.submittedAt ? new Date(disbursingReq.submittedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : "N/A"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Approvers & Authorization History */}
+                  <div className="border border-slate-200 bg-white rounded-xl p-4 space-y-3 shadow-2xs">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck size={16} className="text-emerald-600" />
+                        <h5 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Approvers & Authorization Trail</h5>
+                      </div>
+                      <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                        <CheckCircle2 size={10} /> Fully Authorized
+                      </span>
+                    </div>
+
+                    {/* Milestones (L1 & L2) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="bg-slate-50 border border-slate-200/80 p-2.5 rounded-lg flex items-start gap-2.5">
+                        <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-md shrink-0 mt-0.5">
+                          <UserCheck size={14} />
+                        </div>
+                        <div className="space-y-0.5 text-xs">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase block">Level 1 (Group Leader / L1)</span>
+                          <p className="font-semibold text-slate-900">
+                            {historyList.find(h => h.role === UserRole.APPROVER_L1 || h.role === UserRole.CHURCH_GROUP)?.approverName || "Presbytery Official"}
+                          </p>
+                          <span className="text-[10px] text-slate-500 block">
+                            {disbursingReq.approvedAtL1 ? new Date(disbursingReq.approvedAtL1).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : "Verified & Endorsed"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200/80 p-2.5 rounded-lg flex items-start gap-2.5">
+                        <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-md shrink-0 mt-0.5">
+                          <ShieldCheck size={14} />
+                        </div>
+                        <div className="space-y-0.5 text-xs">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase block">Level 2 (Finance / L2)</span>
+                          <p className="font-semibold text-slate-900">
+                            {historyList.find(h => h.role === UserRole.APPROVER_L2 || h.role === UserRole.FINANCE || h.role === UserRole.ADMIN)?.approverName || "Finance Treasurer"}
+                          </p>
+                          <span className="text-[10px] text-slate-500 block">
+                            {disbursingReq.approvedAtL2 ? new Date(disbursingReq.approvedAtL2).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : "Authorized for Payout"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Detailed Protocol Logs if available */}
+                    {historyList.length > 0 && (
+                      <div className="pt-2 space-y-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Audit Protocol History</span>
+                        <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                          {historyList.map((h, i) => (
+                            <div key={i} className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs space-y-1">
+                              <div className="flex items-center justify-between text-[10px]">
+                                <div className="flex items-center gap-1.5 font-bold">
+                                  <span className="text-slate-900">{h.approverName}</span>
+                                  <span className="text-slate-400">•</span>
+                                  <span className="text-indigo-600 bg-indigo-50 px-1.5 py-0.2 rounded font-semibold">{h.role}</span>
+                                </div>
+                                <span className="text-slate-400 font-mono">
+                                  {new Date(h.timestamp).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center justify-between text-[10px] text-slate-500">
+                                <span className="font-medium">Method: <strong className="text-slate-700">{h.method || "VERIFIED"}</strong></span>
+                                <span className={cn(
+                                  "px-1.5 py-0.2 rounded font-bold uppercase",
+                                  h.decision === "APPROVE" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                                )}>
+                                  {h.decision}
+                                </span>
+                              </div>
+
+                              {h.note && (
+                                <p className="text-[11px] text-slate-600 italic bg-white p-1.5 rounded border border-slate-100 mt-1">
+                                  "{h.note}"
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 4. Disbursement Settlement Details (Form inputs) */}
+                  <div className="border border-slate-200 bg-slate-50/70 rounded-xl p-4 space-y-4">
+                    <h5 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <Banknote size={15} className="text-indigo-600" />
+                      Disbursement Payout Release Details
+                    </h5>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">Disbursement Channel</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {[
+                          { id: "MPESA", label: "M-PESA" },
+                          { id: "EFT", label: "Bank EFT" },
+                          { id: "CHEQUE", label: "Cheque" },
+                          { id: "CASH", label: "Cash" }
+                        ].map((ch) => (
+                          <button
+                            key={ch.id}
+                            type="button"
+                            onClick={() => setDisburseMethod(ch.id as any)}
+                            className={cn(
+                              "py-2 px-3 text-center rounded-lg text-xs font-bold uppercase transition-all cursor-pointer border",
+                              disburseMethod === ch.id 
+                                ? "bg-slate-900 text-white border-slate-900 shadow-sm" 
+                                : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                            )}
+                          >
+                            {ch.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">Transaction / Ref Reference</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g., MPESA-TXN-2831, CHQ #001223"
+                        value={referenceNum}
+                        onChange={(e) => setReferenceNum(e.target.value)}
+                        className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-mono shadow-2xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">Verification Comment (Optional)</label>
+                      <textarea
+                        rows={2}
+                        placeholder="Provide clerical details, bank transfer receipt references..."
+                        value={payoutNotes}
+                        onChange={(e) => setPayoutNotes(e.target.value)}
+                        className="w-full p-3 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 shadow-2xs"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-3 pt-2 sticky bottom-0 bg-white pb-1">
+                    <button
+                      type="button"
+                      onClick={() => setDisbursingReq(null)}
+                      className="flex-1 py-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 uppercase tracking-wider hover:bg-slate-50 cursor-pointer transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isCommitingPayout}
+                      className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/20"
+                    >
+                      {isCommitingPayout ? (
+                        <>Committing Payout...</>
+                      ) : (
+                        <>
+                          <CheckCircle2 size={16} /> Confirm Release
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                </form>
+              </motion.div>
+            </div>
+          );
+        })()}
       </AnimatePresence>
 
       {/* 9. MODAL: Budget Top Up Allocation Form */}

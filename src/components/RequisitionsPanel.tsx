@@ -859,8 +859,12 @@ const DocumentPreviewModal = ({
     dName = dName
       .replace(/^\{"0":"/, "")
       .replace(/^\{\s*"\d+"\s*:\s*"/, "")
+      .replace(/^(\{\s*"\d+"\s*:\s*)+/, "")
+      .replace(/(\}\s*)+$/, "")
       .replace(/^"/, "")
       .replace(/"$/, "")
+      .replace(/["}\s]+$/, "")
+      .replace(/^["{\s]+/, "")
       .replace(" (Simulated)", "")
       .trim();
 

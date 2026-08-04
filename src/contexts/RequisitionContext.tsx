@@ -32,7 +32,7 @@ import {
 } from "../types";
 import { getProjectRequisitions } from "../utils/budgetUtils";
 import { databaseService } from "../lib/databaseService";
-import { uploadAttachmentsToLocalServer } from "../lib/utils";
+import { uploadAttachmentsToLocalServer, unwrapAttachmentTarget } from "../lib/utils";
 import { triggerAutosendBackupEmail, AUTOSEND_DEFAULT_EMAIL, getLocalAutosendConfig } from "../services/autosendBackupService";
 import { initializeApp as initFirebaseApp } from "firebase/app";
 import { 
@@ -254,64 +254,26 @@ const getDoc = async (docRef: any) => {
 export function safeNormalizeAttachments(attachments: any): string[] {
   if (!attachments) return [];
 
-  const parseSingleItem = (item: any): string | null => {
+  const extractItem = (item: any): string | null => {
     if (!item) return null;
-    if (typeof item === 'string') {
-      const trimmed = item.trim();
-      if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
-        try {
-          const parsed = JSON.parse(trimmed);
-          if (typeof parsed === 'string') return parsed;
-          if (Array.isArray(parsed) && parsed.length > 0) return parseSingleItem(parsed[0]);
-          if (parsed && typeof parsed === 'object') {
-            const firstKey = Object.keys(parsed)[0];
-            const val = parsed.url || parsed.dataUrl || parsed.link || (firstKey ? parsed[firstKey] : null);
-            const name = parsed.name || parsed.fileName || parsed.title;
-            if (typeof val === 'string' && name && !val.includes('::')) return `${name}::${val}`;
-            if (typeof val === 'string') return val;
-          }
-        } catch (e) {
-          // not valid json string, use trimmed
-        }
-      }
-      return trimmed;
+    const unwrapped = unwrapAttachmentTarget(item);
+    if (unwrapped.name && unwrapped.url) {
+      return `${unwrapped.name}::${unwrapped.url}`;
     }
-    if (typeof item === 'object') {
-      const firstKey = Object.keys(item)[0];
-      const val = item.url || item.dataUrl || item.link || (firstKey ? item[firstKey] : null);
-      const name = item.name || item.fileName || item.title;
-      if (typeof val === 'string' && name && !val.includes('::')) return `${name}::${val}`;
-      if (typeof val === 'string') return val;
-      return JSON.stringify(item);
-    }
-    return String(item);
+    if (unwrapped.url) return unwrapped.url;
+    if (unwrapped.rawString) return unwrapped.rawString;
+    return null;
   };
 
   if (Array.isArray(attachments)) {
-    return attachments.map(parseSingleItem).filter((x): x is string => Boolean(x));
+    return attachments.map(extractItem).filter((x): x is string => Boolean(x));
   }
-  if (typeof attachments === 'object') {
-    return Object.values(attachments).map(parseSingleItem).filter((x): x is string => Boolean(x));
+  if (typeof attachments === 'object' && attachments !== null) {
+    return Object.values(attachments).map(extractItem).filter((x): x is string => Boolean(x));
   }
   if (typeof attachments === 'string') {
-    const trimmed = attachments.trim();
-    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-      try {
-        const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) {
-          return parsed.map(parseSingleItem).filter((x): x is string => Boolean(x));
-        }
-        if (parsed && typeof parsed === 'object') {
-          return Object.values(parsed).map(parseSingleItem).filter((x): x is string => Boolean(x));
-        }
-      } catch (e) {
-        console.error("Failed to parse stringified attachments:", e);
-      }
-    }
-    if (trimmed.length > 0) {
-      const res = parseSingleItem(trimmed);
-      return res ? [res] : [];
-    }
+    const res = extractItem(attachments);
+    return res ? [res] : [];
   }
   return [];
 }

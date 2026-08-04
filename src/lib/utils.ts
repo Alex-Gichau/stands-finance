@@ -26,52 +26,90 @@ export function handleImageError(e: React.SyntheticEvent<HTMLImageElement, Event
   }
 }
 
+export function unwrapAttachmentTarget(val: any, depth = 0): { url?: string; name?: string; rawString?: string } {
+  if (depth > 15 || val === null || val === undefined) {
+    return {};
+  }
+
+  if (typeof val === "string") {
+    let trimmed = val.trim();
+
+    // Clean leading/trailing escaped quotes if wrapped
+    if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length > 1) {
+      try {
+        const unquoted = JSON.parse(trimmed);
+        if (typeof unquoted === "string") {
+          return unwrapAttachmentTarget(unquoted, depth + 1);
+        }
+      } catch (e) {}
+    }
+
+    // Try parsing JSON if it starts with { or [
+    if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        return unwrapAttachmentTarget(parsed, depth + 1);
+      } catch (e) {}
+    }
+
+    // Clean up leftover stringified JSON syntax wrapping filename::url
+    if (trimmed.includes("::")) {
+      const cleanStr = trimmed
+        .replace(/^(\{\s*"\d+"\s*:\s*)+/, "")
+        .replace(/(\}\s*)+$/, "")
+        .replace(/^"/, "")
+        .replace(/"$/, "")
+        .trim();
+      return { rawString: cleanStr };
+    }
+
+    return { rawString: trimmed };
+  }
+
+  if (Array.isArray(val)) {
+    if (val.length === 0) return {};
+    return unwrapAttachmentTarget(val[0], depth + 1);
+  }
+
+  if (typeof val === "object") {
+    const name = val.name || val.fileName || val.title;
+    const directUrl = val.url || val.dataUrl || val.link || val.path;
+
+    if (typeof directUrl === "string") {
+      return { url: directUrl, name: typeof name === "string" ? name : undefined };
+    }
+
+    const keys = Object.keys(val);
+    if (keys.length > 0) {
+      const firstVal = val[keys[0]];
+      const res = unwrapAttachmentTarget(firstVal, depth + 1);
+      if (name && !res.name && typeof name === "string") {
+        res.name = name;
+      }
+      return res;
+    }
+  }
+
+  return { rawString: String(val) };
+}
+
 export function normalizeAttachmentUrl(url: any): string {
   if (!url) return "";
-  
-  let target = url;
-  
-  // If object, extract url / dataUrl / link / first value
-  if (typeof target === "object" && target !== null) {
-    const firstKey = Object.keys(target)[0];
-    const candidate = target.url || target.dataUrl || target.link || (firstKey ? target[firstKey] : null);
-    if (typeof candidate === "string") {
-      target = candidate;
-    } else {
-      target = String(target);
-    }
-  }
+
+  const unwrapped = unwrapAttachmentTarget(url);
+  let target = unwrapped.url || unwrapped.rawString || "";
 
   if (typeof target !== "string") return "";
-
   let trimmed = target.trim();
 
-  // If stringified JSON (starts with { or [)
-  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (typeof parsed === "string") {
-        trimmed = parsed.trim();
-      } else if (Array.isArray(parsed) && parsed.length > 0) {
-        return normalizeAttachmentUrl(parsed[0]);
-      } else if (parsed && typeof parsed === "object") {
-        const firstKey = Object.keys(parsed)[0];
-        const candidate = parsed.url || parsed.dataUrl || parsed.link || (firstKey ? parsed[firstKey] : null);
-        if (typeof candidate === "string") {
-          trimmed = candidate.trim();
-        }
-      }
-    } catch (e) {
-      // not valid json
-    }
-  }
-
-  // Strip `filename::` prefix if present (e.g. `1001549942.jpeg::data:image/jpeg;base64,...` or `file.pdf::/uploads/file.pdf`)
+  // Strip `filename::` prefix if present
   if (trimmed.includes("::")) {
     const parts = trimmed.split("::");
-    // The actual URL/data URI is everything after the first `::`
     trimmed = parts.slice(1).join("::").trim();
   }
+
+  // Clean trailing escaped quotes or braces if any
+  trimmed = trimmed.replace(/["}\s]+$/, "").replace(/^["{\s]+/, "").trim();
 
   // Normalize absolute HTTP/HTTPS URLs containing /uploads/ or /api/attachments/ to relative path
   if (trimmed.includes("/uploads/")) {
@@ -93,58 +131,38 @@ export function normalizeAttachmentUrl(url: any): string {
 
 export function getAttachmentFileName(doc: any): string {
   if (!doc) return "Attachment";
-  let target = doc;
-  if (typeof target === "object" && target !== null) {
-    if (target.name || target.fileName || target.title) {
-      return target.name || target.fileName || target.title;
-    }
-    const firstKey = Object.keys(target)[0];
-    const candidate = target[firstKey];
-    if (typeof candidate === "string") target = candidate;
-  }
-  if (typeof target !== "string") return "Attachment";
-  let trimmed = target.trim();
 
-  // If stringified JSON
-  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (typeof parsed === "string") trimmed = parsed.trim();
-      else if (Array.isArray(parsed) && parsed.length > 0) return getAttachmentFileName(parsed[0]);
-      else if (parsed && typeof parsed === "object") {
-        if (parsed.name || parsed.fileName || parsed.title) {
-          return parsed.name || parsed.fileName || parsed.title;
-        }
-        const firstKey = Object.keys(parsed)[0];
-        const candidate = parsed[firstKey];
-        if (typeof candidate === "string") trimmed = candidate.trim();
-      }
-    } catch (e) {
-      // ignore
-    }
+  const unwrapped = unwrapAttachmentTarget(doc);
+  if (unwrapped.name) {
+    return unwrapped.name.replace(/["}\s]+$/, "").replace(/^["{\s]+/, "").trim();
   }
 
-  if (trimmed.includes("::")) {
-    const filename = trimmed.split("::")[0].trim();
+  let raw = unwrapped.rawString || unwrapped.url || "";
+  if (!raw) return "Attachment";
+
+  // Check if formatted as `filename::url`
+  if (raw.includes("::")) {
+    const filename = raw.split("::")[0].trim().replace(/^(\{\s*"\d+"\s*:\s*)+/, "").replace(/^"/, "").trim();
     if (filename && !filename.startsWith("data:") && !filename.startsWith("http") && !filename.startsWith("{")) {
       return filename;
     }
   }
 
-  // If trimmed is a URL or data URL
-  if (trimmed.startsWith("http") || trimmed.startsWith("/") || trimmed.startsWith("data:")) {
-    const urlParts = trimmed.split("/");
+  // Extract from URL or data URL
+  if (raw.startsWith("http") || raw.startsWith("/") || raw.startsWith("data:")) {
+    const urlParts = raw.split("/");
     const lastPart = urlParts[urlParts.length - 1];
     if (lastPart && lastPart.includes(".") && !lastPart.includes(";")) {
-      return lastPart.split("?")[0].split("#")[0];
+      return lastPart.split("?")[0].split("#")[0].replace(/["}\s]+$/, "").trim();
     }
-    if (trimmed.startsWith("data:image/jpeg")) return "image.jpeg";
-    if (trimmed.startsWith("data:image/png")) return "image.png";
-    if (trimmed.startsWith("data:image/webp")) return "image.webp";
-    if (trimmed.startsWith("data:application/pdf")) return "document.pdf";
+    if (raw.startsWith("data:image/jpeg")) return "image.jpeg";
+    if (raw.startsWith("data:image/png")) return "image.png";
+    if (raw.startsWith("data:image/webp")) return "image.webp";
+    if (raw.startsWith("data:application/pdf")) return "document.pdf";
   }
 
-  return trimmed || "Attachment";
+  const cleaned = raw.replace(/^(\{\s*"\d+"\s*:\s*)+/, "").replace(/(\}\s*)+$/, "").replace(/^"/, "").replace(/"$/, "").trim();
+  return cleaned || "Attachment";
 }
 
 export function formatCurrency(amount: number) {

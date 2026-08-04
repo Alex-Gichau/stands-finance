@@ -38,6 +38,7 @@ import TransactionsPanel from "./components/TransactionsPanel";
 import { BugReportModal } from "./components/BugReportModal";
 import { ContactFinanceModal } from "./components/ContactFinanceModal";
 import { getRecentSearches, saveRecentSearchTerm, removeRecentSearchTerm, clearAllRecentSearchTerms } from "./lib/searchHistory";
+import { databaseService } from "./lib/databaseService";
 import { UserRole, BudgetAlert, SearchFilter, PermissionConfig } from "./types";
 import {
   Bell,
@@ -487,23 +488,65 @@ function AppContent() {
   // 1. Extract direct link requisition ID on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const reqIdParam = params.get("reqId");
+    const reqIdParam = params.get("reqId") || params.get("requisitionId") || params.get("id");
     if (reqIdParam) {
-      setTargetReqId(reqIdParam);
+      setTargetReqId(reqIdParam.trim());
     }
   }, []);
 
-  // 2. Direct Firestore access check on requisition ID deep linking
+  // 2. Direct access check on requisition ID deep linking (e.g. from email notifications)
   useEffect(() => {
     if (!currentUser || !targetReqId) return;
 
     const checkDirectRequisitionAccess = async () => {
       setCheckingAccess(true);
       try {
-        const docRef = doc(db, "requisitions", targetReqId);
-        const docSnap = await getDoc(docRef);
+        // Step A: Search in-memory requisitions array from RequisitionContext
+        let reqData = requisitions.find(r => 
+          r.id === targetReqId || 
+          r.id.toLowerCase() === targetReqId.toLowerCase() ||
+          r.id.replace(/^req-/, "") === targetReqId.replace(/^req-/, "")
+        );
 
-        if (!docSnap.exists()) {
+        // Step B: Search local storage cache if not found in current state array
+        if (!reqData && currentUser?.id) {
+          try {
+            const cachedStr = localStorage.getItem(`stands_cache_reqs_${currentUser.id}`);
+            if (cachedStr) {
+              const cachedArr = JSON.parse(cachedStr);
+              if (Array.isArray(cachedArr)) {
+                reqData = cachedArr.find((r: any) => 
+                  r.id === targetReqId || 
+                  r.id.toLowerCase() === targetReqId.toLowerCase() ||
+                  r.id.replace(/^req-/, "") === targetReqId.replace(/^req-/, "")
+                );
+              }
+            }
+          } catch (cacheErr) {
+            console.warn("Failed parsing cached requisitions from local storage:", cacheErr);
+          }
+        }
+
+        // Step C: Fallback to backend endpoint if available
+        if (!reqData) {
+          try {
+            const res = await fetch(`/api/db/requisitions/${targetReqId}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data && data.id) reqData = data;
+            }
+          } catch (apiErr) {
+            // Ignore API fallback errors
+          }
+        }
+
+        // Step D: If requisitions are still loading, wait for context sync to finish
+        if (!reqData && (loading || authLoading)) {
+          return;
+        }
+
+        // If requisition is truly not found anywhere
+        if (!reqData) {
           setAccessDeniedReq({
             id: targetReqId,
             title: "Requisition Not Found",
@@ -513,28 +556,41 @@ function AppContent() {
           return;
         }
 
-        const reqData = { id: docSnap.id, ...docSnap.data() } as any;
-
-        // Perform access verification
+        // Perform clearance & access verification based on role & ownership
         let hasAccess = true;
+
         if (currentUser.role === UserRole.CHURCH_GROUP) {
           const filterGroups = currentUser.groups || (currentUser.group ? [currentUser.group] : []);
           const matchesGroup = filterGroups.some(g => g === reqData.groupId || g === reqData.groupName);
-          if (!matchesGroup) {
+          const isOwner = reqData.requesterId === currentUser.id || 
+            (reqData.requesterEmail && currentUser.email && reqData.requesterEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
+            (reqData.requesterName && currentUser.name && reqData.requesterName.toLowerCase() === currentUser.name.toLowerCase());
+          
+          if (!matchesGroup && !isOwner) {
             hasAccess = false;
           }
         }
 
         if (hasAccess) {
-          // Grant access: set selected requisition detailing open
+          // Grant access: Open detail modal & navigate straight to requisitions view
           setSelectedReqForNoticeDetail(reqData);
           setAccessDeniedReq(null);
+          setCurrentView("requisitions");
+
+          // Clean up reqId parameter from URL without page reload
+          const url = new URL(window.location.href);
+          if (url.searchParams.has("reqId") || url.searchParams.has("requisitionId") || url.searchParams.has("id")) {
+            url.searchParams.delete("reqId");
+            url.searchParams.delete("requisitionId");
+            url.searchParams.delete("id");
+            window.history.replaceState({}, document.title, url.toString());
+          }
         } else {
-          // Deny access: trigger compliance restriction prompt
+          // Deny access: trigger compliance restriction prompt with actual requisition details
           setAccessDeniedReq({
             id: reqData.id,
             title: reqData.title,
-            groupName: reqData.groupName || "N/A"
+            groupName: reqData.groupName || "Confidential Group"
           });
         }
       } catch (err) {
@@ -550,7 +606,7 @@ function AppContent() {
     };
 
     checkDirectRequisitionAccess();
-  }, [currentUser, targetReqId]);
+  }, [currentUser, targetReqId, requisitions, loading, authLoading]);
 
   const [isSyncingData, setIsSyncingData] = useState(false);
 
