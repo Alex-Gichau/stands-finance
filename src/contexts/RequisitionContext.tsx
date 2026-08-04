@@ -3719,6 +3719,11 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       return;
     }
     
+    const origin = typeof window !== "undefined" && window.location?.origin 
+      ? window.location.origin 
+      : "https://stands-erequisitions.org";
+    const requisitionUrl = `${origin}?reqId=${encodeURIComponent(req.id)}`;
+
     try {
       await fetch("/api/send-email", {
         method: "POST",
@@ -3731,6 +3736,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
           amount: req.amount,
           title: req.title,
           requisitionId: req.id,
+          requisitionUrl: requisitionUrl,
           status: status,
           details: details,
           groupName: req.groupName || "General Ministry",

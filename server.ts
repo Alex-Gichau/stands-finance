@@ -1392,6 +1392,7 @@ async function startServer() {
       amount, 
       title, 
       requisitionId, 
+      requisitionUrl,
       status, 
       details,
       groupName,
@@ -1421,6 +1422,9 @@ async function startServer() {
     try {
       const reqName = title || "Untitled Requisition";
       const displayId = requisitionId || "N/A";
+      const reqOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : "");
+      const defaultBaseUrl = reqOrigin || "https://stands-erequisitions.org";
+      const reqUrl = requisitionUrl || (requisitionId ? `${defaultBaseUrl}?reqId=${encodeURIComponent(requisitionId)}` : defaultBaseUrl);
       const formattedAmount = amount ? `KES ${Number(amount).toLocaleString()}` : "KES 0.00";
       const ministryName = groupName || "General Ministry";
       const actualApprover = approverName || "Reviewing Official";
@@ -1583,8 +1587,8 @@ async function startServer() {
                   <td style="padding: 4px 0; font-weight: 600; color: #991b1b;">${ministryName}</td>
                 </tr>
                 <tr>
-                  <td style="padding: 4px 0; font-weight: 700; vertical-align: top;">Requisition ID:</td>
-                  <td style="padding: 4px 0; font-family: monospace; color: #991b1b;">#${displayId}</td>
+                  <td style="padding: 4px 0; font-weight: 700; vertical-align: top;">Requisition URL:</td>
+                  <td style="padding: 4px 0; word-break: break-all; color: #991b1b;"><a href="${reqUrl}" style="color: #dc2626; font-weight: 600; text-decoration: underline;">${reqUrl}</a></td>
                 </tr>
                 ${decisionNote ? `
                 <tr>
@@ -1626,6 +1630,13 @@ async function startServer() {
 
             ${decisionBoxHtml}
 
+            <!-- Direct Action Button -->
+            <div style="margin: 20px 0; text-align: center;">
+              <a href="${reqUrl}" target="_blank" style="display: inline-block; background-color: #0284c7; color: #ffffff; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 13px; text-decoration: none; box-shadow: 0 2px 4px rgba(2,132,199,0.2);">
+                View Requisition in Portal
+              </a>
+            </div>
+
             <!-- Comprehensive Requisition Details -->
             <div style="margin-top: 24px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px;">
               <h3 style="font-size: 12px; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.8px; margin: 0 0 12px 0; border-bottom: 1px solid #cbd5e1; padding-bottom: 8px;">Requisition Details</h3>
@@ -1635,8 +1646,10 @@ async function startServer() {
                   <td style="padding: 6px 0; font-weight: 700; color: #0f172a;">${reqName}</td>
                 </tr>
                 <tr>
-                  <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Requisition ID:</td>
-                  <td style="padding: 6px 0; font-family: monospace; font-weight: 600; color: #475569;">#${displayId}</td>
+                  <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Requisition URL:</td>
+                  <td style="padding: 6px 0; word-break: break-all; font-weight: 600; color: #0284c7;">
+                    <a href="${reqUrl}" style="color: #0284c7; text-decoration: underline; word-break: break-all;">${reqUrl}</a>
+                  </td>
                 </tr>
                 <tr>
                   <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Ministry / Group:</td>
