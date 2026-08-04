@@ -34,7 +34,9 @@ import {
   Zap,
   Copy,
   Send,
-  Check
+  Check,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -63,6 +65,14 @@ export const UsersPanel: React.FC = () => {
   const [filterRole, setFilterRole] = useState<string>("ALL");
   const [filterGroup, setFilterGroup] = useState<string>("ALL");
   const [activeTab, setActiveTab] = useState<"users" | "groups" | "email">("users");
+
+  // User directory pagination state (15 rows)
+  const [userPage, setUserPage] = useState(1);
+  const USERS_PER_PAGE = 15;
+
+  React.useEffect(() => {
+    setUserPage(1);
+  }, [searchTerm, filterRole, filterGroup]);
 
   // Email campaign states
   const [emailSubject, setEmailSubject] = useState("");
@@ -402,6 +412,13 @@ export const UsersPanel: React.FC = () => {
     return matchesSearch && matchesRole && matchesGroup && !hideSuperAdmin;
   });
 
+  const totalUserPages = Math.ceil(filteredUsers.length / USERS_PER_PAGE) || 1;
+  const paginatedUsers = React.useMemo(() => {
+    const safePage = Math.min(Math.max(1, userPage), totalUserPages);
+    const start = (safePage - 1) * USERS_PER_PAGE;
+    return filteredUsers.slice(start, start + USERS_PER_PAGE);
+  }, [filteredUsers, userPage, totalUserPages]);
+
   const getRoleBadge = (role: UserRole) => {
     switch (role) {
       case UserRole.ADMIN: return "bg-primary/10 text-primary border-primary/20";
@@ -641,7 +658,7 @@ export const UsersPanel: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               <AnimatePresence mode="popLayout">
-                {filteredUsers.map((user, uIdx) => (
+                {paginatedUsers.map((user, uIdx) => (
                   <motion.tr 
                     key={`user-row-${user.id || uIdx}-${uIdx}`} 
                     initial={{ opacity: 0 }}
@@ -852,6 +869,41 @@ export const UsersPanel: React.FC = () => {
             <div className="py-16 flex flex-col items-center justify-center text-slate-400">
               <h4 className="text-[10px] font-black uppercase tracking-widest mb-1">No Members Found</h4>
               <p className="text-[10px]">Adjust your search query or role filter.</p>
+            </div>
+          )}
+
+          {filteredUsers.length > 0 && (
+            <div className="px-6 py-4 bg-slate-50/50 dark:bg-slate-850/50 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-medium text-slate-500">
+              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                Showing <span className="font-bold text-slate-800 dark:text-slate-200">{((userPage - 1) * USERS_PER_PAGE) + 1}</span> to <span className="font-bold text-slate-800 dark:text-slate-200">{Math.min(userPage * USERS_PER_PAGE, filteredUsers.length)}</span> of <span className="font-bold text-slate-800 dark:text-slate-200">{filteredUsers.length}</span> members
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setUserPage(p => Math.max(1, p - 1))}
+                  disabled={userPage === 1}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 text-[11px] font-bold"
+                  title="Previous Page"
+                >
+                  <ChevronLeft size={14} />
+                  <span>Prev</span>
+                </button>
+
+                <div className="flex items-center gap-1 px-2 font-mono text-[11px] font-bold">
+                  <span className="text-primary font-black">{userPage}</span>
+                  <span className="text-slate-300 dark:text-slate-600">/</span>
+                  <span className="text-slate-500 dark:text-slate-400">{totalUserPages}</span>
+                </div>
+
+                <button
+                  onClick={() => setUserPage(p => Math.min(totalUserPages, p + 1))}
+                  disabled={userPage >= totalUserPages}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 text-[11px] font-bold"
+                  title="Next Page"
+                >
+                  <span>Next</span>
+                  <ChevronRight size={14} />
+                </button>
+              </div>
             </div>
           )}
         </div>

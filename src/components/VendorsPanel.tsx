@@ -27,6 +27,8 @@ import {
   ArrowUpDown,
   ChevronUp,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   PlusCircle,
   BarChart3,
   TrendingUp,
@@ -449,6 +451,32 @@ export const VendorsPanel: React.FC = () => {
       return 0;
     });
   }, [vendors, searchTerm, selectedOfferingsFilter, sortField, sortDirection]);
+
+  // Vendor Directory Pagination state (15 rows)
+  const [vendorPage, setVendorPage] = useState<number>(1);
+  const VENDORS_PER_PAGE = 15;
+  const totalVendorPages = Math.ceil(filteredVendors.length / VENDORS_PER_PAGE) || 1;
+
+  const paginatedFilteredVendors = useMemo(() => {
+    const safePage = Math.min(Math.max(1, vendorPage), totalVendorPages);
+    const start = (safePage - 1) * VENDORS_PER_PAGE;
+    return filteredVendors.slice(start, start + VENDORS_PER_PAGE);
+  }, [filteredVendors, vendorPage, totalVendorPages]);
+
+  React.useEffect(() => {
+    setVendorPage(1);
+  }, [searchTerm, selectedOfferingsFilter, sortField, sortDirection]);
+
+  // Vendor Expenditure Index Pagination state (15 rows)
+  const [indexPage, setIndexPage] = useState<number>(1);
+  const INDEX_PER_PAGE = 15;
+  const totalIndexPages = Math.ceil(vendorSpendData.length / INDEX_PER_PAGE) || 1;
+
+  const paginatedVendorSpendData = useMemo(() => {
+    const safePage = Math.min(Math.max(1, indexPage), totalIndexPages);
+    const start = (safePage - 1) * INDEX_PER_PAGE;
+    return vendorSpendData.slice(start, start + INDEX_PER_PAGE);
+  }, [vendorSpendData, indexPage, totalIndexPages]);
 
   // Statistics calculation for the filtered list
   const stats = useMemo(() => {
@@ -1015,7 +1043,7 @@ export const VendorsPanel: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredVendors.map((vendor) => {
+                  {paginatedFilteredVendors.map((vendor) => {
                     const vendorStats = vendorSpendData.find(vd => vd.name.toLowerCase() === vendor.name.toLowerCase());
                     const disbursedCount = vendorStats?.count || 0;
                     
@@ -1140,6 +1168,41 @@ export const VendorsPanel: React.FC = () => {
                   </div>
                   <h3 className="text-[11px] font-black text-slate-600 uppercase tracking-[0.2em] mb-1 text-center">No vendors found</h3>
                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest text-center">Refine your search and try again</p>
+                </div>
+              )}
+
+              {filteredVendors.length > 0 && (
+                <div className="mt-4 px-6 py-4 bg-slate-50/50 rounded-2xl border border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-medium text-slate-500">
+                  <div className="text-[11px] font-bold text-slate-500">
+                    Showing <span className="font-extrabold text-slate-800">{((vendorPage - 1) * VENDORS_PER_PAGE) + 1}</span> to <span className="font-extrabold text-slate-800">{Math.min(vendorPage * VENDORS_PER_PAGE, filteredVendors.length)}</span> of <span className="font-extrabold text-slate-800">{filteredVendors.length}</span> vendor partners
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setVendorPage(p => Math.max(1, p - 1))}
+                      disabled={vendorPage === 1}
+                      className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider"
+                      title="Previous Page"
+                    >
+                      <ChevronLeft size={14} />
+                      <span>Prev</span>
+                    </button>
+
+                    <div className="flex items-center gap-1 px-2 font-mono text-[11px] font-extrabold">
+                      <span className="text-primary">{vendorPage}</span>
+                      <span className="text-slate-300">/</span>
+                      <span className="text-slate-500">{totalVendorPages}</span>
+                    </div>
+
+                    <button
+                      onClick={() => setVendorPage(p => Math.min(totalVendorPages, p + 1))}
+                      disabled={vendorPage >= totalVendorPages}
+                      className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider"
+                      title="Next Page"
+                    >
+                      <span>Next</span>
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1622,9 +1685,21 @@ export const VendorsPanel: React.FC = () => {
 
           {/* Interactive Vendor Spending Index Table */}
           <div className="bg-white border-2 border-slate-100 rounded-[2.5rem] p-6 md:p-10 shadow-sm space-y-6 font-sans">
-            <div>
-              <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">Vendor Expenditure Index</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Comprehensive audit index of paid outflows and recurring registry listings</p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">Vendor Expenditure Index</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Comprehensive audit index of paid outflows and recurring registry listings</p>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowAddForm(true);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-black tracking-wider uppercase flex items-center gap-2 shadow-md shadow-primary/20 transition-all shrink-0 hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <PlusCircle size={15} />
+                <span>Add Vendor to List</span>
+              </button>
             </div>
             
             <div className="overflow-x-auto">
@@ -1640,7 +1715,7 @@ export const VendorsPanel: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {vendorSpendData.map((v) => (
+                  {paginatedVendorSpendData.map((v) => (
                     <tr key={v.name} className="bg-white border-2 border-slate-50 rounded-2xl group hover:border-primary/20 hover:shadow-lg transition-all shadow-sm">
                       <td className="px-6 py-4 first:rounded-l-2xl">
                         <span className="text-[11px] font-black text-slate-900 uppercase tracking-wider block">{v.name}</span>
@@ -1665,6 +1740,41 @@ export const VendorsPanel: React.FC = () => {
                 </tbody>
               </table>
             </div>
+
+            {vendorSpendData.length > 0 && (
+              <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-medium text-slate-500 border-t border-slate-100">
+                <div className="text-[11px] font-bold text-slate-500">
+                  Showing <span className="font-extrabold text-slate-800">{((indexPage - 1) * INDEX_PER_PAGE) + 1}</span> to <span className="font-extrabold text-slate-800">{Math.min(indexPage * INDEX_PER_PAGE, vendorSpendData.length)}</span> of <span className="font-extrabold text-slate-800">{vendorSpendData.length}</span> index entries
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setIndexPage(p => Math.max(1, p - 1))}
+                    disabled={indexPage === 1}
+                    className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider"
+                    title="Previous Page"
+                  >
+                    <ChevronLeft size={14} />
+                    <span>Prev</span>
+                  </button>
+
+                  <div className="flex items-center gap-1 px-2 font-mono text-[11px] font-extrabold">
+                    <span className="text-primary">{indexPage}</span>
+                    <span className="text-slate-300">/</span>
+                    <span className="text-slate-500">{totalIndexPages}</span>
+                  </div>
+
+                  <button
+                    onClick={() => setIndexPage(p => Math.min(totalIndexPages, p + 1))}
+                    disabled={indexPage >= totalIndexPages}
+                    className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider"
+                    title="Next Page"
+                  >
+                    <span>Next</span>
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
