@@ -768,9 +768,9 @@ async function startServer() {
     }
   }
 
-  let rawMongoUri = process.env.MONGODB_URI || "mongodb://178.104.122.211:41282/stands_finance_db";
-  let mongoUri = parseAndValidateMongoUri(rawMongoUri);
-  if (mongoUri.includes("@") && !mongoUri.includes("authSource")) {
+  let rawMongoUri = process.env.MONGODB_URI || "";
+  let mongoUri = rawMongoUri ? parseAndValidateMongoUri(rawMongoUri) : "";
+  if (mongoUri && mongoUri.includes("@") && !mongoUri.includes("authSource")) {
     if (mongoUri.includes("?")) {
       mongoUri += "&authSource=admin";
     } else {
@@ -782,13 +782,18 @@ async function startServer() {
    * Establishes connection to MongoDB using Mongoose.
    */
   async function connectToMongo() {
+    if (!mongoUri) {
+      console.log("ℹ️  [Database Engine] MONGODB_URI not configured. Operating seamlessly on Local JSON Database & Google Sheets.");
+      console.log("✅ Database initialized successfully! (Local JSON DB Active)");
+      return;
+    }
+
     try {
-      console.log(`[MongoDB/Mongoose] Attempting connection to MongoDB server: ${mongoUri}`);
-      // Reduce timeout to 2500ms for faster startup and seamless fallback
+      console.log(`[MongoDB/Mongoose] Attempting connection to MongoDB server...`);
       await mongoose.connect(mongoUri, { 
-        connectTimeoutMS: 2500,
-        serverSelectionTimeoutMS: 2500,
-        socketTimeoutMS: 2500
+        connectTimeoutMS: 2000,
+        serverSelectionTimeoutMS: 2000,
+        socketTimeoutMS: 2000
       });
       console.log(`[MongoDB/Mongoose] Successfully connected to database: ${mongoose.connection.db ? mongoose.connection.db.databaseName : "stands_finance_db"}`);
       console.log("✅ Database connected successfully! (MongoDB)");
@@ -796,13 +801,9 @@ async function startServer() {
       // Run Mongoose seeder
       await seedDatabase();
     } catch (err: any) {
-      console.warn("\n==========================================================================");
-      console.warn(`[MongoDB/Mongoose] Connection failed! Reason: Socket timed out (${err.message || err})`);
-      console.warn("ℹ️  NOTICE: The remote MongoDB instance is offline or unreachable.");
-      console.warn("🚀  HYBRID ENGINE FALLBACK ACTIVATED: The application is fully operational.");
-      console.warn("💾  All operations are seamlessly using the Local JSON Database & Google Sheets.");
-      console.warn("✅ Database connected successfully! (Local JSON DB Active & Ready)");
-      console.warn("==========================================================================\n");
+      console.log("ℹ️  [Database Engine] Remote MongoDB instance offline or unreachable.");
+      console.log("🚀  HYBRID ENGINE FALLBACK ACTIVATED: Operating seamlessly on Local JSON Database & Google Sheets.");
+      console.log("✅ Database initialized successfully! (Local JSON DB Active)");
     }
   }
 

@@ -148,8 +148,18 @@ const RichDocumentViewer = ({
 
             if (isZipHeader) {
               const mammoth = await import("mammoth");
-              const result = await mammoth.convertToHtml({ arrayBuffer });
-              setWordHtml(result.value || "<p class='text-slate-450 italic'>This document is empty.</p>");
+              const mammothOptions = {
+                convertImage: mammoth.images.imgElement((image: any) => {
+                  return image.read("base64").then((imageBuffer: string) => {
+                    return {
+                      src: "data:" + image.contentType + ";base64," + imageBuffer
+                    };
+                  });
+                })
+              };
+              const result = await mammoth.convertToHtml({ arrayBuffer }, mammothOptions);
+              const renderedHtml = result.value ? result.value.trim() : "";
+              setWordHtml(renderedHtml || "<p class='text-slate-500 italic text-center py-6'>This Word document contains no text content.</p>");
             } else {
               // Attempt to decode as plain text/HTML if not a zip file
               const decoder = new TextDecoder("utf-8");
@@ -167,7 +177,8 @@ const RichDocumentViewer = ({
                 }
               }
             }
-          } catch {
+          } catch (wErr: any) {
+            console.error("Mammoth DOCX conversion error:", wErr);
             // Fallback: try decoding raw text
             try {
               const decoder = new TextDecoder("utf-8");
@@ -870,16 +881,24 @@ const DocumentPreviewModal = ({
     const hasDotExt = dName.includes(".") && !dName.startsWith(".");
     const rawExt = hasDotExt ? (dName.split('.').pop() || "").toUpperCase() : "";
 
-    const isImg = /\.(jpg|jpeg|png|gif|webp)$/i.test(dName) || dUrl.startsWith('blob:') || dUrl.startsWith('data:image/');
-    const isPf = (!isImg && /\.(pdf)$/i.test(dName)) || dUrl.startsWith('data:application/pdf') || dUrl.includes('/api/attachments/') || (rawExt === "PDF" && !isImg);
-    const isWord = /\.(docx)$/i.test(dName) || dUrl.startsWith('data:application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    const isLegacyWord = /\.(doc)$/i.test(dName) || dUrl.startsWith('data:application/msword');
-    const isExcel = /\.(xlsx)$/i.test(dName) || dUrl.startsWith('data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    const isLegacyExcel = /\.(xls)$/i.test(dName) || dUrl.startsWith('data:application/vnd.ms-excel');
-    const isCsv = /\.(csv)$/i.test(dName) || dUrl.startsWith('data:text/csv');
-    const isText = /\.(txt|md|json|xml|log|yaml|yml|js|ts|html|css)$/i.test(dName) || dUrl.startsWith('data:text/plain');
+    const isImg = /\.(jpg|jpeg|png|gif|webp)$/i.test(dName) || /\.(jpg|jpeg|png|gif|webp)$/i.test(dUrl) || dUrl.startsWith('blob:') || dUrl.startsWith('data:image/');
+    const isWord = /\.(docx)$/i.test(dName) || /\.(docx)$/i.test(dUrl) || dUrl.startsWith('data:application/vnd.openxmlformats-officedocument.wordprocessingml.document') || rawExt === "DOCX";
+    const isLegacyWord = /\.(doc)$/i.test(dName) || /\.(doc)$/i.test(dUrl) || dUrl.startsWith('data:application/msword') || rawExt === "DOC";
+    const isExcel = /\.(xlsx)$/i.test(dName) || /\.(xlsx)$/i.test(dUrl) || dUrl.startsWith('data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') || rawExt === "XLSX";
+    const isLegacyExcel = /\.(xls)$/i.test(dName) || /\.(xls)$/i.test(dUrl) || dUrl.startsWith('data:application/vnd.ms-excel') || rawExt === "XLS";
+    const isCsv = /\.(csv)$/i.test(dName) || /\.(csv)$/i.test(dUrl) || dUrl.startsWith('data:text/csv') || rawExt === "CSV";
+    const isText = /\.(txt|md|json|xml|log|yaml|yml|js|ts|html|css)$/i.test(dName) || /\.(txt|md|json|xml|log|yaml|yml|js|ts|html|css)$/i.test(dUrl) || dUrl.startsWith('data:text/plain') || ["TXT", "MD", "JSON", "LOG"].includes(rawExt);
     
-    const ext = rawExt || (isImg ? "IMG" : isPf ? "PDF" : "DOC");
+    // Only classify as PDF if it's explicitly PDF and not Word, Excel, CSV, Image, or Text
+    const isPf = (!isImg && !isWord && !isLegacyWord && !isExcel && !isLegacyExcel && !isCsv && !isText) && (
+      /\.(pdf)$/i.test(dName) || 
+      /\.(pdf)$/i.test(dUrl) || 
+      dUrl.startsWith('data:application/pdf') || 
+      rawExt === "PDF" ||
+      dUrl.includes('/api/attachments/')
+    );
+    
+    const ext = rawExt || (isImg ? "IMG" : isWord ? "DOCX" : isLegacyWord ? "DOC" : isExcel ? "XLSX" : isLegacyExcel ? "XLS" : isCsv ? "CSV" : isText ? "TXT" : isPf ? "PDF" : "DOC");
 
     return { 
       name: dName, 
@@ -3577,7 +3596,9 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
                      
                      const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(name) || /\.(jpg|jpeg|png|gif|webp)$/i.test(url) || (typeof url === 'string' && (url.startsWith('data:image/') || url.startsWith('blob:')));
                      const fileExt = name.split('.').pop()?.toUpperCase() || "DOC";
-                     const isPdf = fileExt === "PDF" || /\.(pdf)$/i.test(name) || /\.(pdf)$/i.test(url) || (typeof url === 'string' && (url.startsWith('data:application/pdf') || url.includes('/api/attachments/')));
+                     const isDocx = fileExt === "DOCX" || /\.(docx)$/i.test(name) || /\.(docx)$/i.test(url);
+                     const isXlsx = fileExt === "XLSX" || /\.(xlsx)$/i.test(name) || /\.(xlsx)$/i.test(url);
+                     const isPdf = !isImage && !isDocx && !isXlsx && (fileExt === "PDF" || /\.(pdf)$/i.test(name) || /\.(pdf)$/i.test(url) || (typeof url === 'string' && url.startsWith('data:application/pdf')));
                      return (
                     <div 
                       key={`doc-${i}`} 
