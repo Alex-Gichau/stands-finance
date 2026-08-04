@@ -115,7 +115,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "notifications", label: "Notification", icon: Bell },
     { id: "requisitions", label: "Requisitions", icon: FileText },
-    { id: "transactions", label: "Web Transactions", icon: Activity },
+    { id: "transactions", label: "Transactions", icon: Activity },
     { id: "vendors", label: "STANDS Vendors", icon: Store },
     { id: "approvals", label: "Approvals", icon: CheckCircle },
     { id: "finance", label: "Budgets", icon: Banknote },

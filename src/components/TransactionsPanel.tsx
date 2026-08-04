@@ -27,7 +27,9 @@ import {
   Database,
   Calendar,
   Sparkles,
-  Check
+  Check,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { useRequisitions } from "../contexts/RequisitionContext";
 import { Transaction, TransactionType, TransactionStatus, RequisitionStatus } from "../types";
@@ -48,6 +50,14 @@ const TransactionsPanel: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<TransactionStatus | "ALL">("ALL");
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  // Pagination state (15 rows per page)
+  const [txPage, setTxPage] = useState(1);
+  const TX_PER_PAGE = 15;
+
+  useEffect(() => {
+    setTxPage(1);
+  }, [searchTerm, typeFilter, statusFilter]);
 
   const disbursedReqs = useMemo(() => {
     return requisitions
@@ -89,6 +99,14 @@ const TransactionsPanel: React.FC = () => {
       })
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [transactions, searchTerm, typeFilter, statusFilter]);
+
+  const totalTxPages = Math.ceil(filteredTransactions.length / TX_PER_PAGE) || 1;
+
+  const paginatedTransactions = useMemo(() => {
+    const safePage = Math.min(Math.max(1, txPage), totalTxPages);
+    const start = (safePage - 1) * TX_PER_PAGE;
+    return filteredTransactions.slice(start, start + TX_PER_PAGE);
+  }, [filteredTransactions, txPage, totalTxPages]);
 
   const stats = useMemo(() => {
     const today = new Date().toISOString().split("T")[0];
@@ -300,7 +318,7 @@ const TransactionsPanel: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               <AnimatePresence mode="popLayout">
-                {filteredTransactions.map((tx) => {
+                {paginatedTransactions.map((tx) => {
                   const isReal = tx.metadata?.isRealDisbursed || tx.id.startsWith("tx-disb-");
                   return (
                     <motion.tr
@@ -426,6 +444,41 @@ const TransactionsPanel: React.FC = () => {
                 <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
                   Once a requisition is approved and marked as disbursed by Finance, the official disbursement transaction will automatically appear here.
                 </p>
+              </div>
+            </div>
+          )}
+
+          {filteredTransactions.length > 0 && (
+            <div className="px-6 py-4 bg-slate-50/60 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-medium text-slate-500">
+              <div className="text-[11px] font-bold text-slate-500">
+                Showing <span className="font-extrabold text-slate-800">{((txPage - 1) * TX_PER_PAGE) + 1}</span> to <span className="font-extrabold text-slate-800">{Math.min(txPage * TX_PER_PAGE, filteredTransactions.length)}</span> of <span className="font-extrabold text-slate-800">{filteredTransactions.length}</span> transactions
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setTxPage(p => Math.max(1, p - 1))}
+                  disabled={txPage === 1}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider cursor-pointer"
+                  title="Previous Page"
+                >
+                  <ChevronLeft size={14} />
+                  <span>Prev</span>
+                </button>
+
+                <div className="flex items-center gap-1 px-2 font-mono text-[11px] font-extrabold">
+                  <span className="text-sky-600">{txPage}</span>
+                  <span className="text-slate-300">/</span>
+                  <span className="text-slate-500">{totalTxPages}</span>
+                </div>
+
+                <button
+                  onClick={() => setTxPage(p => Math.min(totalTxPages, p + 1))}
+                  disabled={txPage >= totalTxPages}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider cursor-pointer"
+                  title="Next Page"
+                >
+                  <span>Next</span>
+                  <ChevronRight size={14} />
+                </button>
               </div>
             </div>
           )}
