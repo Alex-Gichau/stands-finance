@@ -397,20 +397,24 @@ export const UsersPanel: React.FC = () => {
     );
   }
 
-  const filteredUsers = users.filter(u => {
-    const matchesSearch = u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         u.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = filterRole === "ALL" || u.role === filterRole;
-    
-    let matchesGroup = true;
-    if (filterGroup !== "ALL") {
-      const uGroups = u.groups && u.groups.length > 0 ? u.groups : (u.group ? [u.group] : ["INDEPENDENT"]);
-      matchesGroup = uGroups.includes(filterGroup);
-    }
+  const filteredUsers = React.useMemo(() => {
+    return users
+      .filter(u => {
+        const matchesSearch = u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                             u.email.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesRole = filterRole === "ALL" || u.role === filterRole;
+        
+        let matchesGroup = true;
+        if (filterGroup !== "ALL") {
+          const uGroups = u.groups && u.groups.length > 0 ? u.groups : (u.group ? [u.group] : ["INDEPENDENT"]);
+          matchesGroup = uGroups.includes(filterGroup);
+        }
 
-    const hideSuperAdmin = u.role === UserRole.SUPER_ADMIN && currentUser?.role !== UserRole.SUPER_ADMIN;
-    return matchesSearch && matchesRole && matchesGroup && !hideSuperAdmin;
-  });
+        const hideSuperAdmin = u.role === UserRole.SUPER_ADMIN && currentUser?.role !== UserRole.SUPER_ADMIN;
+        return matchesSearch && matchesRole && matchesGroup && !hideSuperAdmin;
+      })
+      .sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" }));
+  }, [users, searchTerm, filterRole, filterGroup, currentUser]);
 
   const totalUserPages = Math.ceil(filteredUsers.length / USERS_PER_PAGE) || 1;
   const paginatedUsers = React.useMemo(() => {
@@ -649,7 +653,7 @@ export const UsersPanel: React.FC = () => {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50/50 dark:bg-slate-850/50 border-b border-slate-200 dark:border-slate-800 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                <th className="px-4 md:px-8 py-4">Identification Transaction</th>
+                <th className="px-4 md:px-8 py-4"> Username</th>
                 <th className="px-4 md:px-8 py-4 hidden sm:table-cell">Security Level</th>
                 <th className="px-4 md:px-8 py-4 hidden md:table-cell">Affiliation / Key</th>
                 <th className="px-4 md:px-8 py-4">Status</th>
