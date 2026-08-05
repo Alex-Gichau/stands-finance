@@ -16,6 +16,7 @@
     "generate-pdf": "node scripts/generate-pdf.js"
   },
   "dependencies": {
+    "@cyntler/react-doc-viewer": "^1.17.1",
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",

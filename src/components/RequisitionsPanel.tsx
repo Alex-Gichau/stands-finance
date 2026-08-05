@@ -56,7 +56,9 @@ import {
 import { Info, HardDrive, Mail, UserPlus } from "lucide-react";
 import { useRequisitions, getActiveFiscalYear, safeNormalizeAttachments } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
-import { formatCurrency, formatDate, cn, getDaysSinceSubmission, formatRequisitionAge, isFinalStage, normalizeAttachmentUrl, getAttachmentFileName, handleImageError } from "../lib/utils";
+import { formatCurrency, formatDate, cn, getDaysSinceSubmission, formatRequisitionAge, isFinalStage, normalizeAttachmentUrl, getAttachmentFileName, getAbsoluteAttachmentUrl, handleImageError } from "../lib/utils";
+import DocViewer, { DocViewerRenderers } from "@cyntler/react-doc-viewer";
+import "@cyntler/react-doc-viewer/dist/index.css";
 import { motion, AnimatePresence } from "motion/react";
 import { printRequisitions, downloadRequisitionsHtml, downloadRequisitionsCsv, downloadRequisitionsPdf, printRequisitionVoucher, printRequisitionReceipt } from "../utils/exportUtils";
 import { NewRequisitionForm } from "./NewRequisitionForm";
@@ -68,22 +70,7 @@ import { ConfirmationModal } from "./ConfirmationModal";
 import { CachedImage } from "./CachedImage";
 import { getCachedMediaUrl, preloadMediaBatch } from "../lib/mediaCache";
 
-const RichDocumentViewer = ({ 
-  docProps 
-}: { 
-  docProps: { 
-    name: string; 
-    url: string; 
-    ext: string; 
-    isPdf: boolean; 
-    isWord: boolean; 
-    isLegacyWord: boolean;
-    isExcel: boolean; 
-    isLegacyExcel: boolean; 
-    isCsv: boolean; 
-    isText: boolean; 
-  } 
-}) => {
+const LegacyRichDocumentViewer = ({ docProps }: any) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [textVal, setTextVal] = useState<string>("");
@@ -92,18 +79,9 @@ const RichDocumentViewer = ({
   const [excelSheets, setExcelSheets] = useState<{ [key: string]: any[][] }>({});
   const [excelTabs, setExcelTabs] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<string>("");
-
   useEffect(() => {
     let isMounted = true;
     const fetchAndParse = async () => {
-      setLoading(true);
-      setError(null);
-      setTextVal("");
-      setCsvRows([]);
-      setWordHtml("");
-      setExcelSheets({});
-      setExcelTabs([]);
-      setActiveTab("");
 
       try {
         const response = await fetch(docProps.url);
@@ -512,17 +490,7 @@ startxref
   }
 };
 
-const PdfDocumentViewer = ({ 
-  docProps
-}: { 
-  docProps: {
-    name: string;
-    url: string;
-    ext: string;
-    isSimulated?: boolean;
-  };
-  requisition?: any;
-}) => {
+const LegacyPdfViewer = ({ docProps }: any) => {
   const isPdfStream = Boolean(
     docProps.url && (
       docProps.url.startsWith("data:") ||
@@ -766,503 +734,439 @@ const DocumentPreviewModal = ({
     ? rawAttachments 
     : (typeof rawAttachments === "string" && rawAttachments ? [rawAttachments] : []);
 
-  const [currentIndex, setCurrentIndex] = useState(initialIndex);
-  const [viewMode, setViewMode] = useState<"detail" | "grid">("detail");
-  const [zoomScale, setZoomScale] = useState(1);
+  const [activeDocIndex, setActiveDocIndex] = useState(initialIndex);
+  const [showDetailsPanel, setShowDetailsPanel] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Swipe support states
-  const [touchStart, setTouchStart] = useState<number | null>(null);
-  const [touchEnd, setTouchEnd] = useState<number | null>(null);
-
-  const minSwipeDistance = 50;
-
-  const onTouchStart = (e: React.TouchEvent) => {
-    setTouchEnd(null);
-    setTouchStart(e.targetTouches[0].clientX);
-  };
-
-  const onTouchMove = (e: React.TouchEvent) => {
-    setTouchEnd(e.targetTouches[0].clientX);
-  };
-
-  const onTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-    const distance = touchStart - touchEnd;
-    const isLeftSwipe = distance > minSwipeDistance;
-    const isRightSwipe = distance < -minSwipeDistance;
-    if (isLeftSwipe) {
-      handleNext();
-    } else if (isRightSwipe) {
-      handlePrev();
-    }
-  };
-
-  const handleNext = () => {
-    if (attachments.length <= 1) return;
-    setZoomScale(1);
-    setCurrentIndex((prev) => (prev + 1) % attachments.length);
-  };
-
-  const handlePrev = () => {
-    if (attachments.length <= 1) return;
-    setZoomScale(1);
-    setCurrentIndex((prev) => (prev - 1 + attachments.length) % attachments.length);
-  };
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      } else if (viewMode === "detail") {
-        if (e.key === "ArrowRight") {
-          handleNext();
-        } else if (e.key === "ArrowLeft") {
-          handlePrev();
-        }
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentIndex, attachments, viewMode]);
-
-  useEffect(() => {
-    if (attachments && attachments.length > 0) {
-      const urls = attachments.map((att: any) => typeof att === 'string' ? att : att?.url).filter(Boolean) as string[];
-      preloadMediaBatch(urls);
-    }
+  // Prepare document objects for react-doc-viewer
+  const docs = useMemo(() => {
+    return attachments.map((att: any, idx: number) => {
+      const absUrl = getAbsoluteAttachmentUrl(att);
+      const name = getAttachmentFileName(att) || `Attachment-${idx + 1}`;
+      return {
+        uri: absUrl,
+        fileName: name,
+      };
+    });
   }, [attachments]);
 
   if (!attachments || attachments.length === 0) return null;
 
-  // Helper to parse individual doc properties
-  const getDocProps = (doc: any) => {
-    if (!doc) return { 
-      name: "Unknown Document", 
-      url: "", 
-      ext: "DOC", 
-      isSimulated: false,
-      isImage: false, 
-      isPdf: false, 
-      isWord: false, 
-      isLegacyWord: false, 
-      isExcel: false, 
-      isLegacyExcel: false, 
-      isCsv: false, 
-      isText: false 
-    };
+  const currentDoc = docs[activeDocIndex] || docs[0];
+
+  // Requester information
+  const requesterName = requisition?.requesterName || "System User / Requester";
+  const requesterEmail = requisition?.requesterEmail || "";
+  const groupName = requisition?.groupName || "Ministry Group";
+  const submittedAt = requisition?.submittedAt ? formatDate(requisition.submittedAt) : (requisition?.createdAt ? formatDate(requisition.createdAt) : null);
+  const amountStr = requisition?.amount !== undefined ? formatCurrency(requisition.amount) : null;
+  const title = requisition?.title || "Requisition Attachment";
+  const reqId = requisition?.id || "";
+
+  // Approvers information
+  const approvalHistory: any[] = requisition?.approvalHistory || [];
+  
+  // Find L1, L2, and Disbursing approver notes if available
+  const l1Note = approvalHistory.find((h: any) => 
+    h.role === UserRole.APPROVER_L1 || h.role === UserRole.CHURCH_GROUP || h.role === "GROUP_LEADER" || h.role === "APPROVER_L1"
+  );
+  const l2Note = approvalHistory.find((h: any) => 
+    h.role === UserRole.APPROVER_L2 || h.role === UserRole.FINANCE || h.role === "TREASURER" || h.role === "FINANCE" || h.role === "APPROVER_L2"
+  );
+  const disburseNote = approvalHistory.find((h: any) => h.decision === "DISBURSED" || h.note?.toLowerCase().includes("disbursed"));
+
+  const isL1Approved = Boolean(requisition?.approvedAtL1 || l1Note?.decision === "APPROVE");
+  const isL2Approved = Boolean(requisition?.approvedAtL2 || l2Note?.decision === "APPROVE");
+  const isDisbursed = Boolean(requisition?.disbursedAt || disburseNote);
+
+  // Unique list of all members involved/updated in this requisition
+  const membersInvolved = useMemo(() => {
+    const map = new Map<string, { name: string; role?: string; email?: string; action?: string; timestamp?: string }>();
     
-    let dUrl = normalizeAttachmentUrl(doc);
-    let dName = getAttachmentFileName(doc);
-
-    // Clean up JSON syntax leftovers from dName if any
-    dName = dName
-      .replace(/^\{"0":"/, "")
-      .replace(/^\{\s*"\d+"\s*:\s*"/, "")
-      .replace(/^(\{\s*"\d+"\s*:\s*)+/, "")
-      .replace(/(\}\s*)+$/, "")
-      .replace(/^"/, "")
-      .replace(/"$/, "")
-      .replace(/["}\s]+$/, "")
-      .replace(/^["{\s]+/, "")
-      .replace(" (Simulated)", "")
-      .trim();
-
-    // Check if dUrl looks like raw base64 without data prefix
-    if (dUrl.startsWith("JVBERi")) {
-      dUrl = `data:application/pdf;base64,${dUrl}`;
+    if (requesterName) {
+      map.set("requester", {
+        name: requesterName,
+        email: requesterEmail,
+        role: "Requester",
+        action: "Created & Submitted Requisition",
+        timestamp: submittedAt || undefined,
+      });
     }
 
-    // Detect and rewrite Google Drive URLs to utilize our server-side secure proxy
-    if (dUrl.includes("drive.google.com")) {
-      const driveMatch = dUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || dUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-      if (driveMatch && driveMatch[1]) {
-        const fileId = driveMatch[1];
-        dUrl = `/api/attachments/${fileId}`;
+    approvalHistory.forEach((note: any) => {
+      const key = note.approverId || note.approverName;
+      if (key) {
+        map.set(key, {
+          name: note.approverName || "Approver",
+          role: note.role || "Approver",
+          action: note.decision === "APPROVE" ? "Approved Request" : note.decision === "REJECT" ? "Rejected Request" : note.decision === "ESCALATE" ? "Escalated Request" : "Reviewed & Updated Note",
+          timestamp: note.timestamp ? formatDate(note.timestamp) : undefined,
+        });
       }
-    }
+    });
 
-    const hasDotExt = dName.includes(".") && !dName.startsWith(".");
-    const rawExt = hasDotExt ? (dName.split('.').pop() || "").toUpperCase() : "";
-
-    const isImg = /\.(jpg|jpeg|png|gif|webp)$/i.test(dName) || /\.(jpg|jpeg|png|gif|webp)$/i.test(dUrl) || dUrl.startsWith('blob:') || dUrl.startsWith('data:image/');
-    const isWord = /\.(docx)$/i.test(dName) || /\.(docx)$/i.test(dUrl) || dUrl.startsWith('data:application/vnd.openxmlformats-officedocument.wordprocessingml.document') || rawExt === "DOCX";
-    const isLegacyWord = /\.(doc)$/i.test(dName) || /\.(doc)$/i.test(dUrl) || dUrl.startsWith('data:application/msword') || rawExt === "DOC";
-    const isExcel = /\.(xlsx)$/i.test(dName) || /\.(xlsx)$/i.test(dUrl) || dUrl.startsWith('data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') || rawExt === "XLSX";
-    const isLegacyExcel = /\.(xls)$/i.test(dName) || /\.(xls)$/i.test(dUrl) || dUrl.startsWith('data:application/vnd.ms-excel') || rawExt === "XLS";
-    const isCsv = /\.(csv)$/i.test(dName) || /\.(csv)$/i.test(dUrl) || dUrl.startsWith('data:text/csv') || rawExt === "CSV";
-    const isText = /\.(txt|md|json|xml|log|yaml|yml|js|ts|html|css)$/i.test(dName) || /\.(txt|md|json|xml|log|yaml|yml|js|ts|html|css)$/i.test(dUrl) || dUrl.startsWith('data:text/plain') || ["TXT", "MD", "JSON", "LOG"].includes(rawExt);
-    
-    // Only classify as PDF if it's explicitly PDF and not Word, Excel, CSV, Image, or Text
-    const isPf = (!isImg && !isWord && !isLegacyWord && !isExcel && !isLegacyExcel && !isCsv && !isText) && (
-      /\.(pdf)$/i.test(dName) || 
-      /\.(pdf)$/i.test(dUrl) || 
-      dUrl.startsWith('data:application/pdf') || 
-      rawExt === "PDF" ||
-      dUrl.includes('/api/attachments/')
-    );
-    
-    const ext = rawExt || (isImg ? "IMG" : isWord ? "DOCX" : isLegacyWord ? "DOC" : isExcel ? "XLSX" : isLegacyExcel ? "XLS" : isCsv ? "CSV" : isText ? "TXT" : isPf ? "PDF" : "DOC");
-
-    return { 
-      name: dName, 
-      url: dUrl, 
-      isSimulated: false,
-      isImage: isImg, 
-      isPdf: isPf, 
-      isWord, 
-      isLegacyWord,
-      isExcel, 
-      isLegacyExcel,
-      isCsv, 
-      isText, 
-      ext 
-    };
-  };
-
-  const currentProps = getDocProps(attachments[currentIndex]);
+    return Array.from(map.values());
+  }, [requesterName, requesterEmail, submittedAt, approvalHistory]);
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-0 md:p-4 bg-slate-950/90 backdrop-blur-md">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-0 md:p-3 bg-slate-950/90 backdrop-blur-md">
       <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
+        initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
+        exit={{ opacity: 0, scale: 0.98 }}
         className={cn(
           "bg-slate-900 w-full h-full shadow-2xl overflow-hidden border border-slate-800 flex flex-col relative text-slate-100 transition-all duration-300",
           isFullscreen 
             ? "fixed inset-0 z-[200] rounded-none max-w-none max-h-none p-0" 
-            : "max-w-[96vw] max-h-[92vh] md:rounded-3xl"
+            : "max-w-[98vw] max-h-[96vh] md:rounded-3xl"
         )}
       >
-        {/* Top Header */}
-        <div className="px-6 py-4 border-b border-slate-850 flex items-center justify-between bg-slate-950/50 sticky top-0 z-10 select-none">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-400 border border-indigo-500/10 shrink-0">
+        {/* Header bar */}
+        <div className="px-5 py-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-4 select-none shrink-0 z-20">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-400 border border-indigo-500/20 shrink-0">
               <FileText size={18} />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-[9px] bg-slate-800 text-slate-300 font-bold px-1.5 py-0.5 rounded-full font-mono uppercase">
-                  FILE {currentIndex + 1} OF {attachments.length}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[9px] bg-indigo-950 text-indigo-300 font-bold px-2 py-0.5 rounded-full font-mono uppercase border border-indigo-800/40">
+                  {reqId ? `#${reqId}` : "REQUISITION ATTACHMENT"}
                 </span>
-                {currentProps.isImage && (
-                  <span className="text-[9px] bg-indigo-500/25 text-indigo-300 font-bold px-1.5 py-0.5 rounded-full font-mono uppercase">
-                    IMAGE
-                  </span>
-                )}
-                {currentProps.isPdf && (
-                  <span className="text-[9px] bg-emerald-500/25 text-emerald-300 font-bold px-1.5 py-0.5 rounded-full font-mono uppercase">
-                    PDF
-                  </span>
-                )}
-                {currentProps.isWord && (
-                  <span className="text-[9px] bg-sky-500/25 text-sky-300 font-bold px-1.5 py-0.5 rounded-full font-mono uppercase">
-                    WORD DOC
-                  </span>
-                )}
-                {currentProps.isExcel && (
-                  <span className="text-[9px] bg-teal-500/25 text-teal-300 font-bold px-1.5 py-0.5 rounded-full font-mono uppercase">
-                    SPREADSHEET
-                  </span>
-                )}
-                {currentProps.isCsv && (
-                  <span className="text-[9px] bg-amber-500/25 text-amber-300 font-bold px-1.5 py-0.5 rounded-full font-mono uppercase">
-                    CSV TABLE
-                  </span>
-                )}
-                {currentProps.isText && (
-                  <span className="text-[9px] bg-purple-500/25 text-purple-300 font-bold px-1.5 py-0.5 rounded-full font-mono uppercase">
-                    TEXT FILE
-                  </span>
-                )}
+                <span className="text-[9px] bg-slate-800 text-slate-300 font-bold px-2 py-0.5 rounded-full font-mono uppercase">
+                  FILE {activeDocIndex + 1} OF {attachments.length}
+                </span>
               </div>
-              <h3 className="text-xs md:text-sm font-bold text-slate-200 truncate max-w-[200px] sm:max-w-md md:max-w-xl mt-0.5">
-                {currentProps.name}
+              <h3 className="text-xs md:text-sm font-bold text-slate-100 truncate mt-0.5">
+                {currentDoc?.fileName || title}
               </h3>
             </div>
           </div>
-          
-          <div className="flex items-center gap-2">
-            {/* Toggle Grid/Detail mode */}
+
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Toggle Info / Members Details Drawer */}
             <button
-              onClick={() => setViewMode(prev => prev === "detail" ? "grid" : "detail")}
-              className={`p-2.5 rounded-xl transition-colors cursor-pointer border ${
-                viewMode === "grid" 
-                  ? "bg-indigo-600 border-indigo-500 text-white" 
-                  : "bg-slate-850 border-slate-700 text-slate-300 hover:bg-slate-705 hover:text-white"
+              onClick={() => setShowDetailsPanel(!showDetailsPanel)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                showDetailsPanel 
+                  ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-950" 
+                  : "bg-slate-850 border-slate-750 text-slate-300 hover:bg-slate-800 hover:text-white"
               }`}
-              title={viewMode === "detail" ? "Switch to Thumbnail Grid" : "Back to Detail View"}
+              title="Toggle Requester & Approvers Details Panel"
             >
-              <LayoutGrid size={18} />
+              <Users size={15} />
+              <span className="hidden sm:inline">Details & Members</span>
+              {membersInvolved.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] bg-slate-900 font-mono">
+                  {membersInvolved.length}
+                </span>
+              )}
             </button>
 
-            {/* Zoom Controls for Images */}
-            {viewMode === "detail" && currentProps.isImage && (
-              <div className="hidden sm:flex items-center bg-slate-850 border border-slate-700 rounded-xl overflow-hidden">
-                <button
-                  onClick={() => setZoomScale(z => Math.max(z - 0.25, 0.5))}
-                  disabled={zoomScale <= 0.5}
-                  className="p-2.5 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-                  title="Zoom Out"
-                >
-                  <ZoomOut size={16} />
-                </button>
-                <span className="px-2 text-[10px] font-black font-mono text-slate-400 w-12 text-center">
-                  {Math.round(zoomScale * 100)}%
-                </span>
-                <button
-                  onClick={() => setZoomScale(z => Math.min(z + 0.25, 3))}
-                  disabled={zoomScale >= 3}
-                  className="p-2.5 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-                  title="Zoom In"
-                >
-                  <ZoomIn size={16} />
-                </button>
-              </div>
-            )}
-
             {/* Open in New Tab */}
-            {currentProps.url && (
+            {currentDoc?.uri && (
               <button
-                onClick={() => {
-                  window.open(currentProps.url, '_blank');
-                }}
-                className="p-2.5 bg-slate-850 border border-slate-700 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors cursor-pointer"
+                onClick={() => window.open(currentDoc.uri, "_blank")}
+                className="p-2 bg-slate-850 border border-slate-750 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl transition-colors cursor-pointer"
                 title="Open Document in New Tab"
               >
-                <ExternalLink size={18} />
+                <ExternalLink size={16} />
               </button>
             )}
 
-            {/* Fullscreen Toggle */}
+            {/* Download */}
+            {currentDoc?.uri && (
+              <button
+                onClick={() => {
+                  const link = document.createElement("a");
+                  link.href = currentDoc.uri;
+                  link.download = currentDoc.fileName;
+                  link.click();
+                }}
+                className="p-2 bg-slate-850 border border-slate-750 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl transition-colors cursor-pointer"
+                title="Download Document"
+              >
+                <Download size={16} />
+              </button>
+            )}
+
+            {/* Fullscreen */}
             <button
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="p-2.5 bg-slate-850 border border-slate-700 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors cursor-pointer hidden sm:flex"
-              title={isFullscreen ? "Exit Fullscreen" : "Maximize Viewer Window"}
+              className="p-2 bg-slate-850 border border-slate-750 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl transition-colors cursor-pointer hidden md:flex"
+              title={isFullscreen ? "Exit Fullscreen" : "Maximize Modal"}
             >
-              {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+              {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
 
-            {/* Download Button */}
+            {/* Close */}
             <button
-              onClick={() => {
-                const link = document.createElement("a");
-                link.href = currentProps.url;
-                link.download = currentProps.name;
-                link.click();
-              }}
-              className="p-2.5 bg-slate-850 border border-slate-700 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors cursor-pointer"
-              title="Download Document"
-            >
-              <Download size={18} />
-            </button>
-
-            {/* Close Button */}
-            <button 
               onClick={onClose}
-              className="p-2.5 bg-slate-850 border border-slate-700 hover:bg-rose-950/40 hover:border-rose-800 hover:text-rose-400 rounded-xl text-slate-300 transition-colors cursor-pointer"
-              title="Close Gallery"
+              className="p-2 bg-slate-850 border border-slate-750 hover:bg-rose-950/40 hover:border-rose-800 hover:text-rose-400 rounded-xl text-slate-300 transition-colors cursor-pointer"
+              title="Close Modal"
             >
-              <X size={18} />
+              <X size={16} />
             </button>
           </div>
         </div>
 
-        {/* Content Area */}
-        {viewMode === "grid" ? (
-          /* GRID MODE */
-          <div className="flex-1 overflow-y-auto p-8 bg-slate-950/35">
-            <div className="max-w-4xl mx-auto">
-              <div className="mb-6">
-                <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-widest font-sans">
-                  Attachment Catalog ({attachments.length} files)
-                </h4>
-                <p className="text-xs text-slate-500 mt-1">Select an attachment below to inspect its contents in full resolution.</p>
+        {/* Modal Main Area */}
+        <div className="flex-1 flex overflow-hidden relative bg-slate-950">
+          {/* Main Document Area using react-doc-viewer */}
+          <div className="flex-1 flex flex-col h-full overflow-hidden relative p-2 md:p-4">
+            {/* File Selector Tabs if multiple attachments */}
+            {docs.length > 1 && (
+              <div className="mb-2 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+                {docs.map((d, idx) => (
+                  <button
+                    key={`doc-tab-${idx}`}
+                    onClick={() => setActiveDocIndex(idx)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 cursor-pointer transition-all flex items-center gap-1.5 border ${
+                      idx === activeDocIndex
+                        ? "bg-indigo-600 border-indigo-500 text-white font-bold shadow-md"
+                        : "bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850 hover:text-slate-200"
+                    }`}
+                  >
+                    <FileText size={13} />
+                    <span className="truncate max-w-[160px]">{d.fileName}</span>
+                  </button>
+                ))}
               </div>
-              
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                {attachments.map((attachment, idx) => {
-                  const props = getDocProps(attachment);
-                  const isCur = idx === currentIndex;
-                  return (
-                    <motion.div
-                      key={`grid-doc-${idx}`}
-                      whileHover={{ scale: 1.02, y: -2 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => {
-                        setCurrentIndex(idx);
-                        setViewMode("detail");
-                      }}
-                      className={`cursor-pointer rounded-2xl border transition-all overflow-hidden flex flex-col h-36 relative group shadow-lg ${
-                        isCur 
-                          ? "border-indigo-500/80 bg-indigo-950/20 shadow-indigo-950/40 shadow-xl"
-                          : "border-slate-800 bg-slate-900/60 hover:border-slate-700 hover:bg-slate-800/80"
-                      }`}
-                    >
-                      {/* Image Preview / File Icon */}
-                      <div className="flex-1 bg-slate-950/30 flex items-center justify-center overflow-hidden relative">
-                        {props.isImage ? (
-                          <CachedImage 
-                            src={props.url} 
-                            alt={props.name} 
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          />
-                        ) : props.isPdf ? (
-                          <div className="flex flex-col items-center justify-center">
-                            <span className="text-rose-500 group-hover:text-rose-400 transition-colors">
-                              <FileText size={32} />
-                            </span>
-                            <span className="text-[8px] font-black text-rose-400 uppercase tracking-widest font-mono mt-1.5">
-                              PDF Document
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col items-center justify-center">
-                            <span className="text-indigo-400 group-hover:text-indigo-300 transition-colors">
-                              <FileText size={32} />
-                            </span>
-                          </div>
-                        )}
-                        {/* Overlay with document indicator */}
-                        <div className="absolute top-2 right-2 flex gap-1">
-                          <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-slate-950/80 text-slate-300 border border-slate-800/60 font-mono">
-                            {props.ext}
+            )}
+
+            {/* react-doc-viewer container */}
+            <div className="flex-1 w-full h-full rounded-2xl overflow-hidden border border-slate-800 bg-slate-900/90 relative flex flex-col">
+              <DocViewer
+                documents={docs}
+                activeDocument={docs[activeDocIndex]}
+                onDocumentChange={(doc) => {
+                  const idx = docs.findIndex(d => d.uri === doc.uri);
+                  if (idx !== -1) setActiveDocIndex(idx);
+                }}
+                pluginRenderers={DocViewerRenderers}
+                config={{
+                  header: {
+                    disableHeader: false,
+                    disableFileName: false,
+                    retainURLParams: false,
+                  },
+                  csvDelimiter: ",",
+                  pdfZoom: {
+                    defaultZoom: 1.0,
+                    zoomJump: 0.1,
+                  },
+                  pdfVerticalScrollByDefault: true,
+                }}
+                style={{ width: "100%", height: "100%", minHeight: "450px" }}
+              />
+            </div>
+          </div>
+
+          {/* Right Sidebar Details Panel: Requester, Approvers, Updated Members */}
+          <AnimatePresence>
+            {showDetailsPanel && (
+              <motion.div
+                initial={{ x: 300, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: 300, opacity: 0 }}
+                transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                className="w-full md:w-80 lg:w-96 bg-slate-900/95 border-l border-slate-800 flex flex-col h-full overflow-y-auto shrink-0 z-10 shadow-2xl"
+              >
+                {/* Sidebar Title */}
+                <div className="p-4 border-b border-slate-800 bg-slate-950/60 sticky top-0 z-10 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Users size={16} className="text-indigo-400" />
+                    <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider font-mono">
+                      Requisition Members & Approvals
+                    </h4>
+                  </div>
+                  <button
+                    onClick={() => setShowDetailsPanel(false)}
+                    className="text-slate-500 hover:text-slate-300 p-1 md:hidden cursor-pointer"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <div className="p-4 space-y-6">
+                  {/* Requisition Meta Summary Card */}
+                  <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className="text-[9px] font-mono uppercase tracking-widest text-slate-500 block font-bold">
+                          Title
+                        </span>
+                        <p className="text-xs font-bold text-slate-200 mt-0.5">{title}</p>
+                      </div>
+                      {amountStr && (
+                        <div className="text-right">
+                          <span className="text-[9px] font-mono uppercase tracking-widest text-emerald-500 block font-bold">
+                            Amount
                           </span>
+                          <p className="text-xs font-black text-emerald-400 font-mono mt-0.5">{amountStr}</p>
+                        </div>
+                      )}
+                    </div>
+                    {requisition?.description && (
+                      <p className="text-[11px] text-slate-400 border-t border-slate-850 pt-2 leading-relaxed">
+                        {requisition.description}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Requester Details Card */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 font-mono block">
+                      1. Requester Info
+                    </span>
+                    <div className="bg-slate-950/80 border border-indigo-950/60 rounded-2xl p-3.5 flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0 mt-0.5 font-bold">
+                        <User size={18} />
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p className="text-xs font-bold text-slate-100 truncate">{requesterName}</p>
+                        {requesterEmail && (
+                          <p className="text-[10px] text-slate-400 font-mono truncate">{requesterEmail}</p>
+                        )}
+                        <div className="flex items-center gap-2 pt-1 flex-wrap text-[10px]">
+                          <span className="px-2 py-0.5 bg-slate-850 text-indigo-300 rounded-md font-medium border border-slate-800">
+                            {groupName}
+                          </span>
+                          {submittedAt && (
+                            <span className="text-slate-500 font-mono">
+                              Submitted: {submittedAt}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Approvers Clearance Cards */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 font-mono block">
+                      2. Approvers Clearance Level
+                    </span>
+                    <div className="space-y-2.5">
+                      {/* Level 1 Approver */}
+                      <div className={`border rounded-2xl p-3.5 space-y-2 transition-all ${
+                        isL1Approved ? "bg-emerald-950/20 border-emerald-800/40" : "bg-slate-950/60 border-slate-800"
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase font-mono flex items-center gap-1">
+                            <ShieldCheck size={13} className={isL1Approved ? "text-emerald-400" : "text-slate-500"} />
+                            Level 1 (Group Leader)
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-black font-mono uppercase ${
+                            isL1Approved ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                          }`}>
+                            {isL1Approved ? "Verified & Endorsed" : "Pending L1"}
+                          </span>
+                        </div>
+                        <div className="text-xs space-y-0.5">
+                          <p className="font-semibold text-slate-200">
+                            {l1Note?.approverName || (requisition?.approvedAtL1 ? "Level 1 Official" : "Presbytery Official")}
+                          </p>
+                          {requisition?.approvedAtL1 && (
+                            <p className="text-[10px] text-slate-500 font-mono">
+                              Approved: {formatDate(requisition.approvedAtL1)}
+                            </p>
+                          )}
+                          {l1Note?.note && (
+                            <p className="text-[11px] text-slate-400 italic bg-slate-900/80 p-2 rounded-lg mt-1 border border-slate-800/60">
+                              "{l1Note.note}"
+                            </p>
+                          )}
                         </div>
                       </div>
 
-                      {/* Footer Title */}
-                      <div className="p-3 bg-slate-950/60 border-t border-slate-800/50 flex flex-col justify-center">
-                        <p className={`text-[11px] font-semibold truncate ${
-                          isCur ? "text-indigo-300" : "text-slate-300 group-hover:text-white"
-                        }`}>
-                          {props.name}
-                        </p>
-                        <p className="text-[9px] text-slate-500 mt-0.5 font-medium">Click to examine</p>
+                      {/* Level 2 Approver */}
+                      <div className={`border rounded-2xl p-3.5 space-y-2 transition-all ${
+                        isL2Approved ? "bg-emerald-950/20 border-emerald-800/40" : "bg-slate-950/60 border-slate-800"
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase font-mono flex items-center gap-1">
+                            <ShieldCheck size={13} className={isL2Approved ? "text-emerald-400" : "text-slate-500"} />
+                            Level 2 (Finance / Treasurer)
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-black font-mono uppercase ${
+                            isL2Approved ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                          }`}>
+                            {isL2Approved ? "Authorized for Payout" : "Pending L2"}
+                          </span>
+                        </div>
+                        <div className="text-xs space-y-0.5">
+                          <p className="font-semibold text-slate-200">
+                            {l2Note?.approverName || (requisition?.approvedAtL2 ? "Finance Treasurer" : "Finance Officer")}
+                          </p>
+                          {requisition?.approvedAtL2 && (
+                            <p className="text-[10px] text-slate-500 font-mono">
+                              Authorized: {formatDate(requisition.approvedAtL2)}
+                            </p>
+                          )}
+                          {l2Note?.note && (
+                            <p className="text-[11px] text-slate-400 italic bg-slate-900/80 p-2 rounded-lg mt-1 border border-slate-800/60">
+                              "{l2Note.note}"
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        ) : (
-          /* DETAIL VIEWER MODE */
-          <div className="flex-1 flex flex-col relative overflow-hidden bg-slate-950/50">
-            {/* Prev/Next Buttons */}
-            {attachments.length > 1 && (
-              <>
-                <button
-                  onClick={handlePrev}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 bg-slate-800/80 border border-slate-700/80 hover:bg-slate-700 text-white rounded-full flex items-center justify-center transition-all opacity-80 hover:opacity-100 hover:scale-110 shadow-lg cursor-pointer shrink-0 animate-pulse-subtle"
-                  title="Previous Attachment"
-                >
-                  <ChevronLeft size={24} />
-                </button>
-                <button
-                  onClick={handleNext}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 z-25 w-11 h-11 bg-slate-800/80 border border-slate-700/80 hover:bg-slate-700 text-white rounded-full flex items-center justify-center transition-all opacity-80 hover:opacity-100 hover:scale-110 shadow-lg cursor-pointer shrink-0 animate-pulse-subtle"
-                  title="Next Attachment"
-                >
-                  <ChevronRight size={24} />
-                </button>
-              </>
-            )}
 
-            {/* Slide Container (Viewport) */}
-            <div 
-              onTouchStart={onTouchStart}
-              onTouchMove={onTouchMove}
-              onTouchEnd={onTouchEnd}
-              className="flex-1 overflow-auto p-4 md:p-8 flex items-center justify-center min-h-[350px] relative"
-            >
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={`preview-${currentIndex}`}
-                  initial={{ opacity: 0, x: 10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  transition={{ duration: 0.15 }}
-                  style={{ transform: `scale(${zoomScale})` }}
-                  className="max-w-full max-h-full flex items-center justify-center transition-transform duration-200"
-                >
-                  {currentProps.isImage ? (
-                    <CachedImage 
-                      src={currentProps.url} 
-                      alt={currentProps.name} 
-                      className="max-w-[92vw] max-h-[72vh] md:max-h-[80vh] object-contain rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-slate-800"
-                    />
-                  ) : currentProps.isPdf ? (
-                    <PdfDocumentViewer docProps={currentProps} requisition={requisition} />
-                  ) : (
-                    <RichDocumentViewer docProps={currentProps} />
-                  )}
-                </motion.div>
-              </AnimatePresence>
-            </div>
-
-            {/* Bottom Gallery/Thumbnail Strip */}
-            {attachments.length > 1 && (
-              <div className="w-full bg-slate-950/80 border-t border-slate-800/80 p-4 sticky bottom-0 z-10 flex items-center justify-center gap-3 select-none">
-                <div className="flex items-center gap-2 overflow-x-auto py-1 max-w-full no-scrollbar">
-                  {attachments.map((attachment, idx) => {
-                    const props = getDocProps(attachment);
-                    const isCur = idx === currentIndex;
-                    return (
-                      <div 
-                        key={`strip-doc-${idx}`} 
-                        onClick={() => {
-                          setZoomScale(1);
-                          setCurrentIndex(idx);
-                        }}
-                        className={`w-12 h-12 rounded-lg cursor-pointer overflow-hidden border-2 shrink-0 transition-all ${
-                          isCur 
-                            ? "border-indigo-500 scale-105 shadow-md shadow-indigo-500/20" 
-                            : "border-slate-800 opacity-60 hover:opacity-100 hover:border-slate-700"
-                        }`}
-                      >
-                        {props.isImage ? (
-                          <CachedImage 
-                            src={props.url} 
-                            alt={props.name} 
-                            className="w-full h-full object-cover" 
-                          />
-                        ) : props.isPdf ? (
-                          <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center border border-rose-950/40">
-                            <FileText size={16} className="text-rose-500" />
-                            <span className="text-[7px] font-black text-rose-400 font-mono scale-90">
-                              PDF
+                      {/* Disbursing Status */}
+                      {isDisbursed && (
+                        <div className="border bg-sky-950/20 border-sky-800/40 rounded-2xl p-3.5 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-sky-400 uppercase font-mono flex items-center gap-1">
+                              <Coins size={13} />
+                              Payout Settlement
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[9px] font-black font-mono uppercase bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                              Disbursed
                             </span>
                           </div>
-                        ) : (
-                          <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center">
-                            <FileText size={14} className="text-slate-500" />
-                            <span className="text-[7px] font-black text-slate-400 font-mono scale-90">
-                              {props.ext}
-                            </span>
+                          <p className="text-xs font-semibold text-slate-200">
+                            {disburseNote?.approverName || "PCE St. Andrews Treasury"}
+                          </p>
+                          {requisition?.disbursedAt && (
+                            <p className="text-[10px] text-slate-500 font-mono">
+                              Settlement Date: {formatDate(requisition.disbursedAt)}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Updated Members & Audit History */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 font-mono block">
+                      3. Involved Members & History Log ({membersInvolved.length})
+                    </span>
+                    <div className="space-y-2">
+                      {membersInvolved.map((m, idx) => (
+                        <div key={`member-${idx}`} className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 flex items-start gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-slate-800 flex items-center justify-center text-slate-300 font-bold text-xs shrink-0 mt-0.5">
+                            {m.name.charAt(0).toUpperCase()}
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <p className="text-xs font-bold text-slate-200 truncate">{m.name}</p>
+                              <span className="text-[8px] font-mono px-1.5 py-0.2 bg-slate-800 text-slate-400 rounded uppercase font-bold shrink-0">
+                                {m.role}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-indigo-400 font-medium mt-0.5">{m.action}</p>
+                            {m.timestamp && (
+                              <p className="text-[9px] text-slate-500 font-mono mt-0.5">{m.timestamp}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </motion.div>
             )}
-          </div>
-        )}
-
-        {/* Footer info bar */}
-        <div className="px-6 py-4.5 bg-slate-950 border-t border-slate-800 text-slate-400 flex items-center justify-between select-none">
-          <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">
-            {viewMode === "grid" ? "GRID VIEWING CATALOG" : `CURRENTLY VIEWING DETAIL FILE - ${currentIndex + 1} OF ${attachments.length}`}
-          </p>
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
-              Secure Cloud Sandbox Verified
-            </p>
-          </div>
+          </AnimatePresence>
         </div>
       </motion.div>
     </div>

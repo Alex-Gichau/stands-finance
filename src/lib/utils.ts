@@ -129,6 +129,26 @@ export function normalizeAttachmentUrl(url: any): string {
   return trimmed;
 }
 
+export function getAbsoluteAttachmentUrl(url: any): string {
+  if (!url) return "";
+  const normalized = normalizeAttachmentUrl(url);
+  if (!normalized) return "";
+
+  if (normalized.startsWith("http://") || normalized.startsWith("https://") || normalized.startsWith("data:") || normalized.startsWith("blob:")) {
+    return normalized;
+  }
+
+  const vpsIp = ((import.meta as any).env?.VITE_VPS_IP || (typeof process !== "undefined" && process.env?.VPS_IP) || "178.104.122.211").trim();
+  const serverPort = ((import.meta as any).env?.VITE_SERVER_PORT || (typeof process !== "undefined" && process.env?.SERVER_PORT) || "3000").trim();
+  const vpsBase = `http://${vpsIp}:${serverPort}`;
+
+  if (normalized.startsWith("/")) {
+    return `${vpsBase}${normalized}`;
+  }
+
+  return `${vpsBase}/${normalized}`;
+}
+
 export function getAttachmentFileName(doc: any): string {
   if (!doc) return "Attachment";
 
