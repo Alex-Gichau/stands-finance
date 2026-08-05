@@ -138,15 +138,11 @@ export function getAbsoluteAttachmentUrl(url: any): string {
     return normalized;
   }
 
-  const vpsIp = ((import.meta as any).env?.VITE_VPS_IP || (typeof process !== "undefined" && process.env?.VPS_IP) || "178.104.122.211").trim();
-  const serverPort = ((import.meta as any).env?.VITE_SERVER_PORT || (typeof process !== "undefined" && process.env?.SERVER_PORT) || "3000").trim();
-  const vpsBase = `http://${vpsIp}:${serverPort}`;
-
   if (normalized.startsWith("/")) {
-    return `${vpsBase}${normalized}`;
+    return normalized;
   }
 
-  return `${vpsBase}/${normalized}`;
+  return `/${normalized}`;
 }
 
 export function getAttachmentFileName(doc: any): string {

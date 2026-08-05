@@ -152,7 +152,7 @@ function persistActivity(activity: Activity) {
   }
 }
 
-function convertBase64ToLocalFile(attachmentStr: string, uploadsDir: string, vpsIp: string = "178.104.122.211"): string {
+function convertBase64ToLocalFile(attachmentStr: string, uploadsDir: string): string {
   if (!attachmentStr || typeof attachmentStr !== "string") return attachmentStr;
   
   let fileName = "attachment";
