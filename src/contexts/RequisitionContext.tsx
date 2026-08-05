@@ -32,7 +32,7 @@ import {
 } from "../types";
 import { getProjectRequisitions } from "../utils/budgetUtils";
 import { databaseService } from "../lib/databaseService";
-import { uploadAttachmentsToLocalServer, unwrapAttachmentTarget } from "../lib/utils";
+import { uploadAttachmentsToLocalServer, unwrapAttachmentTarget, sendSlackNotification } from "../lib/utils";
 import { triggerAutosendBackupEmail, AUTOSEND_DEFAULT_EMAIL, getLocalAutosendConfig } from "../services/autosendBackupService";
 import { initializeApp as initFirebaseApp } from "firebase/app";
 import { 
@@ -961,6 +961,18 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         const userEmail = firebaseUser.email?.toLowerCase();
+
+        // Dispatch Slack session login alert if not yet dispatched for this browser tab session
+        if (typeof window !== "undefined" && userEmail) {
+          const sessionKey = `slack_session_${firebaseUser.uid}`;
+          if (!sessionStorage.getItem(sessionKey)) {
+            sessionStorage.setItem(sessionKey, "true");
+            dispatchLoginSlackAlert(userEmail, "Session Authorization", firebaseUser.uid).catch(e => {
+              console.warn("Session Slack alert failed:", e);
+            });
+          }
+        }
+
         try {
           const res = await fetch(`/api/auth/get-profile-by-email?email=${encodeURIComponent(userEmail || "")}`);
           const data = await res.json();
@@ -1059,13 +1071,15 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const addSystemLog = useCallback(async (action: string, details: string, metadata?: any) => {
     try {
-      // Ensure we have a current user or auth state before attempting to write logs
-      // This prevents permission errors during early initialization
-      if (!currentUser) return;
+      const userEmail = currentUser?.email || metadata?.email || auth.currentUser?.email;
+      const isSuperAdminEmail = userEmail === "gichaumburu@gmail.com";
+      const userName = currentUser?.name || metadata?.name || (isSuperAdminEmail ? "Alex Gichau" : (userEmail ? userEmail.split('@')[0] : "System User"));
+      const userRole = currentUser?.role || metadata?.role || (isSuperAdminEmail ? UserRole.SUPER_ADMIN : "USER");
+      const userGroup = currentUser?.group || metadata?.group;
+      const performedBy = `${userName} (${userRole})`;
+      const timestamp = new Date().toISOString();
 
       const logId = `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const performedBy = currentUser ? `${currentUser.name} (${currentUser.role})` : "System";
-      const timestamp = new Date().toISOString();
       
       const logDoc = {
         id: logId,
@@ -1073,7 +1087,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         details,
         performedBy,
         timestamp,
-        ...(currentUser?.group && { groupId: currentUser.group }),
+        ...(userGroup && { groupId: userGroup }),
         ...(metadata && { metadata })
       };
       
@@ -1090,7 +1104,14 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
               details,
               performedBy,
               timestamp,
-              metadata
+              metadata: {
+                ...metadata,
+                name: metadata?.name || userName,
+                email: metadata?.email || userEmail,
+                role: metadata?.role || userRole,
+                group: metadata?.group || userGroup || "General Ministry",
+                userId: metadata?.userId || currentUser?.id || auth.currentUser?.uid || "N/A"
+              }
             })
           }).catch(err => console.log("Slack background notify failed", err));
         } catch (slackErr) {
@@ -1099,9 +1120,58 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
       
     } catch (err: any) {
-      console.log("Failed to add system log (possibly due to auth sync race condition):", err.message);
+      console.log("Failed to add system log:", err.message);
     }
   }, [currentUser]);
+
+  const dispatchLoginSlackAlert = useCallback(async (userEmail: string, authProvider: string, userId?: string) => {
+    try {
+      const email = (userEmail || "").trim().toLowerCase();
+      if (!email) return;
+
+      let profile: any = null;
+      try {
+        const res = await fetch(`/api/auth/get-profile-by-email?email=${encodeURIComponent(email)}`);
+        const data = await res.json();
+        if (res.ok && data.exists && data.profile) {
+          profile = data.profile;
+        }
+      } catch (e) {}
+
+      const isSuperAdmin = email === "gichaumburu@gmail.com";
+      const name = profile?.name || (isSuperAdmin ? "Alex Gichau" : email.split('@')[0]);
+      const role = profile?.role || (isSuperAdmin ? UserRole.SUPER_ADMIN : "CHURCH_GROUP");
+      const group = profile?.group || "General Ministry";
+      const uid = userId || profile?.id || auth.currentUser?.uid || "N/A";
+      const isApproved = isSuperAdmin ? true : (profile?.isApproved ?? profile?.is_approved ?? true);
+      const isActive = isSuperAdmin ? true : (profile?.isActive ?? profile?.is_active ?? true);
+      const isSuspended = profile?.isSuspended ?? profile?.is_suspended ?? false;
+
+      const loginMetadata = {
+        name,
+        email,
+        role,
+        group,
+        authProvider,
+        userId: uid,
+        isApproved,
+        isActive,
+        isSuspended,
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "Web Browser"
+      };
+
+      await sendSlackNotification({
+        action: "USER_LOGIN",
+        details: `🔑 ${name} (${role}) authenticated successfully via ${authProvider}`,
+        performedBy: `${name} (${role})`,
+        metadata: loginMetadata
+      });
+
+      await addSystemLog("USER_LOGIN", `User logged in via ${authProvider}: ${email}`, loginMetadata);
+    } catch (err) {
+      console.warn("Failed to dispatch login Slack alert:", err);
+    }
+  }, [addSystemLog]);
 
   const seedAllEcosystemData = useCallback(async () => {
     console.log("Mock data seeding is disabled.");
@@ -3100,7 +3170,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       provider.setCustomParameters({ prompt: 'select_account' });
       const result = await signInWithPopup(auth, provider);
       if (result.user) {
-        addSystemLog("USER_LOGIN", `User logged in via Google Auth: ${result.user.email}`, { authProvider: "google", email: result.user.email });
+        const email = result.user.email?.toLowerCase() || "";
+        await dispatchLoginSlackAlert(email, "Google OAuth 2.0", result.user.uid);
       }
     } catch (error: any) {
       console.log("Login warning", error);
@@ -3132,7 +3203,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 profileId: checkData.profileId
               })
             });
-            await addSystemLog("USER_LOGIN", `Pre-provisioned user activated and logged in: ${email}`, { authProvider: "password", email });
+            await dispatchLoginSlackAlert(email, "Pre-Registered Password Activation", userCredential.user.uid);
             return;
           }
         } catch (signUpErr: any) {
@@ -3148,7 +3219,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                   profileId: checkData.profileId
                 })
               });
-              await addSystemLog("USER_LOGIN", `User logged in via Email/Password: ${email}`, { authProvider: "password", email });
+              await dispatchLoginSlackAlert(email, "Email & Password", userCredential.user.uid);
               return;
             }
           }
@@ -3158,23 +3229,24 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       
       const userCredential = await signInWithEmailAndPassword(auth, email, pass);
       if (userCredential.user) {
-        await addSystemLog("USER_LOGIN", `User logged in via Email/Password: ${email}`, { authProvider: "password", email });
+        await dispatchLoginSlackAlert(email, "Email & Password", userCredential.user.uid);
       }
     } catch (error: any) {
       console.error("Login with email failed:", error);
       try {
-        fetch("/api/notify-slack", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "FAILED_LOGIN_ATTEMPT",
-            details: `🛑 SECURITY ALERT: Failed login attempt for ${email}. Error: ${error.message || error.code}`,
-            performedBy: email || "Anonymous",
-            timestamp: new Date().toISOString(),
-            metadata: { email, errorCode: error.code || "unknown" },
-            level: "abnormal"
-          })
-        }).catch(err => console.log("Slack Notify Failed:", err));
+        await sendSlackNotification({
+          action: "FAILED_LOGIN_ATTEMPT",
+          details: `🛑 SECURITY ALERT: Failed login attempt for ${email}. Reason: ${error.message || error.code || "Invalid credentials"}`,
+          performedBy: email || "Anonymous User",
+          level: "critical",
+          metadata: {
+            email,
+            errorCode: error.code || "auth/invalid-credential",
+            errorMessage: error.message || "Invalid credentials",
+            authProvider: "Email & Password",
+            userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "Web Browser"
+          }
+        });
       } catch (e) {}
       throw error;
     }
@@ -3321,7 +3393,14 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             body: JSON.stringify(newProfile)
           });
         }
-        await addSystemLog("USER_PROVISIONED", `User successfully registered and approved via Email: ${email}`, { email });
+        await dispatchLoginSlackAlert(email, "Email Registration", uid);
+        await addSystemLog("USER_PROVISIONED", `User successfully registered and approved via Email: ${email}`, { 
+          email,
+          name,
+          role: "CHURCH_GROUP",
+          authProvider: "Email Registration",
+          userId: uid
+        });
       }
     } catch (error: any) {
       console.warn("Signup warning", error);
@@ -3333,7 +3412,11 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   const logout = async (options?: { forceDirect?: boolean }) => {
-    const userEmail = auth.currentUser?.email;
+    const userEmail = auth.currentUser?.email || currentUser?.email;
+    const userName = currentUser?.name || (userEmail ? userEmail.split('@')[0] : "User");
+    const userRole = currentUser?.role || "USER";
+    const userGroup = currentUser?.group || "General Ministry";
+
     if (currentUserId) {
       try {
         await updateDoc(doc(db, "users", currentUserId), {
@@ -3347,7 +3430,21 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     if (userEmail) {
       try {
-        await addSystemLog("USER_LOGOUT", `👤 User logged out successfully: ${userEmail}`, { email: userEmail });
+        const logoutMeta = {
+          name: userName,
+          email: userEmail,
+          role: userRole,
+          group: userGroup,
+          userId: currentUserId || auth.currentUser?.uid || "N/A",
+          userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "Web Browser"
+        };
+        await sendSlackNotification({
+          action: "USER_LOGOUT",
+          details: `✌️ ${userName} (${userRole}) signed out from the system`,
+          performedBy: `${userName} (${userRole})`,
+          metadata: logoutMeta
+        });
+        await addSystemLog("USER_LOGOUT", `👤 User logged out successfully: ${userEmail}`, logoutMeta);
       } catch (logErr) {
         console.log("Failed to log logout event", logErr);
       }
@@ -3355,6 +3452,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     
     if (typeof window !== "undefined") {
       localStorage.removeItem("override_authorized_user_email");
+      sessionStorage.removeItem("slack_session_");
     }
     await signOut(auth);
   };

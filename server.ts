@@ -1950,7 +1950,7 @@ async function startServer() {
     }
   });
 
-  // API Route for Slack Notifications (Expanded for Prompt 6)
+  // API Route for Slack Notifications (Expanded with rich auth blocks & channel routing)
   app.post("/api/notify-slack", async (req, res) => {
     const { action, details, performedBy, timestamp, metadata, level = "normal" } = req.body;
     const webhookUrl = process.env.SLACK_WEBHOOK_URL;
@@ -1962,7 +1962,7 @@ async function startServer() {
       console.warn("Failed to persist activity:", e);
     }
 
-    // Determine target channel routing based on Prompt 6 rules
+    const actLower = action ? action.toLowerCase() : "";
     let targetChannel = "#system-logs";
     let isHighValue = false;
     let isHighPriority = false;
@@ -1987,7 +1987,6 @@ async function startServer() {
     }
 
     // 2. Workflow warnings or Stale alerts -> Route to #workflow-alerts
-    const actLower = action ? action.toLowerCase() : "";
     if (
       actLower.includes("stale") || 
       actLower.includes("overdue") || 
@@ -1999,8 +1998,11 @@ async function startServer() {
       targetChannel = "#workflow-alerts";
     }
 
-    // 3. Security logs / promotions / quota failures
+    // 3. Security logs / promotions / quota failures / user logins -> #system-logs
     if (
+      actLower.includes("login") ||
+      actLower.includes("sign_in") ||
+      actLower.includes("signup") ||
       actLower.includes("promotion") || 
       actLower.includes("role_updated") || 
       actLower.includes("user_approval") || 
@@ -2013,87 +2015,153 @@ async function startServer() {
       targetChannel = "#system-logs";
     }
 
-    // Build the long thread summary of recent activities
+    // Build recent audit activity thread summary
     const summaryText = generateSlackFullReport();
 
-    let color = "#4b5563"; // Default slate gray
+    let color = "#3b82f6"; // Default blue
     let headerText = "🚨 System Ledger Alert";
+    let isAuthEvent = false;
 
-    if (actLower.includes("login") || actLower.includes("sign_in")) {
-      color = "#3b82f6"; // Blue
-      headerText = "👋 User Session Started (Login)";
+    if (actLower.includes("failed_login") || action === "FAILED_LOGIN_ATTEMPT") {
+      color = "#dc2626"; // Crimson
+      headerText = "🛑 SECURITY ALERT: Failed Login Attempt";
+      isAuthEvent = true;
+    } else if (actLower.includes("login") || actLower.includes("sign_in") || actLower.includes("session")) {
+      color = "#2563eb"; // Royal Blue
+      headerText = "🔑 User Authentication & Login Alert";
+      isAuthEvent = true;
     } else if (actLower.includes("logout") || actLower.includes("sign_out")) {
       color = "#64748b"; // Slate
       headerText = "✌️ User Session Ended (Logout)";
-    } else if (actLower.includes("created") || actLower.includes("submitted") || actLower.includes("submit") || actLower.includes("create")) {
-      color = "#6366f1"; // Indigo
-      headerText = isHighValue ? "🔥 HIGH-VALUE Requisition Submitted" : "✨ New Requisition Submitted";
+      isAuthEvent = true;
+    } else if (actLower.includes("signup") || actLower.includes("user_provisioned")) {
+      color = "#10b981"; // Emerald
+      headerText = "✨ New User Account Registered";
+      isAuthEvent = true;
     } else if (actLower.includes("approved_l1")) {
-      color = "#10b981"; // L1 Green
+      color = "#10b981";
       headerText = "✅ Compliance L1 Clearance Granted";
     } else if (actLower.includes("approved_l2")) {
-      color = "#059669"; // L2 Dark Green
+      color = "#059669";
       headerText = "👑 Keymaster L2 Signing Certified";
     } else if (actLower.includes("approve")) {
-      color = "#10b981"; // Green
+      color = "#10b981";
       headerText = "✅ Requisition Authorized";
     } else if (actLower.includes("reject")) {
-      color = "#ef4444"; // Red
+      color = "#ef4444";
       headerText = "❌ Requisition Returned / Rejected";
     } else if (actLower.includes("disburse") || actLower.includes("payment")) {
-      color = "#f59e0b"; // Amber
+      color = "#f59e0b";
       headerText = "💸 Funds Disbursed / Financial Settlement";
-    } else if (actLower.includes("fail") || actLower.includes("security") || actLower.includes("unauthorized") || actLower.includes("bypass") || actLower.includes("quota_fallback") || actLower.includes("warning")) {
-      color = "#dc2626"; // Crimson
+    } else if (actLower.includes("created") || actLower.includes("submitted") || actLower.includes("submit") || actLower.includes("create")) {
+      color = "#6366f1";
+      headerText = isHighValue ? "🔥 HIGH-VALUE Requisition Submitted" : "✨ New Requisition Submitted";
+    } else if (actLower.includes("fail") || actLower.includes("security") || actLower.includes("unauthorized") || actLower.includes("warning")) {
+      color = "#dc2626";
       headerText = "🚨 AUDIT & SYSTEM RECOVERY ALERT";
     } else if (level === "critical" || level === "abnormal") {
-      color = "#ef4444"; // Red/Alert
+      color = "#ef4444";
       headerText = "⚠️ High Severity System Signal";
     }
+
+    const mainAttachmentBlocks: any[] = [
+      {
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: headerText,
+          emoji: true
+        }
+      }
+    ];
+
+    if (isAuthEvent) {
+      if (action === "FAILED_LOGIN_ATTEMPT" || actLower.includes("failed_login")) {
+        mainAttachmentBlocks.push(
+          {
+            type: "section",
+            fields: [
+              { type: "mrkdwn", text: `*Target Email:*\n\`${metadata?.email || performedBy}\`` },
+              { type: "mrkdwn", text: `*Auth Method:*\n${metadata?.authProvider || "Email & Password"}` },
+              { type: "mrkdwn", text: `*Error Code:*\n\`${metadata?.errorCode || "auth/invalid-credential"}\`` },
+              { type: "mrkdwn", text: `*Failure Reason:*\n_${metadata?.errorMessage || details}_` }
+            ]
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `📱 *Client Device / Browser:* \`${metadata?.userAgent || "Web Browser"}\``
+            }
+          }
+        );
+      } else {
+        const isSuspended = metadata?.isSuspended || metadata?.is_suspended;
+        const isApproved = metadata?.isApproved !== undefined ? metadata.isApproved : (metadata?.is_approved !== undefined ? metadata.is_approved : true);
+        const statusBadge = isSuspended ? "⚠️ Suspended Account" : (!isApproved ? "⏳ Pending Approval" : "🟢 Active & Authorized");
+
+        mainAttachmentBlocks.push(
+          {
+            type: "section",
+            fields: [
+              { type: "mrkdwn", text: `*User Full Name:*\n*${metadata?.name || performedBy}*` },
+              { type: "mrkdwn", text: `*Email Address:*\n\`${metadata?.email || performedBy}\`` },
+              { type: "mrkdwn", text: `*Assigned Role:*\n\`${metadata?.role || "CHURCH_GROUP"}\`` },
+              { type: "mrkdwn", text: `*Ministry / Group:*\n*${metadata?.group || "General Ministry"}*` },
+              { type: "mrkdwn", text: `*Auth Provider:*\n${metadata?.authProvider || "Firebase Auth"}` },
+              { type: "mrkdwn", text: `*Account Status:*\n${statusBadge}` }
+            ]
+          },
+          {
+            type: "section",
+            fields: [
+              { type: "mrkdwn", text: `*User ID (UID):*\n\`${metadata?.userId || metadata?.id || "N/A"}\`` },
+              { type: "mrkdwn", text: `*Device / Agent:*\n\`${metadata?.userAgent || "Web Browser"}\`` }
+            ]
+          }
+        );
+      }
+    } else {
+      mainAttachmentBlocks.push(
+        {
+          type: "section",
+          fields: [
+            { type: "mrkdwn", text: `*Action:*\n\`${action}\`` },
+            { type: "mrkdwn", text: `*User:*\n_${performedBy}_` }
+          ]
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `*Details:* ${details}` }
+        }
+      );
+
+      if (metadata && Object.keys(metadata).length > 0) {
+        const formattedMeta = Object.entries(metadata)
+          .map(([k, v]) => `• *${k}:* ${typeof v === "object" ? `\`${JSON.stringify(v)}\`` : `\`${v}\``}`)
+          .join("\n");
+        mainAttachmentBlocks.push({
+          type: "section",
+          text: { type: "mrkdwn", text: `*Extended Context Details:*\n${formattedMeta}` }
+        });
+      }
+    }
+
+    mainAttachmentBlocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `*Timestamp:* ${timestamp} | *🎯 Target Channel:* \`${targetChannel}\``
+        }
+      ]
+    });
 
     const slackBody: any = {
       attachments: [
         {
           color: color,
-          blocks: [
-            {
-              type: "header",
-              text: {
-                type: "plain_text",
-                text: headerText,
-                emoji: true
-              }
-            },
-            {
-              type: "section",
-              fields: [
-                {
-                  type: "mrkdwn",
-                  text: `*Action:*\n\`${action}\``
-                },
-                {
-                  type: "mrkdwn",
-                  text: `*User:*\n_${performedBy}_`
-                }
-              ]
-            },
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: `*Details:* ${details}`
-              }
-            },
-            {
-              type: "context",
-              elements: [
-                {
-                  type: "mrkdwn",
-                  text: `*Timestamp:* ${timestamp} | *🎯 Target Channel:* \`${targetChannel}\``
-                }
-              ]
-            }
-          ]
+          blocks: mainAttachmentBlocks
         },
         {
           color: "#4A5568",
@@ -2117,17 +2185,6 @@ async function startServer() {
         }
       ]
     };
-
-    // Add metadata if present (like requisition amount, etc)
-    if (metadata && Object.keys(metadata).length > 0) {
-      slackBody.attachments[0].blocks.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "*Extended Metadata context:*\n" + Object.entries(metadata).map(([k, v]) => `• *${k}:* \`${JSON.stringify(v)}\``).join("\n")
-        }
-      });
-    }
 
     if (!webhookUrl) {
       console.warn(`[Slack Simulation] Webhook not specified. Posting simulated alert block to [${targetChannel}].`);
