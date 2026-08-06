@@ -3604,69 +3604,16 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      Attachments & Receipts
+                      Attachments (Documents)
                     </h4>
                     <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full text-[9px] font-bold">
-                      {normalizedAttachments.length + (req.receipts?.length || 0)}
+                      {normalizedAttachments.length}
                     </span>
                   </div>
-                  {req.status === RequisitionStatus.DISBURSED ? (
-                    <button 
-                      onClick={() => setIsCameraOpen(true)}
-                      disabled={isUploadingReceipt}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shrink-0"
-                    >
-                      {isUploadingReceipt ? <Loader2 size={12} className="animate-spin text-indigo-600" /> : <Camera size={12} className="text-indigo-600 dark:text-indigo-400" />}
-                      <span>{isUploadingReceipt ? "Uploading..." : "Snap Receipt Image"}</span>
-                    </button>
-                  ) : (
-                    <span 
-                      className="text-[9px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-400 px-2.5 py-1 rounded-lg border border-amber-200/60 dark:border-amber-800/60 flex items-center gap-1.5 shrink-0"
-                      title="Receipts can only be attached after all approvals are confirmed and disbursement is completed"
-                    >
-                      <Lock size={11} />
-                      Attach Receipt (Requires Disbursement)
-                    </span>
-                  )}
                 </div>
 
                 {/* Main Visual Thumbnail Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
-                   {/* Primary Snap/Attach Tile */}
-                   {req.status === RequisitionStatus.DISBURSED ? (
-                     <button 
-                       onClick={() => setIsCameraOpen(true)}
-                       disabled={isUploadingReceipt}
-                       className="aspect-[4/3] sm:aspect-square w-full bg-indigo-50/40 dark:bg-indigo-950/20 border-2 border-dashed border-indigo-200 dark:border-indigo-800/60 hover:border-indigo-500 dark:hover:border-indigo-500 rounded-2xl hover:shadow-md transition-all cursor-pointer flex flex-col items-center justify-center p-3 text-center group relative overflow-hidden"
-                       title="Snap Receipt using Camera"
-                     >
-                       <div className="p-3 rounded-2xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform mb-1.5 shadow-sm">
-                         {isUploadingReceipt ? <Loader2 size={20} className="animate-spin" /> : <Camera size={20} />}
-                       </div>
-                       <span className="text-[9px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-wider leading-snug">
-                         {isUploadingReceipt ? "Uploading..." : "+ Add Receipt"}
-                       </span>
-                       <span className="text-[8px] font-medium text-slate-400 mt-0.5">
-                         Camera or Upload
-                       </span>
-                     </button>
-                   ) : (
-                     <div 
-                       className="aspect-[4/3] sm:aspect-square w-full bg-slate-50 dark:bg-slate-800/30 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl flex flex-col items-center justify-center p-3 text-center cursor-not-allowed opacity-70"
-                       title="Receipt attachment requires full approval confirmation and completed disbursement"
-                     >
-                       <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 mb-1">
-                         <Lock size={18} />
-                       </div>
-                       <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tight leading-tight">
-                         Receipt Locked
-                       </span>
-                       <span className="text-[7.5px] text-slate-400 mt-0.5">
-                         Pending Payout
-                       </span>
-                     </div>
-                   )}
-
                    {/* Attachment Visual Cards */}
                    {normalizedAttachments.map((attachment: any, i: number) => {
                       let name = typeof attachment === 'string' ? attachment : (attachment?.name || 'Attachment');
@@ -3770,15 +3717,8 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
                    })}
                 </div>
 
-                {/* Additional Attached Receipts Section */}
-                {req.receipts && req.receipts.length > 0 && (
-                  <div className="w-full pt-3">
-                    <ReceiptGallery receipts={req.receipts} requisitionTitle={req.title} groupName={req.groupName} />
-                  </div>
-                )}
-
                 {/* Empty State */}
-                {normalizedAttachments.length === 0 && (!req.receipts || req.receipts.length === 0) && req.status !== RequisitionStatus.DISBURSED && (
+                {normalizedAttachments.length === 0 && (
                   <div className="w-full py-8 flex flex-col items-center justify-center text-slate-300 border border-dashed border-slate-200 dark:border-slate-800 rounded-3xl gap-1">
                     <FileText size={24} className="text-slate-300 dark:text-slate-700" />
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">No Attachments Provided</p>
@@ -3821,7 +3761,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
                               <div className="flex items-center justify-between gap-2 flex-wrap">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="font-bold text-slate-800 dark:text-slate-200 text-xs truncate">
-                                    {comment.authorName}
+                                    {isAuthor ? `You (${comment.authorName || comment.authorEmail?.split('@')[0] || "Member"})` : (comment.authorName || comment.authorEmail?.split('@')[0] || "Member")}
                                   </span>
                                   {comment.authorRole && (
                                     <span className={cn(

@@ -330,15 +330,6 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
       </div>
 
       <form onSubmit={handleSubmit} className="overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 flex-1">
-          {Array.isArray(req.approvalHistory) && req.approvalHistory.length > 0 && (
-            <div className="bg-slate-50 border border-slate-150 rounded-2xl p-4 space-y-2">
-              <div className="flex items-center gap-2 mb-2">
-                <Activity size={14} className="text-slate-400" />
-                <h4 className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Approval Flow History</h4>
-              </div>
-              <ApprovalSparkline req={req} />
-            </div>
-          )}
           {/* Section 1: Desginated Group & Quick Add */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-2 w-full justify-between">
