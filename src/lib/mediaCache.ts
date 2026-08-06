@@ -42,61 +42,78 @@ export async function getCachedMediaUrl(rawUrl: string | null | undefined, mimeT
   }
 
   const fetchPromise = (async () => {
-    try {
-      // 3. Check CacheStorage if supported
-      if (isCacheStorageSupported()) {
-        try {
-          const cache = await caches.open(CACHE_NAME);
-          const cachedResponse = await cache.match(normalized);
-          if (cachedResponse && cachedResponse.ok) {
-            const blob = await cachedResponse.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            memoryBlobCache.set(normalized, blobUrl);
-            return blobUrl;
+    let attempts = 0;
+    const maxAttempts = 3;
+    let lastError: any = null;
+
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        // 3. Check CacheStorage if supported
+        if (isCacheStorageSupported()) {
+          try {
+            const cache = await caches.open(CACHE_NAME);
+            const cachedResponse = await cache.match(normalized);
+            if (cachedResponse && cachedResponse.ok) {
+              const blob = await cachedResponse.blob();
+              const blobUrl = URL.createObjectURL(blob);
+              memoryBlobCache.set(normalized, blobUrl);
+              return blobUrl;
+            }
+          } catch (cacheErr) {
+            console.warn("[MediaCache] CacheStorage match failed:", cacheErr);
           }
-        } catch (cacheErr) {
-          console.warn("[MediaCache] CacheStorage match failed:", cacheErr);
+        }
+
+        // 4. Fetch from network with cache directives and timeout/robust headers
+        const response = await fetch(normalized, {
+          method: "GET",
+          cache: "force-cache",
+          headers: {
+            "Accept": "image/*,application/pdf,*/*",
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status} loading media`);
+        }
+
+        // 5. Store in CacheStorage for future sessions
+        if (isCacheStorageSupported() && response.status === 200) {
+          try {
+            const cache = await caches.open(CACHE_NAME);
+            cache.put(normalized, response.clone()).catch(() => {});
+          } catch (e) {
+            // Ignore cache put errors
+          }
+        }
+
+        const contentType = response.headers.get("content-type") || mimeTypeHint || "";
+        const rawBlob = await response.blob();
+        
+        const blob = mimeTypeHint && !rawBlob.type ? new Blob([rawBlob], { type: contentType }) : rawBlob;
+        const blobUrl = URL.createObjectURL(blob);
+        
+        memoryBlobCache.set(normalized, blobUrl);
+        return blobUrl;
+      } catch (err) {
+        lastError = err;
+        if (attempts < maxAttempts) {
+          await new Promise((res) => setTimeout(res, attempts * 400)); // exponential backoff
         }
       }
-
-      // 4. Fetch from network with cache directives
-      const response = await fetch(normalized, {
-        method: "GET",
-        cache: "force-cache",
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status} loading media`);
-      }
-
-      // 5. Store in CacheStorage for future sessions
-      if (isCacheStorageSupported() && response.status === 200) {
-        try {
-          const cache = await caches.open(CACHE_NAME);
-          cache.put(normalized, response.clone()).catch(() => {});
-        } catch (e) {
-          // Ignore cache put errors
-        }
-      }
-
-      const contentType = response.headers.get("content-type") || mimeTypeHint || "";
-      const rawBlob = await response.blob();
-      
-      const blob = mimeTypeHint && !rawBlob.type ? new Blob([rawBlob], { type: contentType }) : rawBlob;
-      const blobUrl = URL.createObjectURL(blob);
-      
-      memoryBlobCache.set(normalized, blobUrl);
-      return blobUrl;
-    } catch (err) {
-      console.warn(`[MediaCache] Fetch failed for ${normalized}, fallback to raw URL:`, err);
-      return normalized;
-    } finally {
-      activeFetches.delete(normalized);
     }
+
+    console.warn(`[MediaCache] Fetch failed for ${normalized} after ${maxAttempts} attempts, fallback to raw URL:`, lastError);
+    return normalized;
   })();
 
   activeFetches.set(normalized, fetchPromise);
-  return fetchPromise;
+  try {
+    return await fetchPromise;
+  } finally {
+    activeFetches.delete(normalized);
+  }
 }
 
 /**
