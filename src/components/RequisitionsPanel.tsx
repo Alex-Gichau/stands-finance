@@ -169,12 +169,6 @@ const AttachmentViewer = ({ uri, fileName }: { uri: string; fileName: string }) 
           The file could not be displayed directly in the preview. You can open it in a new tab or download it to view.
         </p>
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => window.open(cleanUri, "_blank")}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-indigo-950"
-          >
-            <ExternalLink size={14} /> Open in New Tab
-          </button>
           <a
             href={cleanUri}
             download={fileName}
@@ -256,18 +250,6 @@ const AttachmentViewer = ({ uri, fileName }: { uri: string; fileName: string }) 
           </div>
         )}
         <div className="absolute top-2 right-2 z-20 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md p-1.5 rounded-xl border border-slate-800 shadow-xl">
-          <button
-            type="button"
-            onClick={() => {
-              const win = window.open();
-              if (win) {
-                win.document.write(`<iframe src="${activeUri}" style="border:0; top:0; left:0; bottom:0; right:0; width:100%; height:100%;" allowfullscreen></iframe>`);
-              }
-            }}
-            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow"
-          >
-            <ExternalLink size={13} /> Open PDF
-          </button>
           <a
             href={activeUri}
             download={fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`}
@@ -343,12 +325,6 @@ const AttachmentViewer = ({ uri, fileName }: { uri: string; fileName: string }) 
         This document type can be viewed by downloading or opening directly in a new tab.
       </p>
       <div className="flex items-center gap-3">
-        <button
-          onClick={() => window.open(cleanUri, "_blank")}
-          className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-indigo-950"
-        >
-          <ExternalLink size={15} /> Open in New Tab
-        </button>
         <a
           href={cleanUri}
           download={fileName}
@@ -515,16 +491,7 @@ const DocumentPreviewModal = ({
               )}
             </button>
 
-            {/* Open in New Tab */}
-            {currentDoc?.uri && (
-              <button
-                onClick={() => window.open(currentDoc.uri, "_blank")}
-                className="p-2 bg-slate-850 border border-slate-750 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl transition-colors cursor-pointer"
-                title="Open Document in New Tab"
-              >
-                <ExternalLink size={16} />
-              </button>
-            )}
+
 
             {/* Download */}
             {currentDoc?.uri && (

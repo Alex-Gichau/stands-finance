@@ -277,45 +277,7 @@ export async function sendSlackNotification(params: {
 
 export async function uploadAttachmentToLocalServer(att: string): Promise<string> {
   if (typeof att !== "string") return att;
-  
-  let fileName = "attachment";
-  let dataUrl = att;
-  
-  if (att.includes("::")) {
-    const parts = att.split("::");
-    fileName = parts[0];
-    dataUrl = parts[1];
-  } else {
-    // If it's a raw data URL without filename
-    if (dataUrl.startsWith("data:")) {
-      const mime = dataUrl.split(";")[0].split(":")[1] || "";
-      const ext = mime.split("/")[1] || "png";
-      fileName = `receipt_${Date.now()}.${ext}`;
-    } else {
-      // Already a URL or relative path
-      return att;
-    }
-  }
-  
-  if (dataUrl && dataUrl.startsWith("data:")) {
-    try {
-      const res = await fetch("/api/attachments/upload", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ fileName, dataUrl }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.url) {
-          return att.includes("::") ? `${fileName}::${data.url}` : data.url;
-        }
-      }
-    } catch (err) {
-      console.error("Local file upload failed:", err);
-    }
-  }
+  // Use data URIs directly for uploading and fetching of images and documents
   return att;
 }
 
