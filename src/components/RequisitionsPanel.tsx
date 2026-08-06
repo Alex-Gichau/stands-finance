@@ -210,12 +210,47 @@ const AttachmentViewer = ({ uri, fileName }: { uri: string; fileName: string }) 
   if (isPdf) {
     return (
       <div className="flex flex-col h-full w-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden relative min-h-[500px]">
-        <iframe
-          src={`${cleanUri}#toolbar=1`}
-          title={fileName}
+        <div className="absolute top-2 right-2 z-20 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md p-1.5 rounded-xl border border-slate-800 shadow-xl">
+          <button
+            onClick={() => {
+              if (cleanUri.startsWith("data:")) {
+                const win = window.open();
+                if (win) {
+                  win.document.write(`<iframe src="${cleanUri}" style="border:0; top:0; left:0; bottom:0; right:0; width:100%; height:100%;" allowfullscreen></iframe>`);
+                }
+              } else {
+                window.open(cleanUri, "_blank");
+              }
+            }}
+            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow"
+          >
+            <ExternalLink size={13} /> Open PDF
+          </button>
+          <a
+            href={cleanUri}
+            download={fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`}
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer border border-slate-700"
+          >
+            <Download size={13} /> Download
+          </a>
+        </div>
+        <object
+          data={cleanUri}
+          type="application/pdf"
           className="w-full h-full min-h-[500px] border-none bg-slate-900"
-          onError={() => setHasError(true)}
-        />
+        >
+          <embed
+            src={cleanUri}
+            type="application/pdf"
+            className="w-full h-full min-h-[500px] border-none bg-slate-900"
+          />
+          <iframe
+            src={`${cleanUri}#toolbar=1`}
+            title={fileName}
+            className="w-full h-full min-h-[500px] border-none bg-slate-900"
+            onError={() => setHasError(true)}
+          />
+        </object>
       </div>
     );
   }
