@@ -3577,7 +3577,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
             <div className="lg:col-span-2 p-4 md:p-8 space-y-5 md:space-y-8 border-b lg:border-b-0 lg:border-r border-slate-100 lg:h-full lg:overflow-y-auto h-auto overflow-visible">
               <section className="space-y-3 md:space-y-4">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-[9px] md:text-[10px] font-black text-primary uppercase tracking-[0.2em]">Contextual Data</h4>
+                  <h4 className="text-[9px] md:text-[10px] font-black text-primary uppercase tracking-[0.2em]">Requisition Description</h4>
                 </div>
                 <div className="bg-slate-50 rounded-xl md:rounded-2xl p-3 md:p-6 border border-slate-100 space-y-4 text-[10px] md:text-sm font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">
                   <HighlightText text={req.description} highlight={globalSearchTerm || ""} />
@@ -3586,14 +3586,14 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-8">
                 <section className="space-y-2">
-                  <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Financial Breakdown</h4>
+                  <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Requested Amount</h4>
                   <div className="space-y-1">
                     <p className="text-xl md:text-2xl font-bold text-slate-900 font-mono">{formatCurrency(req.amount)}</p>
                     <p className="text-[9px] md:text-[11px] text-slate-500 italic font-medium">{req.amountWords}</p>
                   </div>
                 </section>
                 <section className="space-y-2">
-                  <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Requisition Ownership</h4>
+                  <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Individual Requestor</h4>
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs md:text-base shrink-0">
                       {req.requesterName.charAt(0)}
@@ -3605,7 +3605,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
                   </div>
                 </section>
                 <section className="space-y-2">
-                  <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Vendor / Recipient</h4>
+                  <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Vendor</h4>
                   {(() => {
                     const vendorName = req.payableTo || "";
                     if (!vendorName.trim()) {
