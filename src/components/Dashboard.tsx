@@ -11,7 +11,6 @@ import { RequisitionStatus, UserRole, Requisition } from "../types";
 import { formatCurrency, cn, getDaysSinceSubmission, formatRequisitionAge, isFinalStage } from "../lib/utils";
 import { AlertTriangle, TrendingUp, Layout, Activity, ClipboardList, CheckCircle, Wallet, Users, X, Eye, Repeat, Clock, ArrowUpRight, Search, Trash2, Printer, FileText, ShieldCheck, CalendarRange, Flag, HelpCircle, Moon, Sun, Plus, Calendar, ChevronLeft, ChevronRight, Bell } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { RequisitionDetailModal } from "./RequisitionsPanel";
 import { ReceiptTemplateGenerator } from "./ReceiptTemplateGenerator";
 import { printSystemLogs } from "../utils/exportUtils";
 import { BudgetCircularGauges } from "./BudgetCircularGauges";
@@ -141,7 +140,8 @@ const Dashboard: React.FC<{
     customCalendarEvents,
     addCustomCalendarEvent,
     updateCustomCalendarEvent,
-    deleteCustomCalendarEvent
+    deleteCustomCalendarEvent,
+    setSelectedRequisition
   } = useRequisitions();
 
   const canEditCalendar = useMemo(() => {
@@ -164,7 +164,10 @@ const Dashboard: React.FC<{
   }, [canAccess]);
 
   const [seeding, setSeeding] = useState(false);
-  const [selectedRequisition, setSelectedRequisition] = useState<Requisition | null>(null);
+  const handleOpenRequisitionPage = (req: Requisition) => {
+    setSelectedRequisition(req);
+    onViewChange?.("requisitions");
+  };
   const [isGeneratingReceipt, setIsGeneratingReceipt] = useState<Requisition | null>(null);
   const [selectedGroupDetails, setSelectedGroupDetails] = useState<any | null>(null);
 
@@ -396,7 +399,7 @@ const Dashboard: React.FC<{
   const handleTimelineItemClick = (text: string) => {
     const matched = findRequisitionForLog(text);
     if (matched) {
-      setSelectedRequisition(matched);
+      handleOpenRequisitionPage(matched);
     }
   };
 
@@ -1301,7 +1304,7 @@ const Dashboard: React.FC<{
 
                         {e.requisition && (
                           <button
-                            onClick={() => setSelectedRequisition(e.requisition)}
+                            onClick={() => handleOpenRequisitionPage(e.requisition)}
                             className="mt-1 flex items-center gap-1 text-[8px] text-primary hover:text-primary/80 font-black uppercase tracking-widest cursor-pointer self-start transition-all"
                           >
                             <Eye size={10} /> Inspect Requisition
@@ -1583,7 +1586,7 @@ const Dashboard: React.FC<{
                       key={`dashboard-timeline-${item.type}-${item.id || idx}-${idx}`} 
                       onClick={() => {
                         if (associatedRequisition) {
-                          setSelectedRequisition(associatedRequisition);
+                          handleOpenRequisitionPage(associatedRequisition);
                         }
                       }}
                       className={cn(
@@ -1810,7 +1813,7 @@ const Dashboard: React.FC<{
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.05 }}
-                  onClick={() => setSelectedRequisition(req)}
+                  onClick={() => handleOpenRequisitionPage(req)}
                   className="hover:bg-indigo-50/20 active:bg-indigo-50/40 transition-all cursor-pointer group"
                 >
                   <td className="px-6 py-4">
@@ -1869,23 +1872,6 @@ const Dashboard: React.FC<{
           </table>
         </div>
       </div>
-
-      {/* Requisition Detail View Modal */}
-      <AnimatePresence>
-        {selectedRequisition && (
-          <RequisitionDetailModal 
-            req={selectedRequisition} 
-            onClose={() => setSelectedRequisition(null)} 
-            onDelete={() => {
-              deleteRequisition(selectedRequisition.id);
-              setSelectedRequisition(null);
-            }}
-            onGenerateReceipt={() => {
-              setIsGeneratingReceipt(selectedRequisition);
-            }}
-          />
-        )}
-      </AnimatePresence>
 
       {/* Receipt Generator Modal */}
       <AnimatePresence>
@@ -1967,7 +1953,8 @@ const Dashboard: React.FC<{
                           <tr 
                             key={req.id} 
                             onClick={(e) => {
-                              setSelectedRequisition(req);
+                              handleOpenRequisitionPage(req);
+                              setSelectedGroupDetails(null);
                             }}
                             className="hover:bg-indigo-50/20 transition-colors cursor-pointer group"
                           >

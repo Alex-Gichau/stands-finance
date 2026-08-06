@@ -17,7 +17,7 @@ import { Sidebar } from "./components/Sidebar";
 import Dashboard from "./components/Dashboard";
 import { useIdleTimeout } from "./hooks/useIdleTimeout";
 import { sendSlackNotification } from "./lib/utils";
-import { RequisitionsPanel, RequisitionDetailModal } from "./components/RequisitionsPanel";
+import { RequisitionsPanel } from "./components/RequisitionsPanel";
 import { NotificationHub } from "./components/NotificationHub";
 import { ReceiptTemplateGenerator } from "./components/ReceiptTemplateGenerator";
 import { ApprovalsPanel } from "./components/ApprovalsPanel";
@@ -319,7 +319,6 @@ function AppContent() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [showReportReminder, setShowReportReminder] = useState(true);
   const [reportState, setReportState] = useState<"IDLE" | "GENERATING" | "SUCCESS">("IDLE");
-  const [selectedReqForNoticeDetail, setSelectedReqForNoticeDetail] = useState<any | null>(null);
   const [isGeneratingReceiptFromHub, setIsGeneratingReceiptFromHub] = useState<any | null>(null);
 
   // Deep linking and direct sharing states
@@ -372,7 +371,10 @@ function AppContent() {
     updateCurrentUserPassword,
     projects,
     churchGroups,
-    systemLogs
+    systemLogs,
+    alerts,
+    selectedRequisition,
+    setSelectedRequisition
   } = useRequisitions();
 
   const [sendingTestSummary, setSendingTestSummary] = useState(false);
@@ -573,7 +575,7 @@ function AppContent() {
 
         if (hasAccess) {
           // Grant access: Open detail modal & navigate straight to requisitions view
-          setSelectedReqForNoticeDetail(reqData);
+          setSelectedRequisition(reqData);
           setAccessDeniedReq(null);
           setCurrentView("requisitions");
 
@@ -889,7 +891,7 @@ function AppContent() {
         setIsProfileOpen(false);
         setIsBugReportOpen(false);
         setIsSearchFocused(false);
-        setSelectedReqForNoticeDetail(null);
+        setSelectedRequisition(null);
         setIsGeneratingReceiptFromHub(null);
         setShowProfilePrompt(false);
         searchInputRef.current?.blur();
@@ -1503,6 +1505,40 @@ function AppContent() {
     });
   }
 
+  // 3.8. Database alerts (e.g. Budget overshoots, comment @mentions)
+  if (Array.isArray(alerts)) {
+    alerts.filter(a => {
+      if (a.targetUserId) {
+        return currentUser?.id === a.targetUserId;
+      }
+      if (a.targetRole && currentUser?.role !== a.targetRole && currentUser?.role !== UserRole.ADMIN && currentUser?.role !== UserRole.SUPER_ADMIN) return false;
+      return true;
+    }).forEach(a => {
+      // Find matching requisition if possible
+      const cleanText = a.message.toLowerCase();
+      const associatedReq = requisitions.find(r => 
+        (r.id && cleanText.includes(r.id.toLowerCase())) || 
+        (r.title && cleanText.includes(r.title.toLowerCase()))
+      );
+
+      notificationItems.push({
+        id: `budget-alert-${a.id}`,
+        type: "BUDGET_ALERT",
+        title: a.type === "OVERSHOOT" ? "Budget Alert" : a.targetUserId ? "New @Mention" : "System Notification",
+        message: a.message,
+        actionLabel: associatedReq ? "Inspect Requisition" : "Dismiss Alert",
+        requisition: associatedReq,
+        action: () => {
+          if (associatedReq) {
+            setSelectedRequisition(associatedReq);
+            setCurrentView("requisitions");
+            setIsNotificationsOpen(false);
+          }
+        }
+      });
+    });
+  }
+
   // 4. Report generation reminder
   if (showReportReminder) {
     notificationItems.push({
@@ -1600,7 +1636,7 @@ function AppContent() {
 
     switch (currentView) {
       case "dashboard": return <Dashboard onViewChange={setCurrentView} darkMode={darkMode} setDarkMode={handleToggleTheme} />;
-      case "notifications": return <NotificationHub onSelectRequisition={(req) => setSelectedReqForNoticeDetail(req)} />;
+      case "notifications": return <NotificationHub onSelectRequisition={(req) => { setSelectedRequisition(req); setCurrentView("requisitions"); }} />;
       case "requisitions": return <RequisitionsPanel />;
       case "vendors": return <VendorsPanel />;
       case "approvals": return <ApprovalsPanel />;
@@ -2635,7 +2671,8 @@ function AppContent() {
                                 key={`dropdown-unread-${item.id}`}
                                 onClick={() => {
                                   if (item.requisition) {
-                                    setSelectedReqForNoticeDetail(item.requisition);
+                                    setSelectedRequisition(item.requisition);
+                                    setCurrentView("requisitions");
                                     setIsNotificationsOpen(false);
                                   }
                                   toggleNoticeRead(item.id, true);
@@ -2686,7 +2723,8 @@ function AppContent() {
                                 key={`dropdown-read-${item.id}`}
                                 onClick={() => {
                                   if (item.requisition) {
-                                    setSelectedReqForNoticeDetail(item.requisition);
+                                    setSelectedRequisition(item.requisition);
+                                    setCurrentView("requisitions");
                                     setIsNotificationsOpen(false);
                                   }
                                 }}
@@ -2883,20 +2921,6 @@ function AppContent() {
           ))}
         </AnimatePresence>
       </div>
-
-      {selectedReqForNoticeDetail && (
-        <RequisitionDetailModal
-          req={selectedReqForNoticeDetail}
-          onClose={() => setSelectedReqForNoticeDetail(null)}
-          onDelete={async () => {
-            if (selectedReqForNoticeDetail) {
-              await deleteRequisition(selectedReqForNoticeDetail.id);
-              setSelectedReqForNoticeDetail(null);
-            }
-          }}
-          onGenerateReceipt={() => setIsGeneratingReceiptFromHub(selectedReqForNoticeDetail)}
-        />
-      )}
 
       {isGeneratingReceiptFromHub && (
         <ReceiptTemplateGenerator

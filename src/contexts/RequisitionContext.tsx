@@ -474,10 +474,12 @@ interface RequisitionContextType {
   logout: (options?: { forceDirect?: boolean }) => Promise<void>;
   addRequisition: (req: Omit<Requisition, "id" | "status" | "submittedAt" | "updatedAt" | "approvalHistory"> & { status?: RequisitionStatus }) => Promise<void>;
   updateRequisition: (id: string, updates: Partial<Requisition>) => Promise<void>;
+  sendEmailNotification: (req: Requisition, status: string, details?: string, approverName?: string, customRecipientEmail?: string, customRecipientName?: string) => Promise<void>;
   updateRequisitionStatus: (id: string, status: RequisitionStatus, decision: "APPROVE" | "REJECT" | "ESCALATE", note?: string, method?: any, rejectionReason?: string, approvalCode?: string) => Promise<void>;
   uploadReceipts: (id: string, receipts: string[]) => Promise<void>;
   deleteRequisition: (id: string, reason?: string) => Promise<void>;
   markAlertAsRead: (id: string) => Promise<void>;
+  addAlert: (alert: Omit<BudgetAlert, "id" | "isRead" | "timestamp">) => Promise<void>;
   deleteAlert: (id: string) => Promise<void>;
   updateThreshold: (id: string, updates: Partial<AlertThreshold>) => Promise<void>;
   approveUser: (id: string) => Promise<void>;
@@ -564,6 +566,8 @@ interface RequisitionContextType {
   addCustomCalendarEvent: (event: Omit<CustomCalendarEvent, "id" | "createdAt" | "createdBy">) => Promise<void>;
   updateCustomCalendarEvent: (id: string, updates: Partial<CustomCalendarEvent>) => Promise<void>;
   deleteCustomCalendarEvent: (id: string) => Promise<void>;
+  selectedRequisition: Requisition | null;
+  setSelectedRequisition: (req: Requisition | null) => void;
 }
 
 const RequisitionContext = createContext<RequisitionContextType | undefined>(undefined);
@@ -656,6 +660,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [reports, setReports] = useState<SavedReport[]>([]);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [selectedRequisition, setSelectedRequisition] = useState<Requisition | null>(null);
 
   const [customCalendarEvents, setCustomCalendarEvents] = useState<CustomCalendarEvent[]>(() => {
     try {
@@ -1916,6 +1921,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
           attachments: safeNormalizeAttachments(r?.attachments),
           receipts: safeNormalizeReceipts(r?.receipts),
           approvalHistory: safeNormalizeApprovalHistory(r?.approvalHistory || r?.approval_history),
+          comments: r?.comments || [],
           notificationEmails: safeNormalizeNotificationEmails(r)
         } as Requisition;
       });
@@ -2640,6 +2646,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 disbursedAt: r?.disbursed_at || r?.disbursedAt || "",
                 rejectionReason: r?.rejection_reason || r?.rejectionReason || "",
                 approvalHistory: safeNormalizeApprovalHistory(r?.approval_history || r?.approvalHistory || []),
+                comments: r?.comments || [],
                 digitalSignature: r?.digital_signature || r?.digitalSignature || "",
                 payableTo: r?.payable_to || r?.payableTo || "",
                 recurrence: r?.recurrence || null,
@@ -2709,7 +2716,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 message: a?.message || "",
                 timestamp: a?.timestamp || "",
                 isRead: Boolean(a?.is_read || a?.isRead),
-                targetRole: a?.target_role || a?.targetRole
+                targetRole: a?.target_role || a?.targetRole,
+                targetUserId: a?.target_user_id || a?.targetUserId
               } as BudgetAlert;
             }).filter(Boolean) as BudgetAlert[];
 
@@ -3762,9 +3770,11 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     req: Requisition, 
     status: string, 
     details?: string,
-    approverName?: string
+    approverName?: string,
+    customRecipientEmail?: string,
+    customRecipientName?: string
   ) => {
-    let targetEmail = req.requesterEmail;
+    let targetEmail = customRecipientEmail || req.requesterEmail;
     
     if (!targetEmail) {
       // Fallback: search in loaded users
@@ -3772,7 +3782,8 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (user) targetEmail = user.email;
     }
 
-    const notificationEmailsList = req.notificationEmails || [];
+    const isCustomPersonal = Boolean(customRecipientEmail);
+    const notificationEmailsList = isCustomPersonal ? [] : (req.notificationEmails || []);
 
     if (!targetEmail && notificationEmailsList.length === 0) {
       console.log("Cannot send email: Requisition has no requesterEmail and no notificationEmails", req.id);
@@ -3791,7 +3802,7 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         body: JSON.stringify({
           to: targetEmail || notificationEmailsList[0] || "",
           notificationEmails: notificationEmailsList,
-          requesterName: req.requesterName || "Requester",
+          requesterName: customRecipientName || req.requesterName || "Requester",
           requesterEmail: req.requesterEmail || targetEmail,
           amount: req.amount,
           title: req.title,
@@ -4395,6 +4406,23 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [addSystemLog]);
 
+  const addAlert = useCallback(async (alertData: Omit<BudgetAlert, "id" | "isRead" | "timestamp">) => {
+    try {
+      const alertId = `alert_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      const newAlert: BudgetAlert = {
+        ...alertData,
+        id: alertId,
+        isRead: false,
+        timestamp: new Date().toISOString()
+      };
+      await setDoc(doc(db, "alerts", alertId), newAlert);
+      await addSystemLog("ALERT_CREATE", `Created notification alert: ${alertId}`, { alertId });
+    } catch (err) {
+      console.error("Failed to add alert:", err);
+      throw err;
+    }
+  }, [db, addSystemLog]);
+
   const deleteAlert = useCallback(async (id: string) => {
     try {
       await deleteDoc(doc(db, "alerts", id));
@@ -4674,10 +4702,12 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       logout,
       addRequisition,
       updateRequisition,
+      sendEmailNotification,
       updateRequisitionStatus,
       uploadReceipts,
       deleteRequisition,
       markAlertAsRead,
+      addAlert,
       updateThreshold,
       approveUser,
       suspendUser,
@@ -4751,7 +4781,9 @@ export const RequisitionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       customCalendarEvents,
       addCustomCalendarEvent,
       updateCustomCalendarEvent,
-      deleteCustomCalendarEvent
+      deleteCustomCalendarEvent,
+      selectedRequisition,
+      setSelectedRequisition
     }}>
       {children}
     </RequisitionContext.Provider>

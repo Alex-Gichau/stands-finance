@@ -198,9 +198,12 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ onSelectRequis
       });
     }
 
-    // Include budget alerts that target this user's role
+    // Include budget alerts that target this user's role or specifically mention them by targetUserId
     alerts.filter(a => {
       if (a.isRead) return false;
+      if (a.targetUserId) {
+        return currentUser?.id === a.targetUserId;
+      }
       if (a.targetRole && currentUser?.role !== a.targetRole && currentUser?.role !== UserRole.ADMIN && currentUser?.role !== UserRole.SUPER_ADMIN) return false;
       return true;
     }).forEach(a => {

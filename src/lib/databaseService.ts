@@ -182,7 +182,8 @@ export const databaseService = {
       flagged_for_audit: req.flaggedForAudit || false,
       in_procurement: req.inProcurement || false,
       requires_more_info: req.requiresMoreInfo || false,
-      fiscal_year: req.fiscalYear || null
+      fiscal_year: req.fiscalYear || null,
+      comments: req.comments || []
     });
   },
 

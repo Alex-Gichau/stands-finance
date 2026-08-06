@@ -51,9 +51,10 @@ import {
   ExternalLink,
   Maximize2,
   Minimize2,
-  Lock
+  Lock,
+  ArrowLeft
 } from "lucide-react";
-import { Info, HardDrive, Mail, UserPlus } from "lucide-react";
+import { Info, HardDrive, Mail, UserPlus, MessageSquare, Send } from "lucide-react";
 import { useRequisitions, getActiveFiscalYear, safeNormalizeAttachments } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
 import { formatCurrency, formatDate, cn, getDaysSinceSubmission, formatRequisitionAge, isFinalStage, normalizeAttachmentUrl, getAttachmentFileName, getAbsoluteAttachmentUrl, handleImageError } from "../lib/utils";
@@ -346,7 +347,7 @@ const DocumentPreviewModal = ({
     : (typeof rawAttachments === "string" && rawAttachments ? [rawAttachments] : []);
 
   const [activeDocIndex, setActiveDocIndex] = useState(initialIndex);
-  const [showDetailsPanel, setShowDetailsPanel] = useState(true);
+  const [showDetailsPanel, setShowDetailsPanel] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Prepare document objects for react-doc-viewer
@@ -846,7 +847,7 @@ export const RequisitionsPanel: React.FC = () => {
 
   const [isAdding, setIsAdding] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [viewingReq, setViewingReq] = useState<Requisition | null>(null);
+  const { selectedRequisition: viewingReq, setSelectedRequisition: setViewingReq } = useRequisitions();
   const [isGeneratingReceipt, setIsGeneratingReceipt] = useState<Requisition | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
   const [filterPreset, setFilterPreset] = useState<"ALL" | "URGENT" | "FLAGGED" | "OVERDUE" | "L1_APPROVED">("ALL");
@@ -1166,6 +1167,27 @@ export const RequisitionsPanel: React.FC = () => {
     );
   }
 
+  if (viewingReq) {
+    return (
+      <RequisitionDetailModal 
+        req={viewingReq} 
+        onClose={() => setViewingReq(null)} 
+        onDelete={() => {
+          setRequisitionToDelete(viewingReq);
+          setViewingReq(null);
+        }}
+        onGenerateReceipt={() => {
+          setIsGeneratingReceipt(viewingReq);
+        }}
+        onEdit={() => {
+          setEditingReq(viewingReq);
+          setViewingReq(null);
+        }}
+        isPage={true}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in transition-all duration-700">
       {/* Header Section */}
@@ -1458,7 +1480,7 @@ export const RequisitionsPanel: React.FC = () => {
           </h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className="hidden md:table w-full text-left">
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-200 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">
                 <th className="px-4 md:px-6 py-3 md:py-4 w-10">
@@ -1694,6 +1716,140 @@ export const RequisitionsPanel: React.FC = () => {
               </tfoot>
             )}
           </table>
+
+          {/* Mobile Cards View */}
+          <div className="block md:hidden divide-y divide-slate-100">
+            {activeItems.map((req) => {
+              const updateAge = now - new Date(req.updatedAt).getTime();
+              const isRecentlyApprovedOrDisbursed = (req.status === RequisitionStatus.APPROVED_L2 || req.status === RequisitionStatus.DISBURSED) && updateAge < 8000;
+              const formattedAge = formatRequisitionAge(req.submittedAt || req.createdAt, req.status);
+              const compactAge = formatRequisitionAge(req.submittedAt || req.createdAt, req.status, { compact: true });
+              
+              const canEdit = req.status !== RequisitionStatus.REJECTED && (
+                canPerform('canDeleteRequisition') || 
+                (req.status === RequisitionStatus.DRAFT && (req.requesterId === currentUser?.id || currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN))
+              );
+
+              return (
+                <div 
+                  key={req.id}
+                  onClick={() => setViewingReq(req)}
+                  className={cn(
+                    "p-4 hover:bg-slate-50 transition-colors cursor-pointer space-y-3 relative border-l-4",
+                    selectedIds.has(req.id) ? "bg-primary/5 border-l-primary" : 
+                    isRecentlyApprovedOrDisbursed ? "border-l-emerald-500 bg-emerald-50/10" : "border-l-transparent hover:border-l-slate-300"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <input 
+                          type="checkbox" 
+                          className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary/20 accent-primary cursor-pointer shrink-0"
+                          checked={selectedIds.has(req.id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            toggleSelect(req.id);
+                          }}
+                        />
+                        <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider">
+                          {req.id}
+                        </span>
+                        {req.flaggedForAudit && (
+                          <Flag size={11} className="text-rose-500 fill-rose-500" />
+                        )}
+                        {req.attachments && req.attachments.length > 0 && (
+                          <span title="Attachments" className="flex items-center gap-1 text-[8px] md:text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                            <Paperclip size={10} />
+                            {req.attachments.length}
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                        <HighlightText text={req.title} highlight={globalSearchTerm} />
+                      </h4>
+                    </div>
+                    <span className={cn(
+                      "px-2 py-0.5 rounded-full border text-[8px] font-black uppercase tracking-[0.1em] shrink-0",
+                      getStatusColor(req.status)
+                    )}>
+                      {req.status}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 rounded-md text-[9px] font-extrabold uppercase tracking-wider w-fit">
+                        💒 <HighlightText text={req.groupName} highlight={globalSearchTerm} />
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-semibold truncate">
+                        By {req.requesterName}
+                      </span>
+                    </div>
+                    <div className="text-right flex flex-col items-end">
+                      <span className="font-mono font-black text-slate-900 text-sm">
+                        {formatCurrency(req.amount)}
+                      </span>
+                      {compactAge && (
+                        <span className="text-[9px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+                          <Clock size={10} />
+                          {compactAge}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Mobile Actions block */}
+                  <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-slate-100" onClick={(e) => e.stopPropagation()}>
+                    <button 
+                      onClick={() => setViewingReq(req)}
+                      className="p-2 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-xl text-slate-600 transition-all flex items-center gap-1.5 font-bold text-[9px] uppercase tracking-wider"
+                    >
+                      <Eye size={12} />
+                      <span>Details</span>
+                    </button>
+                    <button 
+                      onClick={() => handleCopyShareLinkForReq(req)}
+                      className="p-2 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-xl text-slate-600 transition-all flex items-center gap-1.5 font-bold text-[9px] uppercase tracking-wider"
+                    >
+                      <Share2 size={12} />
+                      <span>Share</span>
+                    </button>
+                    {canEdit && (
+                      <button 
+                        onClick={() => setEditingReq(req)}
+                        className="p-2 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-xl text-slate-600 hover:text-amber-650 transition-all flex items-center gap-1.5 font-bold text-[9px] uppercase tracking-wider"
+                      >
+                        <Pencil size={12} />
+                        <span>Edit</span>
+                      </button>
+                    )}
+                    {canPerform('canDeleteRequisition') && (
+                      <button 
+                        onClick={() => setRequisitionToDelete(req)}
+                        className="p-2 bg-slate-50 border border-slate-200 hover:bg-rose-50 rounded-xl text-slate-600 hover:text-rose-650 transition-all flex items-center gap-1.5 font-bold text-[9px] uppercase tracking-wider"
+                      >
+                        <Trash2 size={12} />
+                        <span>Delete</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Mobile Card List Summary Block */}
+          {activeList.length > 0 && (
+            <div className="block md:hidden p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between font-bold text-slate-800 text-xs">
+              <span className="font-black uppercase tracking-wider">Total Active Requisitions</span>
+              <div className="text-right">
+                <p className="font-mono text-rose-600 font-extrabold text-sm">{formatCurrency(activeList.reduce((sum, r) => sum + (Number(r.amount) || 0), 0))}</p>
+                <p className="text-[9px] text-slate-400 uppercase font-bold tracking-tight">{activeList.length} items total</p>
+              </div>
+            </div>
+          )}
+
           {activeList.length === 0 && (
             <div className="py-24 text-center">
               <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
@@ -1723,7 +1879,7 @@ export const RequisitionsPanel: React.FC = () => {
           </h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className="hidden md:table w-full text-left">
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-200 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">
                 <th className="px-4 md:px-6 py-3 md:py-4 w-10">
@@ -1885,6 +2041,105 @@ export const RequisitionsPanel: React.FC = () => {
               </tfoot>
             )}
           </table>
+
+          {/* Mobile Cards View */}
+          <div className="block md:hidden divide-y divide-slate-100">
+            {disbursedItems.map((req) => {
+              return (
+                <div 
+                  key={req.id}
+                  onClick={() => setViewingReq(req)}
+                  className={cn(
+                    "p-4 hover:bg-slate-50 transition-colors cursor-pointer space-y-3 relative border-l-4",
+                    selectedIds.has(req.id) ? "bg-blue-50/50 border-l-blue-600" : "border-l-transparent hover:border-l-slate-300"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <input 
+                          type="checkbox" 
+                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/20 accent-blue-600 cursor-pointer shrink-0"
+                          checked={selectedIds.has(req.id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            toggleSelect(req.id);
+                          }}
+                        />
+                        <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider">
+                          {req.id}
+                        </span>
+                        {req.flaggedForAudit && (
+                          <Flag size={11} className="text-rose-500 fill-rose-500" />
+                        )}
+                        {req.attachments && req.attachments.length > 0 && (
+                          <span title="Attachments" className="flex items-center gap-1 text-[8px] md:text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                            <Paperclip size={10} />
+                            {req.attachments.length}
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                        <HighlightText text={req.title} highlight={globalSearchTerm} />
+                      </h4>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full border border-blue-100 bg-blue-50 text-blue-600 text-[8px] font-black uppercase tracking-[0.1em] shrink-0">
+                      {req.status}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-50/80 border border-blue-200/50 text-blue-700 rounded-md text-[9px] font-extrabold uppercase tracking-wider w-fit">
+                        💒 <HighlightText text={req.groupName} highlight={globalSearchTerm} />
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-semibold truncate">
+                        By {req.requesterName}
+                      </span>
+                    </div>
+                    <div className="text-right flex flex-col items-end">
+                      <span className="font-mono font-black text-slate-900 text-sm">
+                        {formatCurrency(req.amount)}
+                      </span>
+                      <span className="text-[9px] text-slate-400 font-mono mt-0.5">
+                        Disbursed: {formatDate(req.updatedAt)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Mobile Actions block */}
+                  <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-slate-100" onClick={(e) => e.stopPropagation()}>
+                    <button 
+                      onClick={() => setViewingReq(req)}
+                      className="p-2 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-xl text-slate-600 transition-all flex items-center gap-1.5 font-bold text-[9px] uppercase tracking-wider"
+                    >
+                      <Eye size={12} />
+                      <span>Details</span>
+                    </button>
+                    <button 
+                      onClick={() => handleCopyShareLinkForReq(req)}
+                      className="p-2 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-xl text-slate-600 transition-all flex items-center gap-1.5 font-bold text-[9px] uppercase tracking-wider"
+                    >
+                      <Share2 size={12} />
+                      <span>Share</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Mobile Card List Summary Block */}
+          {disbursedList.length > 0 && (
+            <div className="block md:hidden p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between font-bold text-slate-800 text-xs">
+              <span className="font-black uppercase tracking-wider">Total Disbursed Funds</span>
+              <div className="text-right">
+                <p className="font-mono text-blue-600 font-extrabold text-sm">{formatCurrency(disbursedList.reduce((sum, r) => sum + (Number(r.amount) || 0), 0))}</p>
+                <p className="text-[9px] text-slate-400 uppercase font-bold tracking-tight">{disbursedList.length} items history</p>
+              </div>
+            </div>
+          )}
+
           {disbursedList.length === 0 && (
             <div className="py-24 text-center">
               <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
@@ -2113,10 +2368,11 @@ export interface DetailModalProps {
   onDelete: () => void;
   onGenerateReceipt: () => void;
   onEdit?: () => void;
+  isPage?: boolean;
 }
 
-export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initialReq, onClose, onDelete, onGenerateReceipt, onEdit }) => {
-  const { currentUser, updateRequisitionStatus, updateRequisition, uploadReceipts, globalSearchTerm, projects, triggerToast, vendors, requisitions, users } = useRequisitions();
+export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initialReq, onClose, onDelete, onGenerateReceipt, onEdit, isPage }) => {
+  const { currentUser, updateRequisitionStatus, updateRequisition, sendEmailNotification, uploadReceipts, globalSearchTerm, projects, triggerToast, vendors, requisitions, users, addAlert } = useRequisitions();
   const req = requisitions.find(r => r.id === initialReq.id) || initialReq;
   const normalizedAttachments = React.useMemo(() => safeNormalizeAttachments(req.attachments), [req.attachments]);
   const [decisionNote, setDecisionNote] = useState("");
@@ -2135,6 +2391,260 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [lastAddedEmail, setLastAddedEmail] = useState<string | null>(null);
   const decisionFormRef = useRef<HTMLDivElement>(null);
+
+  const [commentText, setCommentText] = useState("");
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState<number>(-1);
+  const commentTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState("");
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  const filteredMentionUsers = React.useMemo(() => {
+    if (mentionSearch === null) return [];
+    const searchLower = mentionSearch.toLowerCase();
+    return users.filter(u => 
+      u.name.toLowerCase().includes(searchLower) || 
+      u.email.toLowerCase().includes(searchLower)
+    ).slice(0, 5);
+  }, [mentionSearch, users]);
+
+  const insertMention = (user: any) => {
+    if (mentionIndex === -1) return;
+    
+    const beforeMention = commentText.substring(0, mentionIndex);
+    const mentionText = `@${user.name} `;
+    const afterCursor = commentText.substring(mentionIndex + (mentionSearch?.length || 0) + 1);
+    
+    setCommentText(beforeMention + mentionText + afterCursor);
+    setMentionSearch(null);
+    setMentionIndex(-1);
+    
+    if (commentTextareaRef.current) {
+      commentTextareaRef.current.focus();
+    }
+  };
+
+  const handleCommentTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setCommentText(val);
+
+    const selectionStart = e.target.selectionStart || 0;
+    const textBeforeCursor = val.substring(0, selectionStart);
+    const words = textBeforeCursor.split(/[\s\n]/);
+    const lastWord = words[words.length - 1];
+
+    if (lastWord && lastWord.startsWith("@")) {
+      const search = lastWord.substring(1);
+      setMentionSearch(search);
+      setMentionIndex(textBeforeCursor.lastIndexOf("@"));
+    } else {
+      setMentionSearch(null);
+      setMentionIndex(-1);
+    }
+  };
+
+  const handleAddComment = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = commentText.trim();
+    if (!trimmed) return;
+
+    setIsSubmittingComment(true);
+    try {
+      const newComment = {
+        id: `comment_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        authorId: currentUser?.id || "anonymous",
+        authorName: currentUser?.name || "System User",
+        authorEmail: currentUser?.email || "",
+        authorRole: currentUser?.role || "USER",
+        text: trimmed,
+        timestamp: new Date().toISOString()
+      };
+      
+      const currentComments = Array.isArray(req.comments) ? req.comments : [];
+      const updatedComments = [...currentComments, newComment];
+      
+      await updateRequisition(req.id, { comments: updatedComments });
+      setCommentText("");
+      setMentionSearch(null);
+      setMentionIndex(-1);
+
+      // Trigger notification alerts for @mentioned users
+      const authorEmail = currentUser?.email?.toLowerCase() || "";
+      const authorId = currentUser?.id || "";
+
+      const mentionedUsers = users.filter(user => {
+        if (user.id === authorId || user.email?.toLowerCase() === authorEmail) return false;
+        
+        const nameMention = `@${user.name.toLowerCase()}`;
+        const emailMention = `@${user.email?.toLowerCase()}`;
+        const cleanText = trimmed.toLowerCase();
+        
+        return cleanText.includes(nameMention) || (user.email && cleanText.includes(emailMention));
+      });
+
+      for (const u of mentionedUsers) {
+        await addAlert({
+          type: "SYSTEM_INFO",
+          severity: "MEDIUM",
+          message: `${currentUser?.name || "A colleague"} mentioned you in a comment on Requisition "${req.title}" (ID: ${req.id}): "${trimmed.length > 55 ? trimmed.substring(0, 55) + '...' : trimmed}"`,
+          targetUserId: u.id
+        });
+
+        if (u.email) {
+          sendEmailNotification(
+            req,
+            "Comment Mention",
+            `"${trimmed}"`,
+            currentUser?.name || "A colleague",
+            u.email,
+            u.name
+          ).catch(err => console.error("Failed to send mention email to", u.email, err));
+        }
+      }
+
+      // Compile regular update receivers (Requester + Notification list)
+      let requesterEmail = req.requesterEmail;
+      let requesterName = req.requesterName;
+      if (!requesterEmail) {
+        const rUser = users.find(usr => usr.id === req.requesterId || usr.name === req.requesterName);
+        if (rUser) {
+          requesterEmail = rUser.email;
+          requesterName = rUser.name;
+        }
+      }
+
+      const receiversMap = new Map<string, string>(); // email -> name
+      
+      // Add requester if not author and not mentioned
+      if (
+        requesterEmail && 
+        requesterEmail.toLowerCase() !== authorEmail && 
+        !mentionedUsers.some(mu => mu.email?.toLowerCase() === requesterEmail?.toLowerCase())
+      ) {
+        receiversMap.set(requesterEmail.toLowerCase(), requesterName || "Requester");
+      }
+
+      // Add other subscriber notification emails
+      const notificationEmailsList = req.notificationEmails || (req as any).notification_emails || [];
+      if (Array.isArray(notificationEmailsList)) {
+        notificationEmailsList.forEach(emailStr => {
+          if (emailStr && typeof emailStr === "string") {
+            const cleanEmail = emailStr.trim().toLowerCase();
+            if (
+              cleanEmail && 
+              cleanEmail !== authorEmail && 
+              !mentionedUsers.some(mu => mu.email?.toLowerCase() === cleanEmail)
+            ) {
+              const matchedUser = users.find(usr => usr.email?.toLowerCase() === cleanEmail);
+              receiversMap.set(cleanEmail, matchedUser?.name || "Subscriber");
+            }
+          }
+        });
+      }
+
+      // Send new comment email notification to all update receivers
+      for (const [recEmail, recName] of receiversMap.entries()) {
+        sendEmailNotification(
+          req,
+          "New Comment Thread Activity",
+          `"${trimmed}"`,
+          currentUser?.name || "A colleague",
+          recEmail,
+          recName
+        ).catch(err => console.error("Failed to send comment update email to", recEmail, err));
+      }
+
+      triggerToast({
+        type: "SYSTEM_INFO",
+        severity: "LOW",
+        message: "Comment added successfully.",
+        timestamp: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("Failed to add comment:", err);
+      triggerToast({
+        type: "SECURITY_UPDATE",
+        severity: "HIGH",
+        message: "Failed to post comment. Please try again.",
+        timestamp: new Date().toISOString()
+      });
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
+
+  const handleUpdateComment = async (commentId: string, newText: string) => {
+    const trimmed = newText.trim();
+    if (!trimmed) return;
+    try {
+      const currentComments = Array.isArray(req.comments) ? req.comments : [];
+      const updatedComments = currentComments.map(c => 
+        c.id === commentId ? { ...c, text: trimmed, isEdited: true, editedAt: new Date().toISOString() } : c
+      );
+      await updateRequisition(req.id, { comments: updatedComments });
+      setEditingCommentId(null);
+      setEditingCommentText("");
+      triggerToast({
+        type: "SYSTEM_INFO",
+        severity: "LOW",
+        message: "Comment updated.",
+        timestamp: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("Failed to update comment:", err);
+      triggerToast({
+        type: "SECURITY_UPDATE",
+        severity: "HIGH",
+        message: "Failed to update comment.",
+        timestamp: new Date().toISOString()
+      });
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    try {
+      const currentComments = Array.isArray(req.comments) ? req.comments : [];
+      const updatedComments = currentComments.filter(c => c.id !== commentId);
+      await updateRequisition(req.id, { comments: updatedComments });
+      triggerToast({
+        type: "SYSTEM_INFO",
+        severity: "LOW",
+        message: "Comment deleted.",
+        timestamp: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("Failed to delete comment:", err);
+    }
+  };
+
+  const getRoleBadgeColor = (role: string) => {
+    switch (role) {
+      case "SUPER_ADMIN":
+        return "bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900/50";
+      case "ADMIN":
+        return "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/50";
+      case "APPROVER_L2":
+        return "bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-900/50";
+      case "APPROVER_L1":
+        return "bg-teal-100 text-teal-850 border-teal-200 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-900/50";
+      case "FINANCE":
+        return "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/50";
+      default:
+        return "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700";
+    }
+  };
 
   const handleAddMember = async (emailToAdd: string) => {
     const norm = emailToAdd.trim().toLowerCase();
@@ -2573,45 +3083,57 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-sm">
-      <motion.div 
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        className="bg-white rounded-none md:rounded-2xl w-full max-w-4xl h-full md:h-auto md:max-h-[90vh] shadow-2xl overflow-hidden border-t md:border border-slate-200 flex flex-col"
-      >
-        <div className="px-4 md:px-8 py-4 md:py-5 border-b border-slate-200 bg-white flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center gap-2 md:gap-3">
-            <span className={cn(
-              "p-1.5 md:p-2 rounded-xl border",
-              req.status === RequisitionStatus.APPROVED_L2 ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-primary/5 text-primary border-primary/10"
-            )}>
-              <ShieldCheck size={18} className="md:w-5 md:h-5" />
-            </span>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-[12px] md:text-sm font-black text-slate-900 uppercase tracking-[0.1em] truncate">
-                  <HighlightText text={req.title} highlight={globalSearchTerm || ""} />
-                </h3>
-                {req.flaggedForAudit && (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-rose-50 border border-rose-200 text-rose-600 rounded text-[8px] md:text-[9px] font-black uppercase tracking-[0.1em]">
-                    <Flag size={10} className="fill-current" />
-                    Audit Flagged
-                  </span>
-                )}
-              </div>
-              <p className="text-[8px] md:text-[10px] font-mono text-slate-400 uppercase tracking-widest">{req.id}</p>
+  const containerClass = isPage
+    ? "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-full shadow-sm flex flex-col min-h-[600px] select-text overflow-hidden"
+    : "bg-white dark:bg-slate-900 rounded-none md:rounded-2xl w-full max-w-4xl h-full md:h-auto md:max-h-[90vh] shadow-2xl overflow-hidden border-t md:border border-slate-200 dark:border-slate-800 flex flex-col max-w-full";
+
+  const mainContent = (
+    <motion.div 
+      initial={isPage ? { opacity: 0, y: 15 } : { scale: 0.95, opacity: 0 }}
+      animate={isPage ? { opacity: 1, y: 0 } : { scale: 1, opacity: 1 }}
+      exit={isPage ? { opacity: 0, y: 15 } : { scale: 0.95, opacity: 0 }}
+      className={containerClass}
+    >
+      <div className={cn(
+        "px-3 sm:px-6 md:px-8 py-3.5 md:py-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between relative md:sticky md:top-0 z-20 bg-white dark:bg-slate-900 gap-2 min-w-0 max-w-full",
+        isPage ? "rounded-t-2xl" : "rounded-t-none md:rounded-t-2xl"
+      )}>
+        <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+          <span className={cn(
+            "p-1.5 md:p-2 rounded-xl border shrink-0",
+            req.status === RequisitionStatus.APPROVED_L2 ? "bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50" : "bg-primary/5 text-primary border-primary/10"
+          )}>
+            <ShieldCheck size={18} className="md:w-5 md:h-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-wrap sm:flex-nowrap">
+              <h3 className="text-[12px] md:text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-[0.05em] sm:tracking-[0.1em] truncate min-w-0 flex-1">
+                <HighlightText text={req.title} highlight={globalSearchTerm || ""} />
+              </h3>
+              {req.flaggedForAudit && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-400 rounded text-[8px] md:text-[9px] font-black uppercase tracking-[0.1em] shrink-0">
+                  <Flag size={10} className="fill-current" />
+                  Audit Flagged
+                </span>
+              )}
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={onClose} className="p-1.5 md:p-2 hover:bg-slate-100 rounded-full transition-colors">
-              <X size={20} className="text-slate-500 md:w-5 md:h-5" />
-            </button>
+            <p className="text-[8px] md:text-[10px] font-mono text-slate-400 uppercase tracking-widest truncate">{req.id}</p>
           </div>
         </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button 
+            onClick={onClose} 
+            title="Close and go back (Esc)"
+            className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-xl transition-all font-bold text-xs cursor-pointer shadow-md shadow-rose-600/20 shrink-0"
+          >
+            <X size={16} className="stroke-[2.5]" />
+            <span className="hidden sm:inline">Close & Go Back</span>
+            <span className="sm:hidden">Close</span>
+          </button>
+        </div>
+      </div>
 
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* Top workflow progress timeline component */}
           {(() => {
             const isRejected = req.status === RequisitionStatus.REJECTED;
@@ -3154,6 +3676,221 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
                 </div>
               </section>
 
+              {/* Discussion & Feedback Thread */}
+              <section className="space-y-4 pt-6 border-t border-slate-200">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <MessageSquare size={12} className="text-indigo-500" />
+                    Discussion & Feedback ({Array.isArray(req.comments) ? req.comments.length : 0})
+                  </h4>
+                </div>
+                
+                <div className="space-y-4">
+                  {/* Comments List */}
+                  {Array.isArray(req.comments) && req.comments.length > 0 ? (
+                    <div className="space-y-3.5 max-h-[350px] overflow-y-auto pr-1">
+                      {req.comments.map((comment: any) => {
+                        const isAuthor = comment.authorId === currentUser?.id || comment.authorEmail?.toLowerCase() === currentUser?.email?.toLowerCase();
+                        const canDelete = isAuthor || currentUser?.role === "ADMIN" || currentUser?.role === "SUPER_ADMIN";
+                        
+                        // Can edit if author and within 15 minutes of posting
+                        const diffMs = Date.now() - new Date(comment.timestamp).getTime();
+                        const canEdit = isAuthor && (diffMs / 60000 <= 15);
+                        
+                        const initials = (comment.authorName || comment.authorEmail || "?").charAt(0).toUpperCase();
+
+                        return (
+                          <div 
+                            key={comment.id}
+                            className="flex items-start gap-3 bg-slate-50/50 dark:bg-slate-900/30 p-3 rounded-2xl border border-slate-150 dark:border-slate-800/80 group transition-all"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-900 font-bold text-xs flex items-center justify-center shrink-0 animate-in zoom-in duration-200">
+                              {initials}
+                            </div>
+                            <div className="flex-1 min-w-0 space-y-1">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-bold text-slate-800 dark:text-slate-200 text-xs truncate">
+                                    {comment.authorName}
+                                  </span>
+                                  {comment.authorRole && (
+                                    <span className={cn(
+                                      "px-1.5 py-0.2 rounded text-[7.5px] font-extrabold uppercase tracking-wider border",
+                                      getRoleBadgeColor(comment.authorRole)
+                                    )}>
+                                      {comment.authorRole.replace('_', ' ')}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[9px] text-slate-400 font-medium">
+                                    {formatDate(comment.timestamp)}
+                                  </span>
+                                  {comment.isEdited && (
+                                    <span className="text-[8px] text-slate-400 dark:text-slate-500 italic bg-slate-100/80 dark:bg-slate-800/50 px-1 py-0.2 rounded border border-slate-200/50 dark:border-slate-700/40">
+                                      edited
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              {editingCommentId === comment.id ? (
+                                <div className="space-y-2 w-full mt-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                                  <textarea
+                                    value={editingCommentText}
+                                    onChange={(e) => setEditingCommentText(e.target.value)}
+                                    className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 dark:text-slate-100"
+                                    rows={2}
+                                    autoFocus
+                                  />
+                                  <div className="flex items-center gap-1.5 justify-end">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingCommentId(null);
+                                        setEditingCommentText("");
+                                      }}
+                                      className="px-2.5 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-750 bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-750 dark:text-slate-300 rounded-lg transition-all cursor-pointer flex items-center gap-1"
+                                    >
+                                      <X size={10} />
+                                      <span>Cancel</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateComment(comment.id, editingCommentText)}
+                                      className="px-2.5 py-1 text-[10px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-all cursor-pointer flex items-center gap-1 shadow-sm hover:shadow"
+                                    >
+                                      <Check size={10} />
+                                      <span>Save</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed break-words whitespace-pre-wrap pr-4">
+                                  {comment.text}
+                                </p>
+                              )}
+                            </div>
+                            
+                            {/* Action Button Controls */}
+                            {editingCommentId !== comment.id && (canEdit || canDelete) && (
+                              <div className="flex items-center gap-0.5 shrink-0 select-none opacity-60 group-hover:opacity-100 transition-opacity">
+                                {canEdit && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingCommentId(comment.id);
+                                      setEditingCommentText(comment.text);
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer flex items-center justify-center"
+                                    title="Edit comment (First 15m)"
+                                  >
+                                    <Pencil size={11} />
+                                  </button>
+                                )}
+                                {canDelete && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteComment(comment.id)}
+                                    className="p-1 text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all cursor-pointer flex items-center justify-center"
+                                    title="Delete comment"
+                                  >
+                                    <Trash2 size={11} />
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-slate-50/50 dark:bg-slate-900/10 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-center text-slate-400">
+                      <MessageSquare size={20} className="mx-auto mb-2 opacity-40 text-slate-400" />
+                      <p className="text-[10px] font-bold uppercase tracking-widest leading-none">No comments posted yet</p>
+                      <p className="text-[9px] text-slate-400/80 mt-1 uppercase">Leave a comment or ask for info below.</p>
+                    </div>
+                  )}
+
+                  {/* Add Comment Input Form */}
+                  <div className="relative">
+                    {/* Mention Suggestions Popover */}
+                    {mentionSearch !== null && filteredMentionUsers.length > 0 && (
+                      <div className="absolute bottom-full left-0 mb-2 w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-2xl shadow-xl z-50 overflow-hidden max-h-[220px] overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-150">
+                        <div className="px-3 py-2 bg-slate-50 dark:bg-slate-950/45 border-b border-slate-100 dark:border-slate-800/60 flex items-center justify-between">
+                          <span className="text-[9px] font-black tracking-widest text-slate-400 dark:text-slate-500 uppercase">Mention User</span>
+                          <span className="text-[8px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded uppercase">Matching: {mentionSearch}</span>
+                        </div>
+                        <div className="divide-y divide-slate-50 dark:divide-slate-800/40">
+                          {filteredMentionUsers.map(u => {
+                            const initials = (u.name || u.email || "?").charAt(0).toUpperCase();
+                            return (
+                              <button
+                                key={u.id}
+                                type="button"
+                                onClick={() => insertMention(u)}
+                                className="w-full text-left px-3.5 py-2.5 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all group cursor-pointer"
+                              >
+                                <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-250 dark:border-slate-700/80 font-bold text-xs flex items-center justify-center text-slate-600 dark:text-slate-300 group-hover:bg-indigo-50 group-hover:text-indigo-600 group-hover:border-indigo-150 dark:group-hover:bg-indigo-950/40 dark:group-hover:text-indigo-300 dark:group-hover:border-indigo-900/60 transition-all shrink-0">
+                                  {initials}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 justify-between">
+                                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-300 truncate">
+                                      {u.name}
+                                    </p>
+                                    <span className="text-[7.5px] px-1 py-0.2 rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 font-extrabold uppercase shrink-0">
+                                      {u.role}
+                                    </span>
+                                  </div>
+                                  <p className="text-[9px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
+                                    {u.email}
+                                  </p>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2.5 items-end bg-white dark:bg-slate-950 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800/80 shadow-sm">
+                      <textarea
+                        ref={commentTextareaRef}
+                        value={commentText}
+                        onChange={handleCommentTextareaChange}
+                        placeholder="Discuss this requisition, leave feedback, or use @name to tag a team member..."
+                        rows={2}
+                        className="flex-1 px-3 py-2 text-xs bg-transparent border-0 focus:outline-none resize-none text-slate-800 dark:text-slate-100 placeholder-slate-450 focus:ring-0 min-h-[42px]"
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape" && mentionSearch !== null) {
+                            e.preventDefault();
+                            setMentionSearch(null);
+                            setMentionIndex(-1);
+                          } else if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleAddComment();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAddComment()}
+                        disabled={isSubmittingComment || !commentText.trim()}
+                        className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-200 dark:disabled:bg-indigo-950 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shrink-0 flex items-center justify-center gap-1.5 shadow-sm hover:shadow cursor-pointer"
+                      >
+                        {isSubmittingComment ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <Send size={13} />
+                        )}
+                        <span>Send</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
               {/* Decision Form integration */}
               {showDecisionForm && (
                 <motion.div 
@@ -3383,14 +4120,14 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
           </div>
         </div>
 
-        <div className="px-4 md:px-8 py-3 md:py-6 border-t border-slate-100 bg-white flex flex-col md:flex-row gap-3 md:gap-4 justify-between items-center">
-          <div className="flex items-center gap-2 w-full md:w-auto justify-center md:justify-start">
+        <div className="px-3 sm:px-6 md:px-8 py-3 md:py-5 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col md:flex-row gap-3 md:gap-4 justify-between items-center max-w-full overflow-hidden">
+          <div className="flex items-center gap-1.5 sm:gap-2 w-full md:w-auto justify-start overflow-x-auto max-w-full pb-1 md:pb-0 scrollbar-none shrink-0">
             <button 
               onClick={() => {
                 onDelete();
                 onClose();
               }}
-              className="p-2.5 hover:bg-rose-50 text-slate-400 hover:text-rose-500 rounded-xl transition-all border border-slate-100 md:border-0"
+              className="p-2 sm:p-2.5 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-slate-400 hover:text-rose-500 rounded-xl transition-all border border-slate-100 dark:border-slate-800 md:border-0 shrink-0"
               title="Delete Document"
             >
               <Trash2 size={16} />
@@ -3402,7 +4139,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
             ) && (
               <button 
                 onClick={onEdit}
-                className="p-2.5 hover:bg-amber-50 text-slate-400 hover:text-amber-500 rounded-xl transition-all border border-slate-100 md:border-0"
+                className="p-2 sm:p-2.5 hover:bg-amber-50 dark:hover:bg-amber-950/30 text-slate-400 hover:text-amber-500 rounded-xl transition-all border border-slate-100 dark:border-slate-800 md:border-0 shrink-0"
                 title="Edit Requisition details"
               >
                 <Pencil size={16} />
@@ -3412,52 +4149,52 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
               <button 
                 onClick={handleToggleAuditFlag}
                 className={cn(
-                  "p-2.5 rounded-xl transition-all border border-slate-100 md:border-0 flex items-center gap-1.5 font-bold text-[10px] uppercase tracking-wider",
+                  "p-2 sm:p-2.5 rounded-xl transition-all border border-slate-100 dark:border-slate-800 md:border-0 flex items-center gap-1.5 font-bold text-[10px] uppercase tracking-wider shrink-0",
                   req.flaggedForAudit 
-                    ? "bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100" 
-                    : "bg-slate-50 border-slate-100 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                    ? "bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-400 hover:bg-rose-100" 
+                    : "bg-slate-50 dark:bg-slate-800/60 border-slate-100 dark:border-slate-800 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
                 )}
                 title={req.flaggedForAudit ? "Remove Flag for Audit" : "Flag for Audit"}
               >
                 <Flag size={16} className={req.flaggedForAudit ? "fill-rose-600" : ""} />
-                <span className="hidden sm:inline">{req.flaggedForAudit ? "Flagged" : "Flag for Audit"}</span>
+                <span className="hidden sm:inline">{req.flaggedForAudit ? "Flagged" : "Audit"}</span>
               </button>
             )}
             <button 
               onClick={onGenerateReceipt}
-              className="p-2.5 hover:bg-slate-100 text-slate-400 hover:text-primary rounded-xl transition-all border border-slate-100 md:border-0" 
+              className="p-2 sm:p-2.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-primary rounded-xl transition-all border border-slate-100 dark:border-slate-800 md:border-0 shrink-0" 
               title="Generate Receipt Template"
             >
               <FileText size={16} />
             </button>
             <button 
               onClick={() => printRequisitionReceipt(req)}
-              className="p-2.5 hover:bg-slate-100 text-slate-500 hover:text-primary rounded-xl transition-all border border-slate-100 md:border-0" 
+              className="p-2 sm:p-2.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-primary rounded-xl transition-all border border-slate-100 dark:border-slate-800 md:border-0 shrink-0" 
               title="Print Formal Receipt"
             >
               <Printer size={16} />
             </button>
             <button 
               onClick={handleCopyDetails}
-              className="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-primary rounded-xl transition-all border border-slate-200/60 flex items-center gap-1.5 font-bold text-[10px] uppercase tracking-wider" 
+              className="p-2 sm:p-2.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-primary rounded-xl transition-all border border-slate-200/60 dark:border-slate-700/60 flex items-center gap-1.5 font-bold text-[10px] uppercase tracking-wider shrink-0" 
               title="Copy Requisition Details"
             >
               <Copy size={16} />
-              <span>Copy Details</span>
+              <span className="hidden sm:inline">Copy Details</span>
             </button>
             <button 
               onClick={handleCopyShareLink}
-              className="p-2.5 bg-indigo-50/50 dark:bg-indigo-950/20 hover:bg-indigo-100/80 text-indigo-600 dark:text-indigo-400 hover:text-primary rounded-xl transition-all border border-indigo-200/60 dark:border-indigo-900/40 flex items-center gap-1.5 font-bold text-[10px] uppercase tracking-wider" 
+              className="p-2 sm:p-2.5 bg-indigo-50/50 dark:bg-indigo-950/40 hover:bg-indigo-100/80 text-indigo-600 dark:text-indigo-400 hover:text-primary rounded-xl transition-all border border-indigo-200/60 dark:border-indigo-900/40 flex items-center gap-1.5 font-bold text-[10px] uppercase tracking-wider shrink-0" 
               title="Copy Direct Shareable Link"
             >
               <Share2 size={16} />
-              <span>Share Link</span>
+              <span className="hidden sm:inline">Share Link</span>
             </button>
           </div>
-          <div className="flex items-center gap-2 w-full md:w-auto">
+          <div className="flex items-center gap-1.5 sm:gap-2 w-full md:w-auto shrink-0 justify-end flex-wrap sm:flex-nowrap">
              <button 
               onClick={onClose}
-              className="flex-1 md:flex-none px-4 md:px-8 py-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-xl text-[9px] md:text-xs font-bold hover:bg-slate-100 transition-all cursor-pointer uppercase tracking-widest"
+              className="flex-1 md:flex-none px-3.5 md:px-8 py-2.5 bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-xl text-[9px] md:text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition-all cursor-pointer uppercase tracking-widest"
             >
               EXIT
             </button>
@@ -3467,7 +4204,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
                 {req.status !== RequisitionStatus.DISBURSED && (
                   <button 
                     onClick={() => setShowDecisionForm("REJECT")}
-                    className="flex-1 md:flex-none px-3 md:px-6 py-2.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl text-[9px] md:text-xs font-bold hover:bg-rose-100 transition-all cursor-pointer uppercase tracking-widest"
+                    className="flex-1 md:flex-none px-2.5 sm:px-6 py-2.5 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/50 rounded-xl text-[9px] md:text-xs font-bold hover:bg-rose-100 transition-all cursor-pointer uppercase tracking-widest"
                   >
                     REJECT
                   </button>
@@ -3476,14 +4213,14 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
                   <>
                     <button 
                       onClick={() => setShowDecisionForm("ESCALATE")}
-                      className="flex-1 md:flex-none px-3 md:px-6 py-2.5 bg-amber-50 text-amber-600 border border-amber-100 rounded-xl text-[9px] md:text-xs font-bold hover:bg-amber-100 transition-all cursor-pointer uppercase tracking-widest"
+                      className="flex-1 md:flex-none px-2.5 sm:px-6 py-2.5 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50 rounded-xl text-[9px] md:text-xs font-bold hover:bg-amber-100 transition-all cursor-pointer uppercase tracking-widest"
                     >
                       ESCALATE
                     </button>
                     <button 
                       disabled={loading}
                       onClick={() => handleDecision("APPROVE")}
-                      className="flex-1 md:flex-none px-3 md:px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-[9px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100 disabled:opacity-50"
+                      className="flex-1 md:flex-none px-2.5 sm:px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-[9px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100 dark:shadow-none disabled:opacity-50"
                     >
                       APPROVE
                     </button>
@@ -3493,7 +4230,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
                    <button 
                      disabled={loading}
                      onClick={() => handleDecision("APPROVE")}
-                     className="flex-1 md:flex-none px-3 md:px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-[9px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100 disabled:opacity-50"
+                     className="flex-1 md:flex-none px-2.5 sm:px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-[9px] md:text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-emerald-100 dark:shadow-none disabled:opacity-50"
                    >
                      APPROVE L2
                    </button>
@@ -3508,7 +4245,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
                    setIsAmountVerified(false);
                    setShowAssignConfirm(true);
                  }}
-                 className="flex-1 md:flex-none px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[9px] md:text-xs font-bold hover:bg-indigo-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-indigo-100"
+                 className="flex-1 md:flex-none px-4 sm:px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[9px] md:text-xs font-bold hover:bg-indigo-700 transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-indigo-100 dark:shadow-none"
                >
                 ASSIGN TO BUDGET
               </button>
@@ -3587,6 +4324,15 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
           )}
         </AnimatePresence>
       </motion.div>
-    </div>
-  );
-};
+    );
+
+    if (isPage) {
+      return mainContent;
+    }
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm overflow-x-hidden overflow-y-auto">
+        {mainContent}
+      </div>
+    );
+  };

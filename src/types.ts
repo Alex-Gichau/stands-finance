@@ -77,6 +77,16 @@ export interface ApprovalNote {
   timestamp: string;
 }
 
+export interface Comment {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorEmail: string;
+  authorRole: string;
+  text: string;
+  timestamp: string;
+}
+
 export interface Requisition {
   id: string;
   projectId?: string; // Linked project
@@ -100,6 +110,7 @@ export interface Requisition {
   disbursedAt?: string;
   rejectionReason?: string;
   approvalHistory: ApprovalNote[];
+  comments?: Comment[];
   digitalSignature?: string; // base64
   payableTo?: string; // Vendor name
   recurrence?: RecurrenceType;
@@ -181,6 +192,7 @@ export interface BudgetAlert {
   timestamp: string;
   isRead: boolean;
   targetRole?: string;
+  targetUserId?: string;
 }
 
 export interface AlertThreshold {
