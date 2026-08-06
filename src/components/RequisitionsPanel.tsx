@@ -66,73 +66,122 @@ const AttachmentViewer = ({ uri, fileName }: { uri: string; fileName: string }) 
   const [rotation, setRotation] = useState(0);
   const [hasError, setHasError] = useState(false);
   const [textContent, setTextContent] = useState<string | null>(null);
+  const [htmlContent, setHtmlContent] = useState<string | null>(null);
   const [isLoadingText, setIsLoadingText] = useState(false);
   const [pdfDataUri, setPdfDataUri] = useState<string>("");
   const [isLoadingPdf, setIsLoadingPdf] = useState<boolean>(false);
 
-  const cleanUri = uri?.trim() || "";
+  const cleanUri = getAbsoluteAttachmentUrl(uri) || uri?.trim() || "";
   const lowerName = (fileName || cleanUri).toLowerCase();
 
-  const isImage = 
+  // Check if data URI payload is HTML
+  const isDataUri = cleanUri.startsWith("data:");
+  const isHtmlPayload = isDataUri && (
+    cleanUri.includes("PCFkb2N0") || // <!doctype
+    cleanUri.includes("PGh0bW") ||   // <html
+    cleanUri.includes("PEhUTU") ||   // <HTML
+    cleanUri.includes("PCFET0")      // <!DO
+  );
+
+  const isImage = !isHtmlPayload && (
     cleanUri.startsWith("data:image/") ||
     /\.(png|jpe?g|gif|webp|svg|bmp|ico)(\?.*)?$/i.test(lowerName) ||
-    /\.(png|jpe?g|gif|webp|svg|bmp|ico)(\?.*)?$/i.test(cleanUri.toLowerCase());
+    /\.(png|jpe?g|gif|webp|svg|bmp|ico)(\?.*)?$/i.test(cleanUri.toLowerCase())
+  );
 
-  const isPdf = 
+  const isHtml = isHtmlPayload ||
+    cleanUri.startsWith("data:text/html") ||
+    /\.(html|htm)(\?.*)?$/i.test(lowerName) ||
+    /\.(html|htm)(\?.*)?$/i.test(cleanUri.toLowerCase());
+
+  const isPdf = !isHtml && (
     cleanUri.startsWith("data:application/pdf") ||
+    (isDataUri && cleanUri.includes("JVBERi0")) || // %PDF-
     /\.pdf(\?.*)?$/i.test(lowerName) ||
-    /\.pdf(\?.*)?$/i.test(cleanUri.toLowerCase()) ||
-    cleanUri.includes("/uploads/") || cleanUri.startsWith("uploads/");
+    /\.pdf(\?.*)?$/i.test(cleanUri.toLowerCase())
+  );
 
-  const isText = 
+  const isText = !isHtml && !isPdf && !isImage && (
     cleanUri.startsWith("data:text/") ||
     /\.(txt|csv|json|log|md|xml)(\?.*)?$/i.test(lowerName) ||
-    /\.(txt|csv|json|log|md|xml)(\?.*)?$/i.test(cleanUri.toLowerCase());
+    /\.(txt|csv|json|log|md|xml)(\?.*)?$/i.test(cleanUri.toLowerCase())
+  );
 
-  const isAudioVideo = 
+  const isAudioVideo = !isHtml && !isPdf && !isImage && !isText && (
     cleanUri.startsWith("data:audio/") || cleanUri.startsWith("data:video/") ||
-    /\.(mp3|wav|ogg|mp4|webm|mov)(\?.*)?$/i.test(lowerName);
+    /\.(mp3|wav|ogg|mp4|webm|mov)(\?.*)?$/i.test(lowerName)
+  );
 
   useEffect(() => {
     setZoom(1);
     setRotation(0);
     setHasError(false);
     setTextContent(null);
+    setHtmlContent(null);
     setPdfDataUri("");
 
+    if (isHtml && isDataUri) {
+      try {
+        const parts = cleanUri.split(",");
+        if (parts[1]) {
+          const decoded = window.atob(parts[1]);
+          setHtmlContent(decoded);
+        }
+      } catch (e) {
+        // Fall back to cleanUri iframe
+      }
+    }
+
     if (isPdf && cleanUri) {
-      if (cleanUri.startsWith("data:application/pdf")) {
-        setPdfDataUri(cleanUri);
+      if (cleanUri.startsWith("data:")) {
+        if (cleanUri.includes("JVBERi0") || cleanUri.startsWith("data:application/pdf")) {
+          setPdfDataUri(cleanUri);
+        } else {
+          setHasError(true);
+        }
       } else {
         setIsLoadingPdf(true);
         fetch(cleanUri)
           .then((res) => {
-            if (!res.ok) throw new Error("Failed to fetch PDF");
+            if (!res.ok) throw new Error("HTTP error " + res.status);
+            const contentType = (res.headers.get("content-type") || "").toLowerCase();
+            if (contentType.includes("text/html")) {
+              throw new Error("Server returned HTML page instead of PDF file");
+            }
             return res.blob();
           })
-          .then((blob) => {
+          .then(async (blob) => {
+            const textSample = await blob.slice(0, 100).text();
+            if (textSample.includes("<!DOCTYPE") || textSample.includes("<html")) {
+              throw new Error("Blob content is HTML, not PDF");
+            }
             const reader = new FileReader();
             reader.onload = () => {
               let resStr = reader.result as string;
-              if (resStr && !resStr.startsWith("data:application/pdf")) {
-                resStr = resStr.replace(/^data:[^;]+;/, "data:application/pdf;");
+              if (resStr && (resStr.includes("JVBERi0") || resStr.startsWith("data:application/pdf"))) {
+                if (!resStr.startsWith("data:application/pdf")) {
+                  resStr = resStr.replace(/^data:[^;]+;/, "data:application/pdf;");
+                }
+                setPdfDataUri(resStr);
+              } else {
+                setHasError(true);
               }
-              setPdfDataUri(resStr || cleanUri);
               setIsLoadingPdf(false);
             };
             reader.onerror = () => {
-              setPdfDataUri(cleanUri);
+              setHasError(true);
               setIsLoadingPdf(false);
             };
             reader.readAsDataURL(blob);
           })
-          .catch(() => {
-            setPdfDataUri(cleanUri);
+          .catch((err) => {
+            console.warn("PDF fetch/load error:", err);
+            setHasError(true);
             setIsLoadingPdf(false);
           });
       }
     }
-  }, [uri, isPdf, cleanUri]);
+  }, [uri, isPdf, isHtml, isDataUri, cleanUri]);
 
   useEffect(() => {
     if (isText && cleanUri && !cleanUri.startsWith("data:")) {
@@ -166,17 +215,42 @@ const AttachmentViewer = ({ uri, fileName }: { uri: string; fileName: string }) 
         </div>
         <h4 className="text-base font-bold text-slate-100 mb-1">Preview Unavailable</h4>
         <p className="text-xs text-slate-400 max-w-sm mb-6">
-          The file could not be displayed directly in the preview. You can open it in a new tab or download it to view.
+          The file format could not be rendered directly in preview. You can open it in a new window or download it to view.
         </p>
         <div className="flex items-center gap-3">
           <a
             href={cleanUri}
             download={fileName}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border border-slate-700"
+            target="_blank"
+            rel="noreferrer"
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-indigo-950"
           >
             <Download size={14} /> Download File
           </a>
         </div>
+      </div>
+    );
+  }
+
+  if (isHtml) {
+    return (
+      <div className="flex flex-col h-full w-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden relative min-h-[500px]">
+        <div className="absolute top-2 right-2 z-20 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md p-1.5 rounded-xl border border-slate-800 shadow-xl">
+          <a
+            href={cleanUri}
+            download={fileName.endsWith(".html") ? fileName : `${fileName}.html`}
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer border border-slate-700"
+          >
+            <Download size={13} /> Download HTML
+          </a>
+        </div>
+        <iframe
+          srcDoc={htmlContent || undefined}
+          src={!htmlContent ? cleanUri : undefined}
+          title={fileName}
+          className="w-full h-full min-h-[500px] border-none bg-white rounded-xl"
+          sandbox="allow-same-origin allow-scripts"
+        />
       </div>
     );
   }
@@ -246,7 +320,7 @@ const AttachmentViewer = ({ uri, fileName }: { uri: string; fileName: string }) 
         {isLoadingPdf && (
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm gap-2 text-slate-300">
             <Loader2 size={24} className="animate-spin text-indigo-400" />
-            <span className="text-xs font-bold uppercase tracking-wider">Loading PDF (base64)...</span>
+            <span className="text-xs font-bold uppercase tracking-wider">Loading PDF...</span>
           </div>
         )}
         <div className="absolute top-2 right-2 z-20 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md p-1.5 rounded-xl border border-slate-800 shadow-xl">
@@ -258,23 +332,12 @@ const AttachmentViewer = ({ uri, fileName }: { uri: string; fileName: string }) 
             <Download size={13} /> Download
           </a>
         </div>
-        <object
-          data={activeUri}
-          type="application/pdf"
+        <iframe
+          src={`${activeUri}#toolbar=1`}
+          title={fileName}
           className="w-full h-full min-h-[500px] border-none bg-slate-900"
-        >
-          <embed
-            src={activeUri}
-            type="application/pdf"
-            className="w-full h-full min-h-[500px] border-none bg-slate-900"
-          />
-          <iframe
-            src={`${activeUri}#toolbar=1`}
-            title={fileName}
-            className="w-full h-full min-h-[500px] border-none bg-slate-900"
-            onError={() => setHasError(true)}
-          />
-        </object>
+          onError={() => setHasError(true)}
+        />
       </div>
     );
   }
@@ -3259,11 +3322,11 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
         if (decision === "APPROVE") {
           if (roleStr.includes("L1") || roleStr.includes("APPROVER_L1") || roleStr.toLowerCase().includes("compliance")) {
             type = "L1_APPROVED";
-            title = "L1 Compliance Clearance Granted";
+            title = "L1 Approved";
             subtitle = "First level verification & audit clearance";
           } else if (roleStr.includes("L2") || roleStr.includes("APPROVER_L2") || roleStr.toLowerCase().includes("keymaster")) {
             type = "L2_APPROVED";
-            title = "L2 Keymaster Signing Certified";
+            title = "L2 Approved";
             subtitle = "Second level consensus consent";
           } else if (roleStr.toLowerCase().includes("finance") || (note.note || "").toLowerCase().includes("disburs") || (note.note || "").toLowerCase().includes("payment")) {
             type = "DISBURSED";
@@ -4373,7 +4436,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
                               <div className="flex items-center justify-between text-[8px] text-slate-400">
                                 <span className="flex items-center gap-1">
                                   <Activity size={10} className="text-slate-400" />
-                                  Ledger genesis block registered
+                                  Requisition initiated and ready for approvals
                                 </span>
                               </div>
                             )}
