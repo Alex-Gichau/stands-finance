@@ -910,6 +910,7 @@ export const RequisitionsPanel: React.FC = () => {
   // Pagination state
   const [activePage, setActivePage] = useState(1);
   const [disbursedPage, setDisbursedPage] = useState(1);
+  const [rejectedPage, setRejectedPage] = useState(1);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const ITEMS_PER_PAGE = 15;
 
@@ -1017,21 +1018,25 @@ export const RequisitionsPanel: React.FC = () => {
     return sortDirection === "desc" ? timeB - timeA : timeA - timeB;
   });
 
-  // Split into active and disbursed
-  const activeList = filtered.filter(r => r.status !== RequisitionStatus.DISBURSED);
+  // Split into active, disbursed, and rejected/cancelled
+  const activeList = filtered.filter(r => r.status !== RequisitionStatus.DISBURSED && r.status !== RequisitionStatus.REJECTED && r.status !== RequisitionStatus.CANCELLED);
   const disbursedList = filtered.filter(r => r.status === RequisitionStatus.DISBURSED);
+  const rejectedList = filtered.filter(r => r.status === RequisitionStatus.REJECTED || r.status === RequisitionStatus.CANCELLED);
 
   // Paginated slices
   const activeItems = activeList.slice((activePage - 1) * ITEMS_PER_PAGE, activePage * ITEMS_PER_PAGE);
   const disbursedItems = disbursedList.slice((disbursedPage - 1) * ITEMS_PER_PAGE, disbursedPage * ITEMS_PER_PAGE);
+  const rejectedItems = rejectedList.slice((rejectedPage - 1) * ITEMS_PER_PAGE, rejectedPage * ITEMS_PER_PAGE);
 
   const activeTotalPages = Math.max(1, Math.ceil(activeList.length / ITEMS_PER_PAGE));
   const disbursedTotalPages = Math.max(1, Math.ceil(disbursedList.length / ITEMS_PER_PAGE));
+  const rejectedTotalPages = Math.max(1, Math.ceil(rejectedList.length / ITEMS_PER_PAGE));
 
   // Reset pages when filters change
   React.useEffect(() => {
     setActivePage(1);
     setDisbursedPage(1);
+    setRejectedPage(1);
   }, [globalSearchTerm, filterStatus, dateRangePreset, customStartDate, customEndDate]);
 
   const Pagination = ({ current, total, onChange }: { current: number, total: number, onChange: (p: number) => void }) => (
@@ -2177,6 +2182,283 @@ export const RequisitionsPanel: React.FC = () => {
         )}
       </div>
 
+      {/* Rejected & Cancelled Table */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-6">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-rose-50/30">
+          <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+            <XCircle size={16} className="text-rose-600" />
+            Rejected & Cancelled Requisitions
+            <span className="text-[10px] text-slate-400 normal-case font-medium ml-2">({rejectedList.length} total)</span>
+          </h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="hidden md:table w-full text-left">
+            <thead>
+              <tr className="bg-slate-50/50 border-b border-slate-200 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                <th className="px-4 md:px-6 py-3 md:py-4 w-10">
+                  <input 
+                    type="checkbox" 
+                    className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500/20 accent-rose-600 cursor-pointer"
+                    checked={rejectedList.length > 0 && rejectedList.every(r => selectedIds.has(r.id))}
+                    onChange={() => {
+                      const allRejectedInSelected = rejectedList.every(r => selectedIds.has(r.id));
+                      const newSelected = new Set(selectedIds);
+                      rejectedList.forEach(r => {
+                        if (allRejectedInSelected) newSelected.delete(r.id);
+                        else newSelected.add(r.id);
+                      });
+                      setSelectedIds(newSelected);
+                    }}
+                  />
+                </th>
+                <th className="px-4 md:px-6 py-3 md:py-4">
+                  <div className="flex items-center gap-2">
+                    ID & Title
+                    <button 
+                      onClick={() => setSortDirection(prev => prev === "asc" ? "desc" : "asc")}
+                      className="p-1 hover:bg-slate-200 rounded-md transition-colors flex items-center gap-1 group text-rose-600 whitespace-nowrap cursor-pointer"
+                      title={sortDirection === "desc" ? "Switch to Newest Last" : "Switch to Newest First"}
+                    >
+                      <ArrowUpDown size={12} className={cn("transition-transform", sortDirection === "asc" && "rotate-180")} />
+                      <span className="text-[7px] text-slate-400 font-bold group-hover:text-rose-600">{sortDirection === "desc" ? "DESC" : "ASC"}</span>
+                    </button>
+                  </div>
+                </th>
+                <th className="hidden lg:table-cell px-4 md:px-6 py-3 md:py-4">Requisition Ownership</th>
+                <th className="px-4 md:px-6 py-3 md:py-4 text-right">Amount</th>
+                <th className="px-4 md:px-6 py-3 md:py-4 text-center">Status</th>
+                <th className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4">Date Updated</th>
+                <th className="px-4 md:px-6 py-3 md:py-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              <AnimatePresence mode="popLayout">
+                {rejectedItems.map((req) => (
+                  <motion.tr 
+                    key={req.id} 
+                    layout
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -15 }}
+                    transition={{ 
+                      opacity: { duration: 0.2 },
+                      layout: { type: "spring", stiffness: 300, damping: 30 },
+                      y: { type: "spring", stiffness: 300, damping: 30 }
+                    }}
+                    onClick={() => setViewingReq(req)}
+                    className={cn(
+                      "transition-colors group cursor-pointer border-l-2",
+                      selectedIds.has(req.id) ? "bg-rose-50/50 border-l-rose-600" : "hover:bg-slate-50/80 border-l-transparent"
+                    )}
+                  >
+                    <td className="px-4 md:px-6 py-2.5 md:py-4" onClick={(e) => e.stopPropagation()}>
+                      <input 
+                        type="checkbox" 
+                        className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500/20 accent-rose-600 cursor-pointer"
+                        checked={selectedIds.has(req.id)}
+                        onChange={() => toggleSelect(req.id)}
+                      />
+                    </td>
+                    <td className="px-3 md:px-6 py-2.5 md:py-4">
+                      <div className="flex flex-col min-w-0 max-w-[120px] md:max-w-none">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900 text-[11px] md:text-sm truncate">
+                            <HighlightText text={req.title} highlight={globalSearchTerm} />
+                          </span>
+                          {req.flaggedForAudit && (
+                            <span title="Flagged for Audit" className="inline-flex shrink-0">
+                              <Flag size={11} className="text-rose-500 fill-rose-500" />
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mt-1">
+                          <span className="text-[7.5px] md:text-[10px] font-mono text-slate-400 uppercase tracking-wider truncate shrink-0">{req.id}</span>
+                          <span className="inline-flex items-center px-1.5 py-0.5 bg-rose-50/80 border border-rose-200/50 text-rose-700 rounded-md text-[7.5px] md:text-[9px] font-extrabold uppercase tracking-wider leading-none w-fit">
+                            💒 <HighlightText text={req.groupName} highlight={globalSearchTerm} />
+                          </span>
+                        </div>
+                        {req.rejectionReason && (
+                          <p className="text-[10px] text-rose-600 mt-1 italic truncate max-w-xs">
+                            Reason: {req.rejectionReason}
+                          </p>
+                        )}
+                      </div>
+                    </td>
+                    <td className="hidden lg:table-cell px-4 md:px-6 py-3 md:py-4">
+                      <div className="flex flex-col">
+                        <span className="text-slate-900 font-bold text-[11px] md:text-xs">
+                          {req.requesterName}
+                        </span>
+                        <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest">
+                          {req.groupName}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-3 md:px-6 py-2.5 md:py-4 text-right">
+                      <span className="font-mono font-bold text-slate-900 text-[10px] md:text-sm">{formatCurrency(req.amount)}</span>
+                    </td>
+                    <td className="px-3 md:px-6 py-2.5 md:py-4">
+                      <div className="flex justify-center">
+                        <span className="px-1.5 py-0.5 md:px-2.5 md:py-1 rounded-full border border-rose-100 bg-rose-50 text-rose-600 text-[7.5px] md:text-[9px] font-black uppercase tracking-[0.1em] shrink-0">
+                          {req.status}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="hidden sm:table-cell px-4 md:px-6 py-3 md:py-4">
+                      <span className="text-[9px] md:text-[10px] font-mono font-bold text-slate-500">
+                        {formatDate(req.updatedAt)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setViewingReq(req);
+                          }}
+                          className="p-2 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 text-slate-400 hover:text-primary transition-all"
+                          title="View Details"
+                        >
+                          <Eye size={16} />
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopyShareLinkForReq(req);
+                          }}
+                          className="p-2 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 text-slate-400 hover:text-indigo-600 transition-all"
+                          title="Copy Shareable Link"
+                        >
+                          <Share2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </motion.tr>
+                ))}
+              </AnimatePresence>
+            </tbody>
+            {rejectedList.length > 0 && (
+              <tfoot>
+                <tr className="bg-slate-100/50 border-t border-slate-200 font-bold text-slate-800">
+                  <td className="px-6 py-4 text-xs font-black uppercase tracking-wider" colSpan={2}>
+                    Total Rejected / Cancelled Value
+                  </td>
+                  <td className="px-6 py-4 text-right font-mono text-xs text-rose-600 font-extrabold whitespace-nowrap">
+                    {formatCurrency(rejectedList.reduce((sum, r) => sum + (Number(r.amount) || 0), 0))}
+                  </td>
+                  <td colSpan={3} className="px-6 py-4 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    ({rejectedList.length} items rejected/cancelled)
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+
+          {/* Mobile Cards View for Rejected */}
+          <div className="block md:hidden divide-y divide-slate-100">
+            {rejectedItems.map((req) => {
+              return (
+                <div 
+                  key={req.id}
+                  onClick={() => setViewingReq(req)}
+                  className={cn(
+                    "p-4 hover:bg-slate-50 transition-colors cursor-pointer space-y-3 relative border-l-4",
+                    selectedIds.has(req.id) ? "bg-rose-50/50 border-l-rose-600" : "border-l-transparent hover:border-l-slate-300"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <input 
+                          type="checkbox" 
+                          className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500/20 accent-rose-600 cursor-pointer shrink-0"
+                          checked={selectedIds.has(req.id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            toggleSelect(req.id);
+                          }}
+                        />
+                        <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider">
+                          {req.id}
+                        </span>
+                        {req.flaggedForAudit && (
+                          <Flag size={11} className="text-rose-500 fill-rose-500" />
+                        )}
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                        <HighlightText text={req.title} highlight={globalSearchTerm} />
+                      </h4>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full border border-rose-100 bg-rose-50 text-rose-600 text-[8px] font-black uppercase tracking-[0.1em] shrink-0">
+                      {req.status}
+                    </span>
+                  </div>
+
+                  {req.rejectionReason && (
+                    <p className="text-[10px] text-rose-600 italic bg-rose-50/50 p-2 rounded-lg border border-rose-100">
+                      Reason: {req.rejectionReason}
+                    </p>
+                  )}
+
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-rose-50/80 border border-rose-200/50 text-rose-700 rounded-md text-[9px] font-extrabold uppercase tracking-wider w-fit">
+                        💒 <HighlightText text={req.groupName} highlight={globalSearchTerm} />
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-semibold truncate">
+                        By {req.requesterName}
+                      </span>
+                    </div>
+                    <div className="text-right flex flex-col items-end">
+                      <span className="font-mono font-black text-slate-900 text-sm">
+                        {formatCurrency(req.amount)}
+                      </span>
+                      <span className="text-[9px] text-slate-400 font-mono mt-0.5">
+                        Updated: {formatDate(req.updatedAt)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-slate-100" onClick={(e) => e.stopPropagation()}>
+                    <button 
+                      onClick={() => setViewingReq(req)}
+                      className="p-2 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-xl text-slate-600 transition-all flex items-center gap-1.5 font-bold text-[9px] uppercase tracking-wider"
+                    >
+                      <Eye size={12} />
+                      <span>Details</span>
+                    </button>
+                    <button 
+                      onClick={() => handleCopyShareLinkForReq(req)}
+                      className="p-2 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-xl text-slate-600 transition-all flex items-center gap-1.5 font-bold text-[9px] uppercase tracking-wider"
+                    >
+                      <Share2 size={12} />
+                      <span>Share</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {rejectedList.length === 0 && (
+            <div className="py-16 text-center">
+              <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3 border border-slate-100">
+                <XCircle size={20} className="text-slate-300" />
+              </div>
+              <h3 className="text-xs font-bold text-slate-600 uppercase tracking-widest">No rejected or cancelled requisitions</h3>
+              <p className="text-[11px] text-slate-400 mt-1">Rejected and cancelled items will appear here.</p>
+            </div>
+          )}
+        </div>
+        {rejectedTotalPages > 1 && (
+          <Pagination 
+            current={rejectedPage} 
+            total={rejectedTotalPages} 
+            onChange={setRejectedPage} 
+          />
+        )}
+      </div>
+
       {/* Budget Status Summaries */}
       {projectSummaries.length > 0 && (
         <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm mb-6 mt-6">
@@ -3113,7 +3395,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
       className={containerClass}
     >
       <div className={cn(
-        "px-3 sm:px-6 md:px-8 py-3.5 md:py-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between relative md:sticky md:top-0 z-20 bg-white dark:bg-slate-900 gap-2 min-w-0 max-w-full",
+        "px-3 sm:px-6 md:px-8 py-3.5 md:py-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm gap-2 min-w-0 max-w-full",
         isPage ? "rounded-t-2xl" : "rounded-t-none md:rounded-t-2xl"
       )}>
         <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
@@ -3138,16 +3420,20 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
             <p className="text-[8px] md:text-[10px] font-mono text-slate-400 uppercase tracking-widest truncate">{req.id}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button 
+        <div className="flex items-center gap-2 shrink-0 relative z-50">
+          <motion.button 
+            type="button"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: "spring", stiffness: 400, damping: 25 }}
             onClick={onClose} 
             title="Close and go back (Esc)"
-            className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-xl transition-all font-bold text-xs cursor-pointer shadow-md shadow-rose-600/20 shrink-0"
+            className="flex sticky items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-full transition-all font-bold text-xs cursor-pointer shadow-lg shadow-rose-600/20 border border-rose-500/50 backdrop-blur-md"
           >
             <X size={16} className="stroke-[2.5]" />
             <span className="hidden sm:inline">Close & Go Back</span>
             <span className="sm:hidden">Close</span>
-          </button>
+          </motion.button>
         </div>
       </div>
 
@@ -4348,7 +4634,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
     }
 
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm overflow-x-hidden overflow-y-auto">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm overflow-x-hidden overflow-y-auto">
         {mainContent}
       </div>
     );

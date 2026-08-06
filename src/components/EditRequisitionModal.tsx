@@ -9,7 +9,7 @@ import { numberToWords } from "../utils/numberUtils";
 import { formatCurrency, cn, uploadAttachmentsToLocalServer } from "../lib/utils";
 import { processFileToAttachmentStrings } from "../lib/pdfUtils";
 import { X, Loader2, DollarSign, FileText, Repeat, Users, PlusCircle, Save, Activity, Mail, Check, UserPlus, Info, Trash2, Pencil } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { RecurrenceType, Requisition, RequisitionStatus, UserRole } from "../types";
 import { ApprovalSparkline } from "./ApprovalSparkline";
 
@@ -296,7 +296,7 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
       className={containerClass}
     >
       <div className={cn(
-        "px-3 sm:px-6 md:px-8 py-3.5 md:py-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between relative md:sticky md:top-0 z-20 bg-white dark:bg-slate-900 gap-2 min-w-0 max-w-full",
+        "px-3 sm:px-6 md:px-8 py-3.5 md:py-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm gap-2 min-w-0 max-w-full",
         isPage ? "rounded-t-2xl" : "rounded-t-none md:rounded-t-2xl"
       )}>
         <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
@@ -315,17 +315,20 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
             <p className="text-[8px] md:text-[10px] font-mono text-slate-400 uppercase tracking-widest truncate">{req.id}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button 
+        <div className="flex items-center gap-2 shrink-0 relative z-50">
+          <motion.button 
             type="button"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: "spring", stiffness: 400, damping: 25 }}
             onClick={onClose} 
             title="Close and go back (Esc)"
-            className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-xl transition-all font-bold text-xs cursor-pointer shadow-md shadow-rose-600/20 shrink-0"
+            className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-full transition-all font-bold text-xs cursor-pointer shadow-lg shadow-rose-600/20 border border-rose-500/50 backdrop-blur-md"
           >
             <X size={16} className="stroke-[2.5]" />
             <span className="hidden sm:inline">Close & Go Back</span>
             <span className="sm:hidden">Close</span>
-          </button>
+          </motion.button>
         </div>
       </div>
 
@@ -865,7 +868,7 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm overflow-x-hidden overflow-y-auto">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm overflow-x-hidden overflow-y-auto">
       {mainContent}
     </div>
   );
