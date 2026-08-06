@@ -4000,7 +4000,9 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
                         const diffMs = Date.now() - new Date(comment.timestamp).getTime();
                         const canEdit = isAuthor && (diffMs / 60000 <= 15);
                         
-                        const initials = (comment.authorName || comment.authorEmail || "?").charAt(0).toUpperCase();
+                        const commentUser = users.find(u => u.id === comment.authorId);
+                        const displayName = comment.authorName || commentUser?.name || comment.authorEmail?.split('@')[0] || commentUser?.email?.split('@')[0] || "Member";
+                        const initials = displayName !== "Member" ? displayName.charAt(0).toUpperCase() : "?";
 
                         return (
                           <div 
@@ -4014,7 +4016,7 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
                               <div className="flex items-center justify-between gap-2 flex-wrap">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="font-bold text-slate-800 dark:text-slate-200 text-xs truncate">
-                                    {isAuthor ? `You (${comment.authorName || comment.authorEmail?.split('@')[0] || "Member"})` : (comment.authorName || comment.authorEmail?.split('@')[0] || "Member")}
+                                    {isAuthor ? `You (${displayName})` : displayName}
                                   </span>
                                   {comment.authorRole && (
                                     <span className={cn(
