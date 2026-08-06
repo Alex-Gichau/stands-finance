@@ -3551,14 +3551,21 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
 
               <section className="space-y-3 md:space-y-4">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-                  <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Attachments & Receipts</h4>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      Attachments & Receipts
+                    </h4>
+                    <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full text-[9px] font-bold">
+                      {normalizedAttachments.length + (req.receipts?.length || 0)}
+                    </span>
+                  </div>
                   {req.status === RequisitionStatus.DISBURSED ? (
                     <button 
                       onClick={() => setIsCameraOpen(true)}
                       disabled={isUploadingReceipt}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-750 border border-slate-200 hover:border-slate-300 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shrink-0"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shrink-0"
                     >
-                      {isUploadingReceipt ? <Loader2 size={12} className="animate-spin text-primary" /> : <Camera size={12} className="text-primary" />}
+                      {isUploadingReceipt ? <Loader2 size={12} className="animate-spin text-indigo-600" /> : <Camera size={12} className="text-indigo-600 dark:text-indigo-400" />}
                       <span>{isUploadingReceipt ? "Uploading..." : "Snap Receipt Image"}</span>
                     </button>
                   ) : (
@@ -3571,109 +3578,161 @@ export const RequisitionDetailModal: React.FC<DetailModalProps> = ({ req: initia
                     </span>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-4">
+
+                {/* Main Visual Thumbnail Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
+                   {/* Primary Snap/Attach Tile */}
                    {req.status === RequisitionStatus.DISBURSED ? (
                      <button 
                        onClick={() => setIsCameraOpen(true)}
                        disabled={isUploadingReceipt}
-                       className="w-20 h-20 md:w-24 md:h-24 bg-slate-50 border border-dashed border-slate-300 rounded-2xl hover:border-primary/40 hover:shadow-sm transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 overflow-hidden relative shadow-sm shrink-0 group"
+                       className="aspect-[4/3] sm:aspect-square w-full bg-indigo-50/40 dark:bg-indigo-950/20 border-2 border-dashed border-indigo-200 dark:border-indigo-800/60 hover:border-indigo-500 dark:hover:border-indigo-500 rounded-2xl hover:shadow-md transition-all cursor-pointer flex flex-col items-center justify-center p-3 text-center group relative overflow-hidden"
                        title="Snap Receipt using Camera"
                      >
-                       <div className="text-slate-400 group-hover:text-primary transition-colors">
-                         {isUploadingReceipt ? <Loader2 size={18} className="animate-spin text-primary" /> : <Camera size={18} />}
+                       <div className="p-3 rounded-2xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform mb-1.5 shadow-sm">
+                         {isUploadingReceipt ? <Loader2 size={20} className="animate-spin" /> : <Camera size={20} />}
                        </div>
-                       <span className="text-[7.5px] font-black text-slate-500 group-hover:text-primary transition-colors uppercase tracking-widest leading-none mt-1 text-center font-sans">
-                         {isUploadingReceipt ? "Uploading..." : "Snap Camera"}
+                       <span className="text-[9px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-wider leading-snug">
+                         {isUploadingReceipt ? "Uploading..." : "+ Add Receipt"}
+                       </span>
+                       <span className="text-[8px] font-medium text-slate-400 mt-0.5">
+                         Camera or Upload
                        </span>
                      </button>
                    ) : (
                      <div 
-                       className="w-20 h-20 md:w-24 md:h-24 bg-slate-100/60 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700/60 rounded-2xl flex flex-col items-center justify-center gap-1 p-2 text-center shrink-0 cursor-not-allowed opacity-60"
+                       className="aspect-[4/3] sm:aspect-square w-full bg-slate-50 dark:bg-slate-800/30 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl flex flex-col items-center justify-center p-3 text-center cursor-not-allowed opacity-70"
                        title="Receipt attachment requires full approval confirmation and completed disbursement"
                      >
-                       <Lock size={16} className="text-slate-400" />
-                       <span className="text-[7.5px] font-bold text-slate-400 uppercase tracking-tight leading-tight">
-                         Attach Receipt (Pending Payout)
+                       <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 mb-1">
+                         <Lock size={18} />
+                       </div>
+                       <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tight leading-tight">
+                         Receipt Locked
+                       </span>
+                       <span className="text-[7.5px] text-slate-400 mt-0.5">
+                         Pending Payout
                        </span>
                      </div>
                    )}
 
-                    {normalizedAttachments.map((attachment: any, i: number) => {
-                     let name = typeof attachment === 'string' ? attachment : (attachment?.name || 'Attachment');
-                     let url = typeof attachment === 'string' ? attachment : (attachment?.url || '');
-                     
-                     if (typeof attachment === 'string' && attachment.includes("::")) {
-                       const parts = attachment.split("::");
-                       name = parts[0];
-                       url = parts[1];
-                     } else if (typeof attachment === 'string' && (attachment.startsWith("http") || attachment.startsWith("/"))) {
-                       const parts = attachment.split("/");
-                       const last = parts[parts.length - 1];
-                       if (last && last.includes(".")) {
-                         name = last;
-                       }
-                     }
-                     
-                     url = normalizeAttachmentUrl(url);
-                     
-                     const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(name) || /\.(jpg|jpeg|png|gif|webp)$/i.test(url) || (typeof url === 'string' && (url.startsWith('data:image/') || url.startsWith('blob:')));
-                     const fileExt = name.split('.').pop()?.toUpperCase() || "DOC";
-                     const isDocx = fileExt === "DOCX" || /\.(docx)$/i.test(name) || /\.(docx)$/i.test(url);
-                     const isXlsx = fileExt === "XLSX" || /\.(xlsx)$/i.test(name) || /\.(xlsx)$/i.test(url);
-                     const isPdf = !isImage && !isDocx && !isXlsx && (fileExt === "PDF" || /\.(pdf)$/i.test(name) || /\.(pdf)$/i.test(url) || (typeof url === 'string' && url.startsWith('data:application/pdf')));
-                     return (
-                    <div 
-                      key={`doc-${i}`} 
-                      onClick={() => {
-                        setPreviewIndex(i);
-                      }}
-                      className="w-20 h-20 md:w-24 md:h-24 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl hover:border-primary/40 hover:shadow-md transition-all cursor-pointer group flex flex-col items-center justify-center overflow-hidden relative shadow-sm shrink-0"
-                      title={name}
-                    >
-                      {isImage ? (
-                        <CachedImage 
-                          src={url} 
-                          alt={name} 
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                        />
-                      ) : isPdf ? (
-                        <div className="flex flex-col items-center justify-center p-1.5 text-center w-full h-full">
-                          <div className="text-rose-500 group-hover:text-rose-400 transition-colors mb-1">
-                            <FileText size={20} />
+                   {/* Attachment Visual Cards */}
+                   {normalizedAttachments.map((attachment: any, i: number) => {
+                      let name = typeof attachment === 'string' ? attachment : (attachment?.name || 'Attachment');
+                      let url = typeof attachment === 'string' ? attachment : (attachment?.url || '');
+                      
+                      if (typeof attachment === 'string' && attachment.includes("::")) {
+                        const parts = attachment.split("::");
+                        name = parts[0];
+                        url = parts[1];
+                      } else if (typeof attachment === 'string' && (attachment.startsWith("http") || attachment.startsWith("/"))) {
+                        const parts = attachment.split("/");
+                        const last = parts[parts.length - 1];
+                        if (last && last.includes(".")) {
+                          name = last;
+                        }
+                      }
+                      
+                      url = normalizeAttachmentUrl(url);
+                      
+                      const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(name) || /\.(jpg|jpeg|png|gif|webp)$/i.test(url) || (typeof url === 'string' && (url.startsWith('data:image/') || url.startsWith('blob:')));
+                      const fileExt = name.split('.').pop()?.toUpperCase() || "DOC";
+                      const isDocx = fileExt === "DOCX" || /\.(docx)$/i.test(name) || /\.(docx)$/i.test(url);
+                      const isXlsx = fileExt === "XLSX" || /\.(xlsx)$/i.test(name) || /\.(xlsx)$/i.test(url);
+                      const isPdf = !isImage && !isDocx && !isXlsx && (fileExt === "PDF" || /\.(pdf)$/i.test(name) || /\.(pdf)$/i.test(url) || (typeof url === 'string' && url.startsWith('data:application/pdf')));
+
+                      return (
+                        <div 
+                          key={`doc-${i}`} 
+                          onClick={() => setPreviewIndex(i)}
+                          className="aspect-[4/3] sm:aspect-square w-full bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 rounded-2xl hover:border-indigo-500/50 dark:hover:border-indigo-400/50 hover:shadow-lg transition-all cursor-pointer group flex flex-col justify-between overflow-hidden relative shadow-sm"
+                          title={name}
+                        >
+                          {/* Card Content Header / Media */}
+                          {isImage ? (
+                            <CachedImage 
+                              src={url} 
+                              alt={name} 
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
+                          ) : isPdf ? (
+                            <div className="flex flex-col items-center justify-center p-3 text-center w-full h-full bg-gradient-to-b from-rose-50/80 to-rose-100/30 dark:from-rose-950/30 dark:to-slate-900">
+                              <div className="w-10 h-10 rounded-2xl bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400 flex items-center justify-center mb-1 shadow-sm group-hover:scale-110 transition-transform">
+                                <FileText size={20} />
+                              </div>
+                              <span className="text-[9px] font-mono font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest">
+                                PDF DOCUMENT
+                              </span>
+                            </div>
+                          ) : isXlsx ? (
+                            <div className="flex flex-col items-center justify-center p-3 text-center w-full h-full bg-gradient-to-b from-emerald-50/80 to-emerald-100/30 dark:from-emerald-950/30 dark:to-slate-900">
+                              <div className="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-1 shadow-sm group-hover:scale-110 transition-transform">
+                                <FileText size={20} />
+                              </div>
+                              <span className="text-[9px] font-mono font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
+                                EXCEL SHEET
+                              </span>
+                            </div>
+                          ) : isDocx ? (
+                            <div className="flex flex-col items-center justify-center p-3 text-center w-full h-full bg-gradient-to-b from-blue-50/80 to-blue-100/30 dark:from-blue-950/30 dark:to-slate-900">
+                              <div className="w-10 h-10 rounded-2xl bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-1 shadow-sm group-hover:scale-110 transition-transform">
+                                <FileText size={20} />
+                              </div>
+                              <span className="text-[9px] font-mono font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">
+                                WORD DOC
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center p-3 text-center w-full h-full bg-gradient-to-b from-slate-50 to-slate-100/50 dark:from-slate-800 dark:to-slate-900">
+                              <div className="w-10 h-10 rounded-2xl bg-slate-200/80 dark:bg-slate-700 text-slate-500 dark:text-slate-300 flex items-center justify-center mb-1 shadow-sm group-hover:scale-110 transition-transform">
+                                <FileText size={20} />
+                              </div>
+                              <span className="text-[9px] font-mono font-black text-slate-600 dark:text-slate-300 uppercase tracking-widest">
+                                {fileExt}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* File Format Badge */}
+                          <div className="absolute top-2 left-2 z-10">
+                            <span className="px-2 py-0.5 bg-slate-900/80 backdrop-blur-md text-white text-[8px] font-black uppercase tracking-wider rounded-lg border border-white/10 shadow-sm">
+                              {isImage ? "IMAGE" : fileExt}
+                            </span>
                           </div>
-                          <span className="text-[7.5px] font-black text-rose-500 dark:text-rose-400 truncate w-full px-1.5 uppercase tracking-wider font-mono">
-                            PDF
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center p-1.5 text-center w-full h-full">
-                          <div className="text-slate-400 dark:text-slate-500 group-hover:text-primary transition-colors mb-1">
-                            <FileText size={20} />
+
+                          {/* Hover Overlay */}
+                          <div className="absolute inset-0 bg-slate-950/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 backdrop-blur-[2px]">
+                            <span className="p-2.5 bg-white text-slate-900 rounded-xl shadow-lg hover:bg-slate-100 transition-transform active:scale-95 flex items-center gap-1.5 text-[10px] font-bold">
+                              <Eye size={14} />
+                              <span>{isPdf ? "Open Document" : "Preview"}</span>
+                            </span>
                           </div>
-                          <span className="text-[7.5px] font-black text-slate-500 dark:text-slate-400 truncate w-full px-1.5 uppercase tracking-wider font-mono">
-                            {fileExt === "PDF" || fileExt === "XLSX" || fileExt === "DOCX" ? fileExt : "DOCUMENT"}
-                          </span>
+
+                          {/* Bottom Title Bar */}
+                          <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-slate-950/80 via-slate-950/40 to-transparent">
+                            <div className="text-[9px] font-bold text-white truncate drop-shadow-sm">
+                              {name}
+                            </div>
+                          </div>
                         </div>
-                      )}
-                      <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/20 transition-all flex items-center justify-center">
-                        <span className="text-[7.5px] font-black tracking-widest uppercase bg-white/95 dark:bg-slate-900/90 text-slate-800 dark:text-slate-100 px-1.5 py-1 rounded-xl shadow border border-slate-100 dark:border-slate-800 opacity-0 group-hover:opacity-100 transition-opacity transform translateY(15px) group-hover:translateY(0)">
-                          {isPdf ? "Open" : "View"}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-                  {req.receipts && req.receipts.length > 0 && (
-                    <div className="w-full mt-2">
-                      <ReceiptGallery receipts={req.receipts} requisitionTitle={req.title} groupName={req.groupName} />
-                    </div>
-                  )}
-                  {normalizedAttachments.length === 0 && (!req.receipts || req.receipts.length === 0) && (
-                    <div className="w-full py-8 flex flex-col items-center justify-center text-slate-300 border border-dashed border-slate-200 rounded-3xl">
-                      <p className="text-[10px] font-black uppercase tracking-widest">No Attachments</p>
-                    </div>
-                  )}
+                      );
+                   })}
                 </div>
+
+                {/* Additional Attached Receipts Section */}
+                {req.receipts && req.receipts.length > 0 && (
+                  <div className="w-full pt-3">
+                    <ReceiptGallery receipts={req.receipts} requisitionTitle={req.title} groupName={req.groupName} />
+                  </div>
+                )}
+
+                {/* Empty State */}
+                {normalizedAttachments.length === 0 && (!req.receipts || req.receipts.length === 0) && req.status !== RequisitionStatus.DISBURSED && (
+                  <div className="w-full py-8 flex flex-col items-center justify-center text-slate-300 border border-dashed border-slate-200 dark:border-slate-800 rounded-3xl gap-1">
+                    <FileText size={24} className="text-slate-300 dark:text-slate-700" />
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">No Attachments Provided</p>
+                  </div>
+                )}
               </section>
 
               {/* Discussion & Feedback Thread */}

@@ -107,43 +107,60 @@ export const ReceiptGallery: React.FC<ReceiptGalleryProps> = ({ receipts, requis
         </label>
       </div>
       
-      <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
         {receipts.map((receipt, index) => {
           const normalizedReceipt = normalizeAttachmentUrl(receipt);
           const fileName = getAttachmentFileName(receipt);
           return (
             <motion.div
               key={`receipt-item-${index}`}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => downloadImage(normalizedReceipt, getDownloadName(index))}
-              className="relative flex-shrink-0 w-32 h-44 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 cursor-pointer group shadow-sm"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => openImage(normalizedReceipt)}
+              className="relative aspect-[4/3] sm:aspect-square w-full bg-slate-100 dark:bg-slate-800/80 rounded-2xl overflow-hidden border border-slate-200/80 dark:border-slate-700/80 cursor-pointer group shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex flex-col justify-between"
             >
               <CachedImage 
                 src={normalizedReceipt} 
                 alt={fileName || `Receipt ${index + 1}`} 
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               />
-              <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3">
-                <Download size={24} className="text-white" />
-                <span className="text-[8px] font-black text-white uppercase tracking-widest">Download</span>
-              </div>
               
-              {/* Overlay button for expansion instead of whole card click */}
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openImage(normalizedReceipt);
-                }}
-                className="absolute top-2 right-2 p-2 bg-white/20 backdrop-blur-md rounded-full text-white opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all hover:bg-white/40"
-                title="Expand View"
-              >
-                <Maximize2 size={14} />
-              </button>
+              {/* Type Badge */}
+              <div className="absolute top-2 left-2 z-10">
+                <span className="px-2 py-0.5 bg-slate-900/80 backdrop-blur-md text-white text-[8px] font-black uppercase tracking-wider rounded-lg border border-white/10 shadow-sm">
+                  RECEIPT #{index + 1}
+                </span>
+              </div>
 
-              <div className="absolute bottom-2 left-2 right-2">
-                <div className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg border border-white/50 text-[8px] font-black text-slate-900 truncate uppercase tracking-tighter shadow-sm">
-                  Receipt #{index + 1}
+              {/* Action Buttons Overlay */}
+              <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-[2px]">
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openImage(normalizedReceipt);
+                  }}
+                  className="p-2.5 bg-white text-slate-900 rounded-xl shadow-lg hover:bg-slate-100 transition-transform active:scale-95 flex items-center gap-1 text-[10px] font-bold"
+                  title="Expand & Inspect"
+                >
+                  <Maximize2 size={14} />
+                  <span>View</span>
+                </button>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    downloadImage(normalizedReceipt, getDownloadName(index));
+                  }}
+                  className="p-2.5 bg-slate-900/90 text-white border border-white/20 rounded-xl shadow-lg hover:bg-slate-800 transition-transform active:scale-95 flex items-center gap-1 text-[10px] font-bold"
+                  title="Download File"
+                >
+                  <Download size={14} />
+                </button>
+              </div>
+
+              {/* Bottom Title Bar */}
+              <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-slate-950/80 via-slate-950/40 to-transparent">
+                <div className="text-[9px] font-bold text-white truncate drop-shadow-sm">
+                  {fileName || `Receipt_${index + 1}.png`}
                 </div>
               </div>
             </motion.div>
