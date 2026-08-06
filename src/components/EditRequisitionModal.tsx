@@ -8,7 +8,7 @@ import { useRequisitions } from "../contexts/RequisitionContext";
 import { numberToWords } from "../utils/numberUtils";
 import { formatCurrency, cn, uploadAttachmentsToLocalServer } from "../lib/utils";
 import { processFileToAttachmentStrings } from "../lib/pdfUtils";
-import { X, Loader2, DollarSign, FileText, Repeat, Users, PlusCircle, Save, Activity, Mail, Check, UserPlus, Info, Trash2 } from "lucide-react";
+import { X, Loader2, DollarSign, FileText, Repeat, Users, PlusCircle, Save, Activity, Mail, Check, UserPlus, Info, Trash2, Pencil } from "lucide-react";
 import { motion } from "motion/react";
 import { RecurrenceType, Requisition, RequisitionStatus, UserRole } from "../types";
 import { ApprovalSparkline } from "./ApprovalSparkline";
@@ -16,10 +16,21 @@ import { ApprovalSparkline } from "./ApprovalSparkline";
 interface EditRequisitionModalProps {
   req: Requisition;
   onClose: () => void;
+  isPage?: boolean;
 }
 
-export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req, onClose }) => {
+export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req, onClose, isPage = true }) => {
   const { updateRequisition, projects, churchGroups, addChurchGroup, currentUser, triggerToast, users } = useRequisitions();
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
   
   const [title, setTitle] = useState(req.title);
   const [description, setDescription] = useState(req.description);
@@ -233,50 +244,92 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
     }
   };
 
+  const containerClass = isPage
+    ? "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-full shadow-sm flex flex-col min-h-[600px] select-text overflow-hidden"
+    : "bg-white dark:bg-slate-900 rounded-none md:rounded-2xl w-full max-w-4xl h-full md:h-auto md:max-h-[90vh] shadow-2xl overflow-hidden border-t md:border border-slate-200 dark:border-slate-800 flex flex-col max-w-full";
+
   if (req.status === RequisitionStatus.REJECTED) {
+    const rejectedContent = (
+      <motion.div 
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-2xl p-6 border border-slate-200 dark:border-slate-800 text-center space-y-4 mx-auto"
+      >
+        <div className="w-12 h-12 bg-rose-50 dark:bg-rose-950/50 border border-rose-100 dark:border-rose-900/50 rounded-full flex items-center justify-center mx-auto text-rose-600 dark:text-rose-400">
+          <X size={24} />
+        </div>
+        <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Access Restricted</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+          Rejected requisitions cannot be edited. Please submit a new requisition instead.
+        </p>
+        <button 
+          type="button" 
+          onClick={onClose}
+          className="w-full py-2.5 bg-slate-950 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white font-black text-[10px] uppercase tracking-wider rounded-xl transition-colors cursor-pointer"
+        >
+          Go Back
+        </button>
+      </motion.div>
+    );
+
+    if (isPage) {
+      return (
+        <div className="p-6 flex items-center justify-center min-h-[500px]">
+          {rejectedContent}
+        </div>
+      );
+    }
+
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-        <motion.div 
-          initial={{ scale: 0.95, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.95, opacity: 0 }}
-          className="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6 border border-slate-200 text-center space-y-4"
-        >
-          <div className="w-12 h-12 bg-rose-50 border border-rose-100 rounded-full flex items-center justify-center mx-auto text-rose-600">
-            <X size={24} />
-          </div>
-          <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Access Restricted</h3>
-          <p className="text-xs text-slate-500 leading-relaxed">
-            Rejected requisitions cannot be edited. Please submit a new requisition instead.
-          </p>
-          <button 
-            type="button" 
-            onClick={onClose}
-            className="w-full py-2.5 bg-slate-950 hover:bg-slate-800 text-white font-black text-[10px] uppercase tracking-wider rounded-xl transition-colors cursor-pointer"
-          >
-            Go Back
-          </button>
-        </motion.div>
+        {rejectedContent}
       </div>
     );
   }
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-sm">
-      <motion.div 
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 20, opacity: 0 }}
-        className="bg-white rounded-none md:rounded-2xl w-full max-w-3xl h-full md:h-auto md:max-h-[90vh] shadow-2xl overflow-hidden border-t md:border border-slate-200 flex flex-col"
-      >
-        <div className="px-6 py-4 border-b border-slate-200 bg-white flex items-center justify-between sticky top-0 z-10">
-          <h3 className="text-sm font-black text-slate-900 uppercase tracking-[0.2em]">Administrative Editor</h3>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-            <X size={20} className="text-slate-500" />
+  const mainContent = (
+    <motion.div 
+      initial={{ y: 15, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: 15, opacity: 0 }}
+      className={containerClass}
+    >
+      <div className={cn(
+        "px-3 sm:px-6 md:px-8 py-3.5 md:py-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between relative md:sticky md:top-0 z-20 bg-white dark:bg-slate-900 gap-2 min-w-0 max-w-full",
+        isPage ? "rounded-t-2xl" : "rounded-t-none md:rounded-t-2xl"
+      )}>
+        <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+          <span className="p-1.5 md:p-2 rounded-xl border shrink-0 bg-primary/5 text-primary border-primary/10 dark:bg-primary/10 dark:border-primary/20">
+            <Pencil size={18} className="md:w-5 md:h-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-wrap sm:flex-nowrap">
+              <h3 className="text-[12px] md:text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-[0.05em] sm:tracking-[0.1em] truncate min-w-0 flex-1">
+                Edit Requisition: {title || req.title}
+              </h3>
+              <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-[9px] font-black uppercase tracking-wider shrink-0">
+                {req.status}
+              </span>
+            </div>
+            <p className="text-[8px] md:text-[10px] font-mono text-slate-400 uppercase tracking-widest truncate">{req.id}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button 
+            type="button"
+            onClick={onClose} 
+            title="Close and go back (Esc)"
+            className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-xl transition-all font-bold text-xs cursor-pointer shadow-md shadow-rose-600/20 shrink-0"
+          >
+            <X size={16} className="stroke-[2.5]" />
+            <span className="hidden sm:inline">Close & Go Back</span>
+            <span className="sm:hidden">Close</span>
           </button>
         </div>
+      </div>
 
-        <form onSubmit={handleSubmit} className="overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 flex-1">
+      <form onSubmit={handleSubmit} className="overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 flex-1">
           {Array.isArray(req.approvalHistory) && req.approvalHistory.length > 0 && (
             <div className="bg-slate-50 border border-slate-150 rounded-2xl p-4 space-y-2">
               <div className="flex items-center gap-2 mb-2">
@@ -745,70 +798,84 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({ req,
           )}
 
           {/* Action buttons */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-            <button
-              type="button"
-              onClick={() => {
-                const subject = `Requisition: ${title}`;
-                const body = `Requisition Details:\n\nTitle: ${title}\nDescription: ${description}\nAmount: KES ${amount}`;
-                window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-              }}
-              className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all cursor-pointer"
-            >
-              Share Email
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const text = `Requisition: ${title}\nDescription: ${description}\nAmount: KES ${amount}`;
-                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
-              }}
-              className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all cursor-pointer"
-            >
-              Share WhatsApp
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all cursor-pointer"
-            >
-              Cancel Edit
-            </button>
-            {req.status === RequisitionStatus.DRAFT ? (
-              <>
+          <div className="px-3 sm:px-6 md:px-8 py-3 md:py-5 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col sm:flex-row gap-3 md:gap-4 justify-between items-center max-w-full overflow-hidden">
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-start overflow-x-auto max-w-full pb-1 sm:pb-0 scrollbar-none shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const subject = `Requisition: ${title}`;
+                  const body = `Requisition Details:\n\nTitle: ${title}\nDescription: ${description}\nAmount: KES ${amount}`;
+                  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                }}
+                className="px-3 sm:px-4 py-2 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap shrink-0"
+              >
+                Share Email
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const text = `Requisition: ${title}\nDescription: ${description}\nAmount: KES ${amount}`;
+                  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+                }}
+                className="px-3 sm:px-4 py-2 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap shrink-0"
+              >
+                Share WhatsApp
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end flex-wrap sm:flex-nowrap">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 sm:flex-none px-4 sm:px-6 py-2.5 bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-xl text-[10px] font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition-all cursor-pointer uppercase tracking-widest"
+              >
+                Cancel Edit
+              </button>
+              {req.status === RequisitionStatus.DRAFT ? (
+                <>
+                  <button
+                    type="submit"
+                    onClick={() => setSubmitAction("save")}
+                    disabled={saving || !title.trim() || !amount.trim()}
+                    className="flex-1 sm:flex-none px-4 sm:px-6 py-2.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    {saving && submitAction === "save" ? <Loader2 size={12} className="animate-spin" /> : null}
+                    <span>Apply Changes</span>
+                  </button>
+                  <button
+                    type="submit"
+                    onClick={() => setSubmitAction("submit")}
+                    disabled={saving || !title.trim() || !amount.trim()}
+                    className="flex-1 sm:flex-none px-4 sm:px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-100 dark:shadow-none transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    {saving && submitAction === "submit" ? <Loader2 size={12} className="animate-spin" /> : null}
+                    <span>Submit Requisition</span>
+                  </button>
+                </>
+              ) : (
                 <button
                   type="submit"
                   onClick={() => setSubmitAction("save")}
                   disabled={saving || !title.trim() || !amount.trim()}
-                  className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer flex items-center gap-2"
+                  className="flex-1 sm:flex-none px-6 py-2.5 bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white text-white dark:text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-slate-200 dark:shadow-none transition-all cursor-pointer flex items-center justify-center gap-2"
                 >
-                  {saving && submitAction === "save" ? <Loader2 size={12} className="animate-spin" /> : null}
+                  {saving ? <Loader2 size={12} className="animate-spin" /> : null}
                   <span>Apply Changes</span>
                 </button>
-                <button
-                  type="submit"
-                  onClick={() => setSubmitAction("submit")}
-                  disabled={saving || !title.trim() || !amount.trim()}
-                  className="px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-100 dark:shadow-none transition-all cursor-pointer flex items-center gap-2"
-                >
-                  {saving && submitAction === "submit" ? <Loader2 size={12} className="animate-spin" /> : null}
-                  <span>Submit Requisition</span>
-                </button>
-              </>
-            ) : (
-              <button
-                type="submit"
-                onClick={() => setSubmitAction("save")}
-                disabled={saving || !title.trim() || !amount.trim()}
-                className="px-8 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-slate-200 transition-all cursor-pointer flex items-center gap-2"
-              >
-                {saving ? <Loader2 size={12} className="animate-spin" /> : null}
-                <span>Apply Changes</span>
-              </button>
-            )}
+              )}
+            </div>
           </div>
         </form>
-      </motion.div>
+    </motion.div>
+  );
+
+  if (isPage) {
+    return mainContent;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm overflow-x-hidden overflow-y-auto">
+      {mainContent}
     </div>
   );
 };

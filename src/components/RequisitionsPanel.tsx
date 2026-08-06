@@ -67,13 +67,8 @@ const AttachmentViewer = ({ uri, fileName }: { uri: string; fileName: string }) 
   const [hasError, setHasError] = useState(false);
   const [textContent, setTextContent] = useState<string | null>(null);
   const [isLoadingText, setIsLoadingText] = useState(false);
-
-  useEffect(() => {
-    setZoom(1);
-    setRotation(0);
-    setHasError(false);
-    setTextContent(null);
-  }, [uri]);
+  const [pdfDataUri, setPdfDataUri] = useState<string>("");
+  const [isLoadingPdf, setIsLoadingPdf] = useState<boolean>(false);
 
   const cleanUri = uri?.trim() || "";
   const lowerName = (fileName || cleanUri).toLowerCase();
@@ -86,7 +81,8 @@ const AttachmentViewer = ({ uri, fileName }: { uri: string; fileName: string }) 
   const isPdf = 
     cleanUri.startsWith("data:application/pdf") ||
     /\.pdf(\?.*)?$/i.test(lowerName) ||
-    /\.pdf(\?.*)?$/i.test(cleanUri.toLowerCase());
+    /\.pdf(\?.*)?$/i.test(cleanUri.toLowerCase()) ||
+    cleanUri.includes("/uploads/") || cleanUri.startsWith("uploads/");
 
   const isText = 
     cleanUri.startsWith("data:text/") ||
@@ -96,6 +92,47 @@ const AttachmentViewer = ({ uri, fileName }: { uri: string; fileName: string }) 
   const isAudioVideo = 
     cleanUri.startsWith("data:audio/") || cleanUri.startsWith("data:video/") ||
     /\.(mp3|wav|ogg|mp4|webm|mov)(\?.*)?$/i.test(lowerName);
+
+  useEffect(() => {
+    setZoom(1);
+    setRotation(0);
+    setHasError(false);
+    setTextContent(null);
+    setPdfDataUri("");
+
+    if (isPdf && cleanUri) {
+      if (cleanUri.startsWith("data:application/pdf")) {
+        setPdfDataUri(cleanUri);
+      } else {
+        setIsLoadingPdf(true);
+        fetch(cleanUri)
+          .then((res) => {
+            if (!res.ok) throw new Error("Failed to fetch PDF");
+            return res.blob();
+          })
+          .then((blob) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              let resStr = reader.result as string;
+              if (resStr && !resStr.startsWith("data:application/pdf")) {
+                resStr = resStr.replace(/^data:[^;]+;/, "data:application/pdf;");
+              }
+              setPdfDataUri(resStr || cleanUri);
+              setIsLoadingPdf(false);
+            };
+            reader.onerror = () => {
+              setPdfDataUri(cleanUri);
+              setIsLoadingPdf(false);
+            };
+            reader.readAsDataURL(blob);
+          })
+          .catch(() => {
+            setPdfDataUri(cleanUri);
+            setIsLoadingPdf(false);
+          });
+      }
+    }
+  }, [uri, isPdf, cleanUri]);
 
   useEffect(() => {
     if (isText && cleanUri && !cleanUri.startsWith("data:")) {
@@ -209,18 +246,22 @@ const AttachmentViewer = ({ uri, fileName }: { uri: string; fileName: string }) 
   }
 
   if (isPdf) {
+    const activeUri = pdfDataUri || cleanUri;
     return (
       <div className="flex flex-col h-full w-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden relative min-h-[500px]">
+        {isLoadingPdf && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm gap-2 text-slate-300">
+            <Loader2 size={24} className="animate-spin text-indigo-400" />
+            <span className="text-xs font-bold uppercase tracking-wider">Loading PDF (base64)...</span>
+          </div>
+        )}
         <div className="absolute top-2 right-2 z-20 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md p-1.5 rounded-xl border border-slate-800 shadow-xl">
           <button
+            type="button"
             onClick={() => {
-              if (cleanUri.startsWith("data:")) {
-                const win = window.open();
-                if (win) {
-                  win.document.write(`<iframe src="${cleanUri}" style="border:0; top:0; left:0; bottom:0; right:0; width:100%; height:100%;" allowfullscreen></iframe>`);
-                }
-              } else {
-                window.open(cleanUri, "_blank");
+              const win = window.open();
+              if (win) {
+                win.document.write(`<iframe src="${activeUri}" style="border:0; top:0; left:0; bottom:0; right:0; width:100%; height:100%;" allowfullscreen></iframe>`);
               }
             }}
             className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow"
@@ -228,7 +269,7 @@ const AttachmentViewer = ({ uri, fileName }: { uri: string; fileName: string }) 
             <ExternalLink size={13} /> Open PDF
           </button>
           <a
-            href={cleanUri}
+            href={activeUri}
             download={fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`}
             className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer border border-slate-700"
           >
@@ -236,17 +277,17 @@ const AttachmentViewer = ({ uri, fileName }: { uri: string; fileName: string }) 
           </a>
         </div>
         <object
-          data={cleanUri}
+          data={activeUri}
           type="application/pdf"
           className="w-full h-full min-h-[500px] border-none bg-slate-900"
         >
           <embed
-            src={cleanUri}
+            src={activeUri}
             type="application/pdf"
             className="w-full h-full min-h-[500px] border-none bg-slate-900"
           />
           <iframe
-            src={`${cleanUri}#toolbar=1`}
+            src={`${activeUri}#toolbar=1`}
             title={fileName}
             className="w-full h-full min-h-[500px] border-none bg-slate-900"
             onError={() => setHasError(true)}
@@ -1183,6 +1224,16 @@ export const RequisitionsPanel: React.FC = () => {
           setEditingReq(viewingReq);
           setViewingReq(null);
         }}
+        isPage={true}
+      />
+    );
+  }
+
+  if (editingReq) {
+    return (
+      <EditRequisitionModal 
+        req={editingReq} 
+        onClose={() => setEditingReq(null)} 
         isPage={true}
       />
     );
