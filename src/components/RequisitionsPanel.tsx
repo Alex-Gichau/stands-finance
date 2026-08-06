@@ -57,9 +57,232 @@ import { Info, HardDrive, Mail, UserPlus } from "lucide-react";
 import { useRequisitions, getActiveFiscalYear, safeNormalizeAttachments } from "../contexts/RequisitionContext";
 import { RequisitionStatus, UserRole, Requisition } from "../types";
 import { formatCurrency, formatDate, cn, getDaysSinceSubmission, formatRequisitionAge, isFinalStage, normalizeAttachmentUrl, getAttachmentFileName, getAbsoluteAttachmentUrl, handleImageError } from "../lib/utils";
-import DocViewer, { DocViewerRenderers } from "@cyntler/react-doc-viewer";
-import "@cyntler/react-doc-viewer/dist/index.css";
 import { motion, AnimatePresence } from "motion/react";
+
+// Robust, zero-crash AttachmentViewer replacing external DocViewer
+const AttachmentViewer = ({ uri, fileName }: { uri: string; fileName: string }) => {
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [hasError, setHasError] = useState(false);
+  const [textContent, setTextContent] = useState<string | null>(null);
+  const [isLoadingText, setIsLoadingText] = useState(false);
+
+  useEffect(() => {
+    setZoom(1);
+    setRotation(0);
+    setHasError(false);
+    setTextContent(null);
+  }, [uri]);
+
+  const cleanUri = uri?.trim() || "";
+  const lowerName = (fileName || cleanUri).toLowerCase();
+
+  const isImage = 
+    cleanUri.startsWith("data:image/") ||
+    /\.(png|jpe?g|gif|webp|svg|bmp|ico)(\?.*)?$/i.test(lowerName) ||
+    /\.(png|jpe?g|gif|webp|svg|bmp|ico)(\?.*)?$/i.test(cleanUri.toLowerCase());
+
+  const isPdf = 
+    cleanUri.startsWith("data:application/pdf") ||
+    /\.pdf(\?.*)?$/i.test(lowerName) ||
+    /\.pdf(\?.*)?$/i.test(cleanUri.toLowerCase());
+
+  const isText = 
+    cleanUri.startsWith("data:text/") ||
+    /\.(txt|csv|json|log|md|xml)(\?.*)?$/i.test(lowerName) ||
+    /\.(txt|csv|json|log|md|xml)(\?.*)?$/i.test(cleanUri.toLowerCase());
+
+  const isAudioVideo = 
+    cleanUri.startsWith("data:audio/") || cleanUri.startsWith("data:video/") ||
+    /\.(mp3|wav|ogg|mp4|webm|mov)(\?.*)?$/i.test(lowerName);
+
+  useEffect(() => {
+    if (isText && cleanUri && !cleanUri.startsWith("data:")) {
+      setIsLoadingText(true);
+      fetch(cleanUri)
+        .then((res) => {
+          if (!res.ok) throw new Error("Failed to load file text");
+          return res.text();
+        })
+        .then((text) => setTextContent(text))
+        .catch(() => setHasError(true))
+        .finally(() => setIsLoadingText(false));
+    } else if (isText && cleanUri.startsWith("data:")) {
+      try {
+        const parts = cleanUri.split(",");
+        if (parts[1]) {
+          const decoded = window.atob(parts[1]);
+          setTextContent(decoded);
+        }
+      } catch (e) {
+        setHasError(true);
+      }
+    }
+  }, [isText, cleanUri]);
+
+  if (hasError) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 text-center h-full min-h-[350px] bg-slate-900/80 rounded-2xl border border-slate-800">
+        <div className="w-16 h-16 bg-rose-500/10 text-rose-400 rounded-2xl flex items-center justify-center mb-4 border border-rose-500/20">
+          <AlertTriangle size={32} />
+        </div>
+        <h4 className="text-base font-bold text-slate-100 mb-1">Preview Unavailable</h4>
+        <p className="text-xs text-slate-400 max-w-sm mb-6">
+          The file could not be displayed directly in the preview. You can open it in a new tab or download it to view.
+        </p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => window.open(cleanUri, "_blank")}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-indigo-950"
+          >
+            <ExternalLink size={14} /> Open in New Tab
+          </button>
+          <a
+            href={cleanUri}
+            download={fileName}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border border-slate-700"
+          >
+            <Download size={14} /> Download File
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  if (isImage) {
+    return (
+      <div className="flex flex-col h-full w-full relative overflow-hidden bg-slate-950 rounded-2xl border border-slate-800">
+        <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 bg-slate-900/90 backdrop-blur-md p-1.5 rounded-xl border border-slate-800 shadow-xl">
+          <button
+            onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}
+            className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            title="Zoom Out"
+          >
+            <ZoomOut size={16} />
+          </button>
+          <span className="text-[11px] font-mono font-bold text-slate-300 px-1 min-w-[42px] text-center select-none">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button
+            onClick={() => setZoom((z) => Math.min(4, z + 0.25))}
+            className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            title="Zoom In"
+          >
+            <ZoomIn size={16} />
+          </button>
+          <div className="w-px h-4 bg-slate-800 my-auto mx-0.5" />
+          <button
+            onClick={() => setRotation((r) => (r + 90) % 360)}
+            className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            title="Rotate Clockwise"
+          >
+            <Repeat size={16} />
+          </button>
+          <button
+            onClick={() => { setZoom(1); setRotation(0); }}
+            className="px-2 py-1 text-[10px] font-bold text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer font-mono"
+            title="Reset View"
+          >
+            1:1
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-auto flex items-center justify-center p-6 min-h-[400px]">
+          <img
+            src={cleanUri}
+            alt={fileName}
+            referrerPolicy="no-referrer"
+            onError={() => setHasError(true)}
+            style={{
+              transform: `scale(${zoom}) rotate(${rotation}deg)`,
+              transition: "transform 0.2s ease-out",
+              maxHeight: zoom === 1 ? "80vh" : "none",
+              maxWidth: zoom === 1 ? "100%" : "none",
+              objectFit: "contain",
+            }}
+            className="rounded-lg shadow-2xl select-none"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (isPdf) {
+    return (
+      <div className="flex flex-col h-full w-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden relative min-h-[500px]">
+        <iframe
+          src={`${cleanUri}#toolbar=1`}
+          title={fileName}
+          className="w-full h-full min-h-[500px] border-none bg-slate-900"
+          onError={() => setHasError(true)}
+        />
+      </div>
+    );
+  }
+
+  if (isText) {
+    return (
+      <div className="flex flex-col h-full w-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden p-4">
+        {isLoadingText ? (
+          <div className="flex items-center justify-center h-full min-h-[300px] text-slate-400 gap-2">
+            <Loader2 size={20} className="animate-spin text-indigo-400" />
+            <span className="text-xs">Loading document text...</span>
+          </div>
+        ) : (
+          <pre className="w-full h-full min-h-[400px] overflow-auto p-4 bg-slate-900 rounded-xl font-mono text-xs text-slate-200 whitespace-pre-wrap break-words leading-relaxed border border-slate-800/80">
+            {textContent || "No text content available."}
+          </pre>
+        )}
+      </div>
+    );
+  }
+
+  if (isAudioVideo) {
+    const isVid = cleanUri.startsWith("data:video/") || /\.(mp4|webm|mov)(\?.*)?$/i.test(lowerName);
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[400px] w-full bg-slate-950 rounded-2xl border border-slate-800 p-6">
+        {isVid ? (
+          <video src={cleanUri} controls className="max-h-[70vh] max-w-full rounded-xl border border-slate-800 shadow-2xl" />
+        ) : (
+          <div className="w-full max-w-md p-6 bg-slate-900 rounded-2xl border border-slate-800 text-center space-y-4">
+            <div className="w-16 h-16 bg-indigo-500/10 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto border border-indigo-500/20">
+              <Activity size={32} />
+            </div>
+            <p className="text-sm font-bold text-slate-200 truncate">{fileName}</p>
+            <audio src={cleanUri} controls className="w-full mt-2" />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center p-8 text-center h-full min-h-[400px] bg-slate-900/90 rounded-2xl border border-slate-800">
+      <div className="w-20 h-20 bg-indigo-500/10 text-indigo-400 rounded-3xl flex items-center justify-center mb-5 border border-indigo-500/20 shadow-xl">
+        <FileText size={40} />
+      </div>
+      <h4 className="text-lg font-extrabold text-slate-100 mb-1 max-w-md truncate">{fileName}</h4>
+      <p className="text-xs text-slate-400 max-w-sm mb-6">
+        This document type can be viewed by downloading or opening directly in a new tab.
+      </p>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => window.open(cleanUri, "_blank")}
+          className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-indigo-950"
+        >
+          <ExternalLink size={15} /> Open in New Tab
+        </button>
+        <a
+          href={cleanUri}
+          download={fileName}
+          className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border border-slate-700"
+        >
+          <Download size={15} /> Download Document
+        </a>
+      </div>
+    </div>
+  );
+};
 import { printRequisitions, downloadRequisitionsHtml, downloadRequisitionsCsv, downloadRequisitionsPdf, printRequisitionVoucher, printRequisitionReceipt } from "../utils/exportUtils";
 import { NewRequisitionForm } from "./NewRequisitionForm";
 import { ReceiptTemplateGenerator } from "./ReceiptTemplateGenerator";
@@ -286,30 +509,11 @@ const DocumentPreviewModal = ({
               </div>
             )}
 
-            {/* react-doc-viewer container */}
+            {/* Attachment preview container */}
             <div className="flex-1 w-full h-full rounded-2xl overflow-hidden border border-slate-800 bg-slate-900/90 relative flex flex-col">
-              <DocViewer
-                documents={docs}
-                activeDocument={docs[activeDocIndex]}
-                onDocumentChange={(doc) => {
-                  const idx = docs.findIndex(d => d.uri === doc.uri);
-                  if (idx !== -1) setActiveDocIndex(idx);
-                }}
-                pluginRenderers={DocViewerRenderers}
-                config={{
-                  header: {
-                    disableHeader: false,
-                    disableFileName: false,
-                    retainURLParams: false,
-                  },
-                  csvDelimiter: ",",
-                  pdfZoom: {
-                    defaultZoom: 1.0,
-                    zoomJump: 0.1,
-                  },
-                  pdfVerticalScrollByDefault: true,
-                }}
-                style={{ width: "100%", height: "100%", minHeight: "450px" }}
+              <AttachmentViewer
+                uri={currentDoc?.uri || ""}
+                fileName={currentDoc?.fileName || "Attachment"}
               />
             </div>
           </div>
