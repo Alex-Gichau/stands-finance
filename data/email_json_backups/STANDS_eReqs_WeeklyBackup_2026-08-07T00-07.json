@@ -1,0 +1,251 @@
+{
+  "timestamp": "2026-08-07T00:07:17.524Z",
+  "targetAccount": "geeshau.standsmedia@gmail.com",
+  "version": "4.2.0",
+  "schedulePolicy": "Weekly End of Week (Friday 04:00 AM)",
+  "systemSettings": [],
+  "users": [],
+  "requisitions": [
+    {
+      "id": "req_2026_001",
+      "project_id": "p_praise_01",
+      "title": "Digital Audio Mixer & Microphones Maintenance",
+      "description": "Purchase of 2 digital wireless handheld mics and audio mixer channel servicing",
+      "amount": 45000,
+      "amount_words": "Forty-Five Thousand Shillings Only",
+      "group_id": "cg_praise_worship",
+      "group_name": "Praise & Worship Team",
+      "requester_id": "u-youth-lead",
+      "requester_name": "Youth Leader",
+      "requester_email": "youth@standrews.org",
+      "status": "APPROVED_L2",
+      "submitted_at": "2026-07-10T10:00:00.000Z",
+      "approved_at_l1": "2026-07-11T14:30:00.000Z",
+      "approved_at_l2": "2026-07-12T09:15:00.000Z",
+      "payable_to": "Acoustic Systems Ltd",
+      "escalation_level": 0,
+      "escalation_notifications_sent": false,
+      "flagged_for_audit": false,
+      "in_procurement": false,
+      "requires_more_info": false,
+      "fiscal_year": 2026
+    },
+    {
+      "id": "req_2026_002",
+      "project_id": "p_youth_01",
+      "title": "Annual Youth Camp Transport & Catering Deposit",
+      "description": "Bus hire reservation for 60 youth attendees and catering venue deposit",
+      "amount": 120000,
+      "amount_words": "One Hundred and Twenty Thousand Shillings Only",
+      "group_id": "cg_youth",
+      "group_name": "Youth Ministry",
+      "requester_id": "u-youth-lead",
+      "requester_name": "Youth Leader",
+      "requester_email": "youth@standrews.org",
+      "status": "SUBMITTED",
+      "submitted_at": "2026-07-18T11:20:00.000Z",
+      "payable_to": "Express Transport Services",
+      "escalation_level": 0,
+      "escalation_notifications_sent": false,
+      "flagged_for_audit": false,
+      "in_procurement": false,
+      "requires_more_info": false,
+      "fiscal_year": 2026
+    },
+    {
+      "id": "req_2026_003",
+      "project_id": "p_sunday_01",
+      "title": "Sunday School Workbooks & Craft Materials",
+      "description": "Printing workbooks and art craft supplies for Q3 children classes",
+      "amount": 28500,
+      "amount_words": "Twenty-Eight Thousand Five Hundred Shillings Only",
+      "group_id": "cg_sunday_school",
+      "group_name": "Sunday School & Children",
+      "requester_id": "u-bg-lead",
+      "requester_name": "Jane Doe",
+      "requester_email": "guild@standrews.org",
+      "status": "APPROVED_L1",
+      "submitted_at": "2026-07-20T08:45:00.000Z",
+      "approved_at_l1": "2026-07-21T16:00:00.000Z",
+      "payable_to": "Educational Press Kenya",
+      "escalation_level": 0,
+      "escalation_notifications_sent": false,
+      "flagged_for_audit": false,
+      "in_procurement": false,
+      "requires_more_info": false,
+      "fiscal_year": 2026
+    },
+    {
+      "id": "req_2026_004",
+      "project_id": "p_health_01",
+      "title": "Community Medical Camp Supplies & Tents",
+      "description": "Basic medical consumables, glucose check kits and tent rental for outreach day",
+      "amount": 85000,
+      "amount_words": "Eighty-Five Thousand Shillings Only",
+      "group_id": "cg_health_welfare",
+      "group_name": "Health & Welfare Board",
+      "requester_id": "u-treasurer",
+      "requester_name": "Deacon John Mwangi",
+      "requester_email": "treasurer@standrews.org",
+      "status": "DISBURSED",
+      "submitted_at": "2026-07-01T09:00:00.000Z",
+      "approved_at_l1": "2026-07-02T11:00:00.000Z",
+      "approved_at_l2": "2026-07-03T15:30:00.000Z",
+      "disbursed_at": "2026-07-05T10:00:00.000Z",
+      "payable_to": "MedCare Supplies Co.",
+      "escalation_level": 0,
+      "escalation_notifications_sent": false,
+      "flagged_for_audit": false,
+      "in_procurement": false,
+      "requires_more_info": false,
+      "fiscal_year": 2026
+    }
+  ],
+  "projects": [
+    {
+      "id": "p_praise_01",
+      "name": "Sound & Media Equipment Upgrade",
+      "group_id": "cg_praise_worship",
+      "allocated_budget": 300000,
+      "spent_amount": 45000,
+      "status": "ACTIVE",
+      "color": "#4f46e5",
+      "fiscal_year": 2026,
+      "requisition_limit": 100000,
+      "accountNumber": "PJ-2026-01"
+    },
+    {
+      "id": "p_youth_01",
+      "name": "Youth Discipleship & Annual Camp",
+      "group_id": "cg_youth",
+      "allocated_budget": 250000,
+      "spent_amount": 0,
+      "status": "ACTIVE",
+      "color": "#06b6d4",
+      "fiscal_year": 2026,
+      "requisition_limit": 150000,
+      "accountNumber": "PJ-2026-02"
+    },
+    {
+      "id": "p_sunday_01",
+      "name": "Children Education & Sunday School",
+      "group_id": "cg_sunday_school",
+      "allocated_budget": 150000,
+      "spent_amount": 28500,
+      "status": "ACTIVE",
+      "color": "#10b981",
+      "fiscal_year": 2026,
+      "requisition_limit": 50000,
+      "accountNumber": "PJ-2026-03"
+    },
+    {
+      "id": "p_health_01",
+      "name": "Community Welfare & Medical Outreach",
+      "group_id": "cg_health_welfare",
+      "allocated_budget": 400000,
+      "spent_amount": 85000,
+      "status": "ACTIVE",
+      "color": "#f59e0b",
+      "fiscal_year": 2026,
+      "requisition_limit": 200000,
+      "accountNumber": "PJ-2026-04"
+    }
+  ],
+  "churchGroups": [
+    {
+      "id": "cg_youth",
+      "name": "Youth Ministry",
+      "description": "Youth activities, fellowship, camps, and worship events",
+      "created_at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "cg_womens_guild",
+      "name": "Women's Guild",
+      "description": "Women fellowship, outreach programs, and benevolent support",
+      "created_at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "cg_mens_fellowship",
+      "name": "Men's Fellowship",
+      "description": "Men ministry, community service, and facility maintenance",
+      "created_at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "cg_sunday_school",
+      "name": "Sunday School & Children",
+      "description": "Children education, learning material, and holiday Bible school",
+      "created_at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "cg_praise_worship",
+      "name": "Praise & Worship Team",
+      "description": "Music ministry, sound equipment, instruments, and media production",
+      "created_at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "cg_health_welfare",
+      "name": "Health & Welfare Board",
+      "description": "Community aid, medical support, and benevolent care",
+      "created_at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "cg_evangelism",
+      "name": "Evangelism & Missions",
+      "description": "Outreach, mission trips, and gospel literature distribution",
+      "created_at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "cg_french_congregation",
+      "name": "French Congregation",
+      "description": "French speaking service fellowship, outreach, and ministry",
+      "created_at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "cg_music_ministry",
+      "name": "Music Ministry",
+      "description": "Choirs, praise teams, instrument maintenance, and concerts",
+      "created_at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "cg_sanctuary_renovation",
+      "name": "Sanctuary Renovation",
+      "description": "Building expansion, interior decoration, and altar upgrades",
+      "created_at": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ledgerBooks": [],
+  "systemLogs": [
+    {
+      "action": "USER_LOGIN",
+      "details": "Test login audit log",
+      "performedBy": "gichaumburu@gmail.com",
+      "timestamp": "2026-07-25T13:58:12.317Z",
+      "id": "log-1784987892317",
+      "document_id": "log-1784987892317"
+    },
+    {
+      "id": "log-1784988217300",
+      "action": "TEST_STRICT_CHECK",
+      "details": "Verifying audit log save with strict mode disabled",
+      "performed_by": "system_test@pceastandrews.org",
+      "timestamp": "2026-07-25T14:03:37.300Z",
+      "document_id": "log-1784988217300"
+    },
+    {
+      "id": "log-1784988568663",
+      "action": "USER_LOGIN",
+      "details": "Test login audit log",
+      "performed_by": "gichaumburu@gmail.com",
+      "timestamp": "2026-07-25T14:09:28.663Z",
+      "document_id": "log-1784988568663"
+    }
+  ],
+  "customCalendarEvents": [],
+  "summary": {
+    "totalRequisitions": 4,
+    "totalUsers": 0,
+    "totalProjects": 4,
+    "totalGroups": 10,
+    "totalLedgers": 0
+  }
+}
