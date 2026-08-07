@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-08-06T07:21:31.828Z",
+  "targetAccount": "ict.team@pceastandrews.org",
+  "version": "4.2.0",
+  "systemSettings": {
+    "currentFiscalYear": 2026,
+    "fiscalYearStatus": "OPEN"
+  },
+  "users": [],
+  "requisitions": [],
+  "projects": [],
+  "churchGroups": [],
+  "systemLogs": [],
+  "customCalendarEvents": [
+    {
+      "id": "evt-init-1",
+      "title": "Annual Fiscal Budget Meeting",
+      "description": "Mandatory annual meeting for all ministry leaders and treasurer.",
+      "date": "2026-07-28",
+      "time": "10:00 AM",
+      "category": "MEETING",
+      "badge": "Admin Meeting",
+      "createdBy": "Super Admin",
+      "createdAt": "2026-08-06T07:21:31.579Z"
+    }
+  ],
+  "schedule": "Every 5 hours"
+}

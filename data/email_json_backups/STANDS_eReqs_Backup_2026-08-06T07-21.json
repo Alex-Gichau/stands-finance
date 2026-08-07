@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-08-06T07:21:32.031Z",
+  "targetAccount": "geeshau.standsmedia@gmail.com",
+  "version": "4.2.0",
+  "systemSettings": {
+    "currentFiscalYear": 2026,
+    "fiscalYearStatus": "OPEN"
+  },
+  "users": [],
+  "requisitions": [],
+  "projects": [],
+  "churchGroups": [],
+  "ledgerBooks": [],
+  "systemLogs": [],
+  "customCalendarEvents": [
+    {
+      "id": "evt-init-1",
+      "title": "Annual Fiscal Budget Meeting",
+      "description": "Mandatory annual meeting for all ministry leaders and treasurer.",
+      "date": "2026-07-28",
+      "time": "10:00 AM",
+      "category": "MEETING",
+      "badge": "Admin Meeting",
+      "createdBy": "Super Admin",
+      "createdAt": "2026-08-06T07:21:31.579Z"
+    }
+  ],
+  "summary": {
+    "totalRequisitions": 0,
+    "totalUsers": 0,
+    "totalProjects": 0,
+    "totalGroups": 0,
+    "totalLedgers": 0
+  }
+}
